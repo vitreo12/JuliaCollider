@@ -1,1 +1,1 @@
-JuliaCollider-no-threads
+JuliaCollider : JIT audio compilation pipeline for SuperCollider
