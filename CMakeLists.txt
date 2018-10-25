@@ -10,8 +10,7 @@ include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
 if(APPLE)
-    set(JULIA_RESOURCES_PATH "${JULIA_PATH}")
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/julia)
+    include_directories(${JULIA_PATH}/include/julia)
 endif()
 ###############
 
@@ -99,9 +98,9 @@ add_library(${PROJECT} MODULE ${FILENAME})
 #JULIA LINKER FLAGS
 if(APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    target_link_libraries(${PROJECT} "-L'${JULIA_RESOURCES_PATH}/lib' -Wl,-rpath,'${JULIA_RESOURCES_PATH}/lib' -Wl,-rpath,'${JULIA_RESOURCES_PATH}/lib/julia' -ljulia")
+    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
 endif()
-#target_link_libraries(${PROJECT} "-L'${JULIA_RESOURCES_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_RESOURCES_PATH}/lib' -Wl,-rpath,'${JULIA_RESOURCES_PATH}/lib/julia' -ljulia")
+#target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
 ###########################################
 
 if(SUPERNOVA)

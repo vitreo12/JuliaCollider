@@ -3,7 +3,12 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )" #path to fold
 cd $DIR
 mkdir -p build
 cd build
-cmake -DJULIA_PATH=/Applications/julia-1.0.1-no-threads -DSC_PATH=~/SuperCollider -DCMAKE_BUILD_TYPE=Release ..
+cmake -DJULIA_PATH=$DIR/julia -DSC_PATH=~/SuperCollider -DCMAKE_BUILD_TYPE=Release ..
 make 
-cp Julia.scx ~/Library/Application\ Support/SuperCollider/Extensions
-cp ../Julia.sc ~/Library/Application\ Support/SuperCollider/Extensions
+#make a dir Julia and put all the built stuff with includes and libs
+mkdir -p Julia
+rsync -r --links --update ../julia Julia/ #copy julia libs and includes..
+cp Julia.scx ./Julia
+cp ../Julia.sc ./Julia
+#copy stuff over to SC's User Extension directory
+rsync -r --links --update ./Julia ~/Library/Application\ Support/SuperCollider/Extensions
