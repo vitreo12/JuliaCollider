@@ -2,4 +2,4 @@ build/
 
 *.code-workspace
 
-.vscode/
+\.vscode/
