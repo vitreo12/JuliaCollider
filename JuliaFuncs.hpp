@@ -1,22 +1,53 @@
 #include "julia.h"
 #include "SC_PlugIn.hpp"
-//#include "SC_Filesystem.hpp" //REQUIRES INSTALLING BOOST "brew install boost" on mac
-//#include <boost/filesystem/path.hpp> // path
 #include <string>
 
-//Currently using User Extensions folder. Look into SC_Filesystem.hpp
-// FRAGILE SYSTEM
-std::string get_julia_dir()
-{
-    std::string dir_path;
-    #ifdef __APPLE__
-        //getenv("HOME");
-        std::string home = getenv("HOME");
-        dir_path = home + "/Library/Application Support/SuperCollider/Extensions/Julia/julia/lib/julia";
-    #elif __linux__
-    #endif
+//use vvmap to get a map of the active processes under scsynth. then grep Julia.scx to get the path where it's running from.
+//-m1, first occurence
+//i=10; final_string=""; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); while true; do test_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string" | grep -o 'Julia.scx'); final_string+=$(awk -v var="$i" '{print $var}' <<< "$complete_string")" "; if [ "$test_string" == "Julia.scx" ]; then break; fi; let "i+=1"; done; printf '%s' "${final_string//"Julia.scx"/}"
+/* 
+BREAKDOWN:
+- i = 10; variable for looping. 10 is the position in the awk output where the string of the directory should be
+- final_string=""; output
+- complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); string that contains the first line where the occurrence (grep -m 1 'Julia.scx') of 'Julia.scx' appears when running the map of active processes under scsynth.
+- while true;
+- do test_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string" | grep -o 'Julia.scx'); current test string: use awk to parse the complete_string starting from index 10 (each section is the one between spaces). See if 'Julia.scx' is in this substring.
+- final_string+=$(awk -v var="$i" '{print $var}' <<< "$complete_string")" "; accumulation of the final string appending the results in the running loop. Appending a space at the end because it then means that there is a folder with spaces, and it would break the iteration.
+- if [ "$test_string" == "Julia.scx" ]; then break; fi; let "i+=1"; done; printf '%s' "${final_string//"Julia.scx"/}": if 'Julia.scx' found, break the loop. i+=1 calculated outside of if. return the final string removing Julia.scx/so. and WITHOUT NEW LINE
+*/
+#ifdef __APPLE__
+    #define JULIA_DIRECTORY_PATH "i=10; final_string=\"\"; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); while true; do test_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\" | grep -o 'Julia.scx'); final_string+=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\")\" \"; if [ \"$test_string\" == \"Julia.scx\" ]; then break; fi; let \"i+=1\"; done; printf '%s' \"${final_string//\"Julia.scx\"/}\""
+#elif __linux__
+    //in linux there is no vvmap.
+    //pgrep gives me the PID, pmap shows me the map as vmmap. -p shows the full path to files.
+    //the variable in pmap is 6.
+    //I need to run: i=4; ID=$(pgrep scsynth); pmap -p $ID | grep -m 1 'Julia.so' | awk -v var="$i" '{print $var}'
+#endif
 
-    return dir_path;
+const char* get_julia_dir() 
+{
+#ifdef __APPLE__
+    //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash)
+    FILE* pipe = popen(JULIA_DIRECTORY_PATH, "r");
+    
+    if (!pipe) 
+        return "ERROR: couldn't run command.";
+    
+    char buffer[128];
+    std::string result = "";
+    while(!feof(pipe)) 
+    {
+        //get the text out
+        if(fgets(buffer, 128, pipe) != NULL)
+            result += buffer;
+    }
+    pclose(pipe);
+
+    //remove last character, a space
+    result = result.substr(0, result.size()-1) + "julia/lib/julia";
+    return result.c_str();
+#elif __linux__
+#endif 
 }
 
 static InterfaceTable *ft;
@@ -39,14 +70,18 @@ inline void boot_julia()
 {
     if(!jl_is_initialized())
     {
-        const char* dir_path = get_julia_dir().c_str();
-        printf("%s\n", dir_path);
+        //get path to the Julia.scx and julia lib and includes.
+        const char* dir_path = get_julia_dir();
+        printf("Path to Julia object and lib: \n%s\n", dir_path);
         
-        #ifdef __APPLE__
+        if(dir_path)
+        {
+#ifdef __APPLE__
             jl_init_with_image(dir_path, "sys.dylib");
-        #elif __linux__
+#elif __linux__
             jl_init_with_image(dir_path, "sys.so");
-        #endif
+#endif
+        }
 
         if(jl_is_initialized())
         {
