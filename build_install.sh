@@ -3,7 +3,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )" #path to fold
 cd $DIR
 mkdir -p build
 cd build
-cmake -DJULIA_PATH=$DIR/julia -DSC_PATH=~/SuperCollider -DCMAKE_BUILD_TYPE=Release ..
+cmake -DSC_PATH=~/SuperCollider -DCMAKE_BUILD_TYPE=Release ..
 make 
 #make a dir Julia and put all the built stuff with includes and libs
 mkdir -p Julia

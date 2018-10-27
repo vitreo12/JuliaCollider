@@ -9,6 +9,7 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
+set(JULIA_PATH "${CMAKE_SOURCE_DIR}/julia")
 if(APPLE)
     include_directories(${JULIA_PATH}/include/julia)
 endif()
@@ -98,7 +99,10 @@ add_library(${PROJECT} MODULE ${FILENAME})
 #JULIA LINKER FLAGS
 if(APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
+    #linking when building. linking against the julia folder inside the source files.
+    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib'")
+    #linking when executing the shared library. it will link against the julia/lib folder inside the Julia package. Linux equivalent to @loader_path is $ORIGIN
+    target_link_libraries(${PROJECT} "-Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
 endif()
 #target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
 ###########################################

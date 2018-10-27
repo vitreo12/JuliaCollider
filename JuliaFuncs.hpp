@@ -8,10 +8,10 @@
 /* 
 BREAKDOWN:
 - i = 10; variable for looping. 10 is the position in the awk output where the string of the directory should be
-- complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); string that contains the first line where the occurrence (grep -m 1 'Julia.scx') of 'Julia.scx' appears when running the map of active processes under scsynth.
-- file_string=$(awk -v var="$i" '{print $var}' <<< \"$complete_string\"); extract the string that tells where the directory is. This is needed because if there are spaces in the path, it will be split. This way, I am just finding the first path.
-- extra_string=${complete_string%$file_string*}; extract the string before the string that tells where the file is. it contains all the extra stuff that I don't care about.
-- final_string=${complete_string#"$extra_string"}; subtract the extra string from the complete one. this will give the complete path, including spaces etc.
+- complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); -w = wide output. full path. string that contains the first line where the occurrence (grep -m 1 'Julia.scx') of 'Julia.scx' appears when running the map of active processes under scsynth.
+- file_string=$(awk -v var="$i" '{print $var}' <<< \"$complete_string\"); extract the string that tells where the directory is. This is needed because if there are spaces in the path, it will be split. This way, I am just finding the first path before splitting (e.g. it finds "/Users/francescocameli/Library/Application "), splitting Application Support
+- extra_string=${complete_string%$file_string*}; extract the string before the string that tells where the file is. it contains all the extra stuff that comes out of vmmap that I don't care about.
+- final_string=${complete_string#"$extra_string"}; remove the extra string from the complete one. This will give out the path that I need, including spaces in the name of folders.
 - printf "%s" "${final_string//"Julia.scx"/}" return the path without the "Julia.scx". It is the path to the Julia folder.
 */
 #ifdef __APPLE__
@@ -26,7 +26,7 @@ BREAKDOWN:
 const char* get_julia_dir() 
 {
 #ifdef __APPLE__
-    //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash)
+    //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash script)
     FILE* pipe = popen(JULIA_DIRECTORY_PATH, "r");
     
     if (!pipe) 
