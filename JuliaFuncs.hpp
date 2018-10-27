@@ -8,20 +8,19 @@
 /* 
 BREAKDOWN:
 - i = 10; variable for looping. 10 is the position in the awk output where the string of the directory should be
-- final_string=""; output
 - complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); string that contains the first line where the occurrence (grep -m 1 'Julia.scx') of 'Julia.scx' appears when running the map of active processes under scsynth.
-- while true;
-- do test_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string" | grep -o 'Julia.scx'); current test string: use awk to parse the complete_string starting from index 10 (each section is the one between spaces). See if 'Julia.scx' is in this substring.
-- final_string+=$(awk -v var="$i" '{print $var}' <<< "$complete_string")" "; accumulation of the final string appending the results in the running loop. Appending a space at the end because it then means that there is a folder with spaces, and it would break the iteration.
-- if [ "$test_string" == "Julia.scx" ]; then break; fi; let "i+=1"; done; printf '%s' "${final_string//"Julia.scx"/}": if 'Julia.scx' found, break the loop. i+=1 calculated outside of if. return the final string removing Julia.scx/so. and WITHOUT NEW LINE
+- file_string=$(awk -v var="$i" '{print $var}' <<< \"$complete_string\"); extract the string that tells where the directory is. This is needed because if there are spaces in the path, it will be split. This way, I am just finding the first path.
+- extra_string=${complete_string%$file_string*}; extract the string before the string that tells where the file is. it contains all the extra stuff that I don't care about.
+- final_string=${complete_string#"$extra_string"}; subtract the extra string from the complete one. this will give the complete path, including spaces etc.
+- printf "%s" "${final_string//"Julia.scx"/}" return the path without the "Julia.scx". It is the path to the Julia folder.
 */
 #ifdef __APPLE__
-    #define JULIA_DIRECTORY_PATH "i=10; final_string=\"\"; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); while true; do test_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\" | grep -o 'Julia.scx'); final_string+=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\")\" \"; if [ \"$test_string\" == \"Julia.scx\" ]; then break; fi; let \"i+=1\"; done; printf '%s' \"${final_string//\"Julia.scx\"/}\""
+    #define JULIA_DIRECTORY_PATH "i=10; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.scx\"/}\""
 #elif __linux__
     //in linux there is no vvmap.
     //pgrep gives me the PID, pmap shows me the map as vmmap. -p shows the full path to files.
-    //the variable in pmap is 6.
-    //I need to run: i=4; ID=$(pgrep scsynth); pmap -p $ID | grep -m 1 'Julia.so' | awk -v var="$i" '{print $var}'
+    //the variable in pmap is 4.
+    //I need to run: i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#"$extra_string"}; printf "%s" "${final_string//"Julia.so"/}"
 #endif
 
 const char* get_julia_dir() 
@@ -43,8 +42,7 @@ const char* get_julia_dir()
     }
     pclose(pipe);
 
-    //remove last character, a space
-    result = result.substr(0, result.size()-1) + "julia/lib/julia";
+    result += "julia/lib/julia";
     return result.c_str();
 #elif __linux__
 #endif 
