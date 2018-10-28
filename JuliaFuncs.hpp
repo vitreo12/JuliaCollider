@@ -23,7 +23,7 @@ BREAKDOWN:
     //I need to run: i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#"$extra_string"}; printf "%s" "${final_string//"Julia.so"/}"
 #endif
 
-const char* get_julia_dir() 
+std::string get_julia_dir() 
 {
 #ifdef __APPLE__
     //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash script)
@@ -40,10 +40,12 @@ const char* get_julia_dir()
         if(fgets(buffer, 128, pipe) != NULL)
             result += buffer;
     }
+
     pclose(pipe);
 
-    result += "julia/lib/julia";
-    return result.c_str();
+    std::string julia_folder_structure = "julia/lib/julia";
+    result.append(julia_folder_structure);
+    return result;
 #elif __linux__
 #endif 
 }
@@ -69,15 +71,19 @@ inline void boot_julia()
     if(!jl_is_initialized())
     {
         //get path to the Julia.scx and julia lib and includes.
-        const char* dir_path = get_julia_dir();
-        printf("Path to Julia object and lib: \n%s\n", dir_path);
+        //doing "const char* julia_dir = get_julia_dir().c_str()"" is buggy for I don't know what reason. Sometimes it 
+        //just gives out a blank string, while the std::string actually stores the path.
+        //Calling c_str() everytime is ugly but it works better here.
+        std::string julia_dir = get_julia_dir();
+
+        printf("Path to Julia object and lib: \n%s\n", julia_dir.c_str());
         
-        if(dir_path)
+        if(julia_dir.c_str())
         {
 #ifdef __APPLE__
-            jl_init_with_image(dir_path, "sys.dylib");
+            jl_init_with_image(julia_dir.c_str(), "sys.dylib");
 #elif __linux__
-            jl_init_with_image(dir_path, "sys.so");
+            jl_init_with_image(julia_dir.c_str(), "sys.so");
 #endif
         }
 
