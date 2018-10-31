@@ -10,5 +10,6 @@ mkdir -p Julia
 rsync -r --links --update ../julia Julia/ #copy julia libs and includes..
 cp Julia.scx ./Julia
 cp ../Julia.sc ./Julia
+cp ../Sine_DSP.jl ./Julia
 #copy stuff over to SC's User Extension directory
 rsync -r --links --update ./Julia ~/Library/Application\ Support/SuperCollider/Extensions

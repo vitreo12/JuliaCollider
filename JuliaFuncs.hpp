@@ -43,8 +43,8 @@ std::string get_julia_dir()
 
     pclose(pipe);
 
-    std::string julia_folder_structure = "julia/lib/julia";
-    result.append(julia_folder_structure);
+    //std::string julia_folder_structure = "julia/lib/julia";
+    //result.append(julia_folder_structure);
     return result;
 #elif __linux__
 #endif 
@@ -52,16 +52,21 @@ std::string get_julia_dir()
 
 static InterfaceTable *ft;
 
-jl_function_t* phasor_fun = nullptr;
+jl_function_t* sine_fun = nullptr;
+jl_function_t* perform_fun = nullptr;
 bool julia_initialized = false; 
+std::string julia_folder_structure = "julia/lib/julia";
 
 inline void test_include()
 {
     if(julia_initialized)
     {
+        std::string sine_jl_path = get_julia_dir();
+        sine_jl_path.append("Sine_DSP.jl");
+
         jl_function_t* include_function = jl_get_function(jl_base_module, "include");
         JL_GC_PUSH1(&include_function);
-        jl_call2(include_function, (jl_value_t*)jl_main_module, jl_cstr_to_string("/Users/francescocameli/Desktop/Embed_Julia_in_C/Julia_0_6_2/Source/Sine.jl"));
+        jl_call2(include_function, (jl_value_t*)jl_main_module, jl_cstr_to_string(sine_jl_path.c_str()));
         JL_GC_POP();
     }
 }
@@ -75,6 +80,7 @@ inline void boot_julia()
         //just gives out a blank string, while the std::string actually stores the path.
         //Calling c_str() everytime is ugly but it works better here.
         std::string julia_dir = get_julia_dir();
+        julia_dir.append(julia_folder_structure);
 
         printf("Path to Julia object and lib: \n%s\n", julia_dir.c_str());
         
@@ -142,8 +148,7 @@ void JuliaQuit(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 bool include2(World* world, void* cmd)
 {
     test_include();
-    jl_call2(jl_get_function(jl_main_module, "precompile"), jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Phasor"), jl_eval_string("Tuple([])"));
-    phasor_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Phasor");
+
     return true;
 }
 
@@ -156,8 +161,10 @@ bool include3(World* world, void* cmd)
 //nrt thread
 bool include4(World* world, void* cmd)
 {
-    for(int i = 0; i < 1000; i++)
-        printf("%s\n", jl_string_ptr(jl_cstr_to_string("from Julia: hi there")));
+    sine_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Sine");
+    jl_call2(jl_get_function(jl_main_module, "precompile"), sine_fun, jl_eval_string("Tuple([])"));
+
+    perform_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "perform");
     
     printf("-> Include completed\n");
     return true;
