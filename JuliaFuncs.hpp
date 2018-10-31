@@ -55,13 +55,14 @@ static InterfaceTable *ft;
 jl_function_t* sine_fun = nullptr;
 jl_function_t* perform_fun = nullptr;
 bool julia_initialized = false; 
+std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
 
 inline void test_include()
 {
     if(julia_initialized)
     {
-        std::string sine_jl_path = get_julia_dir();
+        std::string sine_jl_path = julia_dir;
         sine_jl_path.append("Sine_DSP.jl");
 
         jl_function_t* include_function = jl_get_function(jl_base_module, "include");
@@ -79,15 +80,17 @@ inline void boot_julia()
         //doing "const char* julia_dir = get_julia_dir().c_str()"" is buggy for I don't know what reason. Sometimes it 
         //just gives out a blank string, while the std::string actually stores the path.
         //Calling c_str() everytime is ugly but it works better here.
-        std::string julia_dir = get_julia_dir();
-        julia_dir.append(julia_folder_structure);
-
-        printf("Path to Julia object and lib: \n%s\n", julia_dir.c_str());
+        julia_dir = get_julia_dir();
         
-        if(julia_dir.c_str())
+        std::string julia_image_folder = julia_dir;
+        julia_image_folder.append(julia_folder_structure);
+
+        printf("Path to Julia object and lib: \n%s\n", julia_image_folder.c_str());
+        
+        if(julia_image_folder.c_str())
         {
 #ifdef __APPLE__
-            jl_init_with_image(julia_dir.c_str(), "sys.dylib");
+            jl_init_with_image(julia_image_folder.c_str(), "sys.dylib");
 #elif __linux__
             jl_init_with_image(julia_dir.c_str(), "sys.so");
 #endif
