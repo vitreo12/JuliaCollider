@@ -9,14 +9,27 @@ public:
         {
             if(sine_fun != nullptr)
             {
-                sine = jl_call0(sine_fun);
+                object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
+
+                args = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * 6);
+
+                args[0] = perform_fun; //already in id dict
                 
-                args = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * 5);
-                args[0] = sine;
-                args[1] = jl_box_float64(sampleRate());
-                args[2] = jl_box_int32(bufferSize());
-                args[3] = (jl_value_t*)jl_ptr_to_array_1d(jl_apply_array_type((jl_value_t*)jl_float32_type, 1), nullptr, bufferSize(), 0);
-                args[4] = jl_box_float64((double)440.0);
+                sine = jl_call0(sine_fun);
+                args[1] = sine;
+                jl_call3(set_index, object_id_dict, sine, sine);
+                
+                args[2] = jl_box_float64(sampleRate());
+                jl_call3(set_index, object_id_dict, args[2], args[2]);
+
+                args[3] = jl_box_int32(bufferSize());
+                jl_call3(set_index, object_id_dict, args[3], args[3]);
+
+                args[4] = (jl_value_t*)jl_ptr_to_array_1d(jl_apply_array_type((jl_value_t*)jl_float32_type, 1), nullptr, bufferSize(), 0);
+                jl_call3(set_index, object_id_dict, args[4], args[4]);
+
+                args[5] = jl_box_float64((double)440.0);
+                jl_call3(set_index, object_id_dict, args[5], args[5]);
 
                 execute = true;
             }
@@ -33,12 +46,14 @@ public:
 
     ~Julia() 
     {
+        delete_object_id_dict(global_id_dict, object_id_dict, delete_index);
         RTFree(mWorld, args);
     }
 
 private:
     jl_value_t* sine;
     jl_value_t** args;
+    jl_value_t* object_id_dict;
     bool execute = false;
 
     inline void next(int inNumSamples) 
@@ -48,13 +63,13 @@ private:
 
         if(execute)
         {
-            *(int*)jl_data_ptr(args[2]) = inNumSamples;
+            *(int*)jl_data_ptr(args[3]) = inNumSamples;
             //point julia buffer to correct audio buffer.
-            ((jl_array_t*)(args[3]))->data = output;
+            ((jl_array_t*)(args[4]))->data = output;
             //set frequency
-            *(double*)jl_data_ptr(args[4]) = input;
+            *(double*)jl_data_ptr(args[5]) = input;
 
-            jl_call(perform_fun, args, 5);
+            jl_call_no_gc(args, 6);
         }
         else
         {

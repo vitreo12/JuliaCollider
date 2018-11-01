@@ -1,4 +1,5 @@
-#include "julia.h"
+#include "JuliaHash.hpp"
+#include "JuliaUtilities.h"
 #include "SC_PlugIn.hpp"
 #include <string>
 
@@ -43,8 +44,6 @@ std::string get_julia_dir()
 
     pclose(pipe);
 
-    //std::string julia_folder_structure = "julia/lib/julia";
-    //result.append(julia_folder_structure);
     return result;
 #elif __linux__
 #endif 
@@ -54,6 +53,11 @@ static InterfaceTable *ft;
 
 jl_function_t* sine_fun = nullptr;
 jl_function_t* perform_fun = nullptr;
+jl_function_t* id_dict_function = nullptr;
+jl_value_t* global_id_dict = nullptr;
+jl_function_t* set_index = nullptr;
+jl_function_t* delete_index = nullptr;
+
 bool julia_initialized = false; 
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
@@ -98,6 +102,24 @@ inline void boot_julia()
 
         if(jl_is_initialized())
         {
+            jl_gc_enable(1);
+
+            global_id_dict = create_global_id_dict();
+
+            id_dict_function = jl_get_function(jl_main_module, "IdDict");
+            set_index = jl_get_function(jl_main_module, "setindex!");
+			delete_index = jl_get_function(jl_main_module, "delete!");
+            
+            JL_GC_PUSH3(&id_dict_function, &set_index, &delete_index);
+            jl_call3(set_index, global_id_dict, (jl_value_t*)id_dict_function, (jl_value_t*)id_dict_function);
+            jl_call3(set_index, global_id_dict, (jl_value_t*)set_index, (jl_value_t*)set_index);
+            jl_call3(set_index, global_id_dict, (jl_value_t*)delete_index, (jl_value_t*)delete_index);
+            JL_GC_POP();
+
+            //precompile println fun for id dicts.
+            //i should precompile all the prints i need.
+            jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+
             printf("**************************\n");
             printf("**************************\n");
             printf("*** Julia %s booted ***\n", jl_ver_string());
@@ -117,6 +139,7 @@ inline void quit_julia()
     if(jl_is_initialized())
     {
         printf("-> Quitting Julia..\n");
+        delete_global_id_dict();
         jl_atexit_hook(0);
     }
 }
@@ -165,9 +188,14 @@ bool include3(World* world, void* cmd)
 bool include4(World* world, void* cmd)
 {
     sine_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Sine");
-    jl_call2(jl_get_function(jl_main_module, "precompile"), sine_fun, jl_eval_string("Tuple([])"));
-
     perform_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "perform");
+
+    JL_GC_PUSH2(sine_fun, perform_fun)
+    jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
+    jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
+    JL_GC_POP();    
+
+    jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
     
     printf("-> Include completed\n");
     return true;
