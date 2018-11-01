@@ -66,7 +66,6 @@ private:
     }
 };
 
-/* IT DOESN'T WORK IF BOOTING JULIA FROM HERE. NEED TO BOOT IT WITH A COMMAND */
 PluginLoad(JuliaUGens) 
 {
     ft = inTable;

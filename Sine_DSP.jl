@@ -16,14 +16,14 @@ module Sine_DSP
     end
 
     function perform(unit::Sine, sample_rate::Float64, vector_size::Int32, output_vector::Vector{Float32}, frequency::Float64)
-        for i::Int32 = 1 : vector_size
+        @inbounds for i::Int64 = 1 : vector_size
             phase::Float64 = unit.p.phase
 
             if(phase >= 1.0)
                 phase = 0.0
             end
 
-            @inbounds output_vector[i] = cos(phase * 2pi) * 0.1
+            output_vector[i] = cos(phase * 2pi) * 0.1
 
             phase += frequency / (sample_rate - 1)
             unit.p.phase = phase
