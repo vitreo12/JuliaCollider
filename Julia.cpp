@@ -9,13 +9,14 @@ public:
         {
             if(sine_fun != nullptr)
             {
+                //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
 
                 args = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * 6);
 
                 args[0] = perform_fun; //already in id dict
                 
-                sine = jl_call0(sine_fun);
+                sine = jl_call0(sine_fun); //create sine obj
                 args[1] = sine;
                 jl_call3(set_index, object_id_dict, sine, sine);
                 

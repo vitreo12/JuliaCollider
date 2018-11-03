@@ -170,10 +170,60 @@ void JuliaQuit(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)quit2, (AsyncStageFn)quit3, (AsyncStageFn)quit4, quitCleanup, 0, nullptr);
 }
 
+void precompile(World* world, jl_value_t* object_id_dict, jl_value_t** args)
+{
+    args[0] = perform_fun; //already in id dict
+                
+    jl_value_t* sine = jl_call0(sine_fun); //precompile sine object
+    args[1] = sine;
+    jl_call3(set_index, object_id_dict, sine, sine);
+    
+    args[2] = jl_box_float64(world->mSampleRate);
+    jl_call3(set_index, object_id_dict, args[2], args[2]);
+
+    //size 0 for the loop
+    args[3] = jl_box_int32((int)0);
+    jl_call3(set_index, object_id_dict, args[3], args[3]);
+
+    //size 0 array
+    args[4] = (jl_value_t*)jl_alloc_array_1d(jl_apply_array_type((jl_value_t*)jl_float32_type, 1), (size_t)0);
+    jl_call3(set_index, object_id_dict, args[4], args[4]);
+
+    args[5] = jl_box_float64((double)440.0);
+    jl_call3(set_index, object_id_dict, args[5], args[5]);
+
+    //precompile perform function
+    jl_call_no_gc(args, 6);
+}
+
+void precompile_object(World* world)
+{
+    printf("Module precompilation...\n");
+
+    jl_value_t* object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
+
+    jl_value_t** args = (jl_value_t**)RTAlloc(world, sizeof(jl_value_t*) * 6);
+
+    //precompile constructor and perform functions for this module
+    precompile(world, object_id_dict, args);
+
+    delete_object_id_dict(global_id_dict, object_id_dict, delete_index);
+
+    RTFree(world, args);
+}
+
 //nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool include2(World* world, void* cmd)
 {
     test_include();
+
+    sine_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Sine");
+    perform_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "perform");
+
+    JL_GC_PUSH2(sine_fun, perform_fun)
+    jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
+    jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
+    JL_GC_POP();  
 
     return true;
 }
@@ -187,13 +237,7 @@ bool include3(World* world, void* cmd)
 //nrt thread
 bool include4(World* world, void* cmd)
 {
-    sine_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Sine");
-    perform_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "perform");
-
-    JL_GC_PUSH2(sine_fun, perform_fun)
-    jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
-    jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
-    JL_GC_POP();    
+    precompile_object(world);
 
     jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
     
