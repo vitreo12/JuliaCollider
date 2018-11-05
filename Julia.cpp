@@ -47,8 +47,11 @@ public:
 
     ~Julia() 
     {
-        delete_object_id_dict(global_id_dict, object_id_dict, delete_index);
-        RTFree(mWorld, args);
+        if(execute == true)
+        {
+            delete_object_id_dict(global_id_dict, object_id_dict, delete_index);
+            RTFree(mWorld, args);
+        }
     }
 
 private:
