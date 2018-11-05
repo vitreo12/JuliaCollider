@@ -4,6 +4,8 @@ s.boot;
 
 s.sendMsg("/cmd", "julia_include");
 
+100.do{s.sendMsg("/cmd", "julia_include")};
+
 {Julia.ar(440)}.play
 {SinOsc.ar(440)}.play
 {DelayN.ar(DC.ar(0))}.play

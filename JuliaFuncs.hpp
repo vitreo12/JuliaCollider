@@ -102,7 +102,8 @@ inline void boot_julia()
 
         if(jl_is_initialized())
         {
-            jl_gc_enable(1);
+            jl_gc_enable(0);
+            printf("GC enabled: %i\n", jl_gc_is_enabled());
 
             global_id_dict = create_global_id_dict();
 
@@ -140,6 +141,7 @@ inline void quit_julia()
     {
         printf("-> Quitting Julia..\n");
         delete_global_id_dict();
+        perform_gc();
         jl_atexit_hook(0);
     }
 }
@@ -217,8 +219,8 @@ bool include2(World* world, void* cmd)
 {
     test_include();
 
-    sine_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "Sine");
-    perform_fun = jl_get_function((jl_module_t*)jl_get_global(jl_main_module, jl_symbol("Sine_DSP")), "perform");
+    sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
+    perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
 
     JL_GC_PUSH2(sine_fun, perform_fun)
     jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
@@ -240,8 +242,12 @@ bool include4(World* world, void* cmd)
     precompile_object(world);
 
     jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+
+    //call on the GC after each include to cleanup stuff
+    perform_gc();
     
     printf("-> Include completed\n");
+
     return true;
 }
 
