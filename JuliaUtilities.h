@@ -27,7 +27,7 @@
 jl_value_t* jl_call_no_gc(jl_value_t** args, uint32_t nargs)
 {
     jl_value_t* v;
-    JL_TRY {
+    //JL_TRY {
         size_t last_age = jl_get_ptls_states()->world_age;
         jl_get_ptls_states()->world_age = jl_get_world_counter();
         
@@ -36,9 +36,9 @@ jl_value_t* jl_call_no_gc(jl_value_t** args, uint32_t nargs)
         jl_get_ptls_states()->world_age = last_age;
         jl_exception_clear();
     }
-    JL_CATCH {
-        v = nullptr;
-    }
+    //JL_CATCH {
+    //    v = nullptr;
+    //}
     
     return v;
 }
