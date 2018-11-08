@@ -6,12 +6,14 @@ s.sendMsg("/cmd", "julia_include");
 
 100.do{s.sendMsg("/cmd", "julia_include")};
 
-{Julia.ar(440)}.play
-{SinOsc.ar(440)}.play
-{DelayN.ar(DC.ar(0))}.play
+x = {Julia.ar(440)}.play
+z = {SinOsc.ar(440)}.play
 
-100.do{{Julia.ar(440) / 100}.play}
-100.do{{SinOsc.ar() / 100}.play}
+x.free;
+z.free;
+
+50.do{{Julia.ar(440) / 50}.play}
+50.do{{SinOsc.ar(440) / 50}.play}
 
 s.scope;
 s.quit;

@@ -1,5 +1,7 @@
 #include "JuliaFuncs.hpp"
 
+static int allocating;
+
 struct Julia : public SCUnit 
 {
 public:
@@ -7,7 +9,14 @@ public:
     { 
         if(julia_initialized)
         {
-            if(sine_fun != nullptr)
+            //ONLY Called once.
+            //This means that, even if changed the reference script, the synth will still play using the old references, which are stored in args anyway.
+            //Also, if synth is still playing, the object id dict is still pushed to the global one, keeping all the references alive.
+
+            //ONLY EVER CREATE A NEW OBJECT IS GC IS DISABLED, meaning that it is now safe to call into it.
+            //This is not safe yet, because while in the middle of this creation of objects, GC could be disabled again by the
+            //NRT thread if there is a call there. Need a way to prevent the calls from either ways if one of them is dealing with the GC.
+            if(sine_fun != nullptr && !jl_gc_is_enabled())
             {
                 //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
@@ -16,6 +25,7 @@ public:
 
                 args[0] = perform_fun; //already in id dict
                 
+                //I should make NO GC functions to jl_call0, 1, 2, 3, 4....
                 sine = jl_call0(sine_fun); //create sine obj
                 args[1] = sine;
                 jl_call3(set_index, object_id_dict, sine, sine);
@@ -51,6 +61,7 @@ public:
         {
             delete_object_id_dict(global_id_dict, object_id_dict, delete_index);
             RTFree(mWorld, args);
+            //JuliaGC(mWorld, nullptr, nullptr, nullptr);
         }
     }
 

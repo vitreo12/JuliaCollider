@@ -51,6 +51,8 @@ std::string get_julia_dir()
 
 static InterfaceTable *ft;
 
+jl_mutex_t* gc_mutex;
+
 jl_function_t* sine_fun = nullptr;
 jl_function_t* perform_fun = nullptr;
 jl_function_t* id_dict_function = nullptr;
@@ -141,7 +143,7 @@ inline void quit_julia()
     {
         printf("-> Quitting Julia..\n");
         delete_global_id_dict();
-        perform_gc();
+        perform_gc(1);
         jl_atexit_hook(0);
     }
 }
@@ -217,15 +219,18 @@ void precompile_object(World* world)
 //nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool include2(World* world, void* cmd)
 {
+    //preallocates memory for objects creation.. Use Instruments -> Allocations to check on scsynth
+    //jl_gc_allocobj(100000000);
+
     test_include();
 
     sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
     perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
 
-    JL_GC_PUSH2(sine_fun, perform_fun)
+    //JL_GC_PUSH2(sine_fun, perform_fun)
     jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
     jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
-    JL_GC_POP();  
+    //JL_GC_POP();  
 
     return true;
 }
@@ -242,12 +247,11 @@ bool include4(World* world, void* cmd)
     precompile_object(world);
 
     jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
-
     //call on the GC after each include to cleanup stuff
-    perform_gc();
+    perform_gc(1);
     
     printf("-> Include completed\n");
-
+    
     return true;
 }
 
@@ -256,6 +260,29 @@ void includeCleanup(World* world, void* cmd){}
 void JuliaInclude(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)include2, (AsyncStageFn)include3, (AsyncStageFn)include4, includeCleanup, 0, nullptr);
+}
+
+bool gc2(World* world, void* cmd)
+{
+    perform_gc(1);
+    return true;
+}
+
+bool gc3(World* world, void* cmd)
+{
+    return true;
+}
+
+bool gc4(World* world, void* cmd)
+{
+    return true;
+}
+
+void gcCleanup(World* world, void* cmd){}
+
+void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)gc2, (AsyncStageFn)gc3, (AsyncStageFn)gc4, gcCleanup, 0, nullptr);
 }
 
 inline void DefineJuliaCmds()

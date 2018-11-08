@@ -1,0 +1,11 @@
+GC ISSUES:
+When turning GC back on in NRT thread, the RT thread could call into it when creating a new object.
+
+
+NRT THREAD                      RT THREAD
+jl_gc_enable(1);
+                                 
+//now gc is open,                   
+                                jl_call...... (creating an object might trigger a gc call on rt thread)
+
+jl_gc_collect(1);
