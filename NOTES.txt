@@ -1,6 +1,13 @@
 GC ISSUES:
 When turning GC back on in NRT thread, the RT thread could call into it when creating a new object.
 
+Way to fix it:
+Only ever create objects when the GC is disabled. Also, while in the middle of creating objects,
+make sure that the GC cannot be turned back on. I need this two way check from the GC and the objects.
+The priority must be the objects, as I can still collect the GC at a later stage. The GC collections, also,
+most of the time will be of very small data, while the call is very expensive. Need to think of a way of 
+only collecting when it is actually purposeful to do so.
+
 
 NRT THREAD                      RT THREAD
 jl_gc_enable(1);
