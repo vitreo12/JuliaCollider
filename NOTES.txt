@@ -16,3 +16,10 @@ jl_gc_enable(1);
                                 jl_call...... (creating an object might trigger a gc call on rt thread)
 
 jl_gc_collect(1);
+
+
+SOLUTIONS:
+1) Could just keep gc disabled at all times, since Julia will reuse the memory once a variable has been
+   set to jl_nothing
+
+2) Preallocate a big vector, set it to nothing, and see if julia will reuse that memory

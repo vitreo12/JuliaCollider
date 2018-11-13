@@ -78,6 +78,11 @@ inline void test_include()
     }
 }
 
+int dummy_c_function()
+{
+    return 10;
+}
+
 inline void boot_julia()
 {
     if(!jl_is_initialized())
@@ -113,11 +118,25 @@ inline void boot_julia()
             set_index = jl_get_function(jl_main_module, "setindex!");
 			delete_index = jl_get_function(jl_main_module, "delete!");
             
+            //maybe i can get rid of all the gc_pushes since gc is disabled here..
             JL_GC_PUSH3(&id_dict_function, &set_index, &delete_index);
             jl_call3(set_index, global_id_dict, (jl_value_t*)id_dict_function, (jl_value_t*)id_dict_function);
             jl_call3(set_index, global_id_dict, (jl_value_t*)set_index, (jl_value_t*)set_index);
             jl_call3(set_index, global_id_dict, (jl_value_t*)delete_index, (jl_value_t*)delete_index);
             JL_GC_POP();
+
+            /* PASSING A POINTER TO A C FUNCTION TO BE CALLED FROM CCALL IN JULIA: PRECEDING TO WORK WITH SC BUFFER */
+            //retrieving a void pointer to the C function
+            void* c_void_pointer = (void*)dummy_c_function;
+            //converting the void* to a Julia Ptr{Nothing} (void pointers in julia)
+            jl_value_t* julia_ptr_nothing = jl_box_voidpointer(c_void_pointer);
+            //setting the Ptr{Nothing} address under the symbol :CFunctionPointer, in the global id dict
+            jl_call3(set_index, global_id_dict, julia_ptr_nothing, (jl_value_t*)jl_symbol("CFunctionPointer"));
+            //print the pointer address
+            jl_call1(jl_get_function(jl_main_module, "println"), julia_ptr_nothing);
+            
+            //Retrieve the entry from the GlobalIdDict from inside julia and passing that Ptr{Nothing} to a ccall to return the integer value back to C
+            printf("C FUNCTION POINTER VAL : %i\n", jl_unbox_int32(jl_eval_string("ccall(GlobalIdDict[:CFunctionPointer], Cint, ())")));
 
             //precompile println fun for id dicts.
             //i should precompile all the prints i need.
