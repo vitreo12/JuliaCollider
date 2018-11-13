@@ -50,6 +50,7 @@ std::string get_julia_dir()
 }
 
 static InterfaceTable *ft;
+World* global_world;
 
 jl_mutex_t* gc_mutex;
 
@@ -78,9 +79,9 @@ inline void test_include()
     }
 }
 
-int dummy_c_function()
+float* dummy_sc_alloc(int size_alloc)
 {
-    return 10;
+    return (float*)RTAlloc(global_world, size_alloc * sizeof(float));
 }
 
 inline void boot_julia()
@@ -127,16 +128,13 @@ inline void boot_julia()
 
             /* PASSING A POINTER TO A C FUNCTION TO BE CALLED FROM CCALL IN JULIA: PRECEDING TO WORK WITH SC BUFFER */
             //retrieving a void pointer to the C function
-            void* c_void_pointer = (void*)dummy_c_function;
+            void* c_void_pointer = (void*)dummy_sc_alloc;
             //converting the void* to a Julia Ptr{Nothing} (void pointers in julia)
             jl_value_t* julia_ptr_nothing = jl_box_voidpointer(c_void_pointer);
             //setting the Ptr{Nothing} address under the symbol :CFunctionPointer, in the global id dict
             jl_call3(set_index, global_id_dict, julia_ptr_nothing, (jl_value_t*)jl_symbol("CFunctionPointer"));
-            //print the pointer address
+            //print the function pointer address
             jl_call1(jl_get_function(jl_main_module, "println"), julia_ptr_nothing);
-            
-            //Retrieve the entry from the GlobalIdDict from inside julia and passing that Ptr{Nothing} to a ccall to return the integer value back to C
-            printf("C FUNCTION POINTER VAL : %i\n", jl_unbox_int32(jl_eval_string("ccall(GlobalIdDict[:CFunctionPointer], Cint, ())")));
 
             //precompile println fun for id dicts.
             //i should precompile all the prints i need.
@@ -268,7 +266,7 @@ bool include4(World* world, void* cmd)
     jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
     //call on the GC after each include to cleanup stuff
     perform_gc(1);
-    
+
     printf("-> Include completed\n");
     
     return true;
@@ -279,6 +277,40 @@ void includeCleanup(World* world, void* cmd){}
 void JuliaInclude(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)include2, (AsyncStageFn)include3, (AsyncStageFn)include4, includeCleanup, 0, nullptr);
+}
+
+bool alloc2(World* world, void* cmd)
+{
+    return true;
+}
+
+bool alloc3(World* world, void* cmd)
+{
+    global_world = world;
+
+    //TEST OF BUFFER ALLOCATION WITH SC ALLOCATOR FROM JULIA
+    //ccall the function pointer stored in the GlobalIdDict under the sumbol CFunctionPointer. It returns a Ptr{Cfloat} (float* in C), which is
+    //the location of the first allocated element, and it takes an argument for how many elements to alloc in SC RT allocator.
+    //Then, wrap that pointer around a Vector{Float32} to be used in Julia directly. It just uses the jl_array_ptr_1d function that I also use to wrap
+    //the audio buffer data in the audio processing loop.
+    jl_call1(jl_get_function(jl_main_module, "println"), jl_eval_string("unsafe_wrap(Vector{Float32}, ccall(GlobalIdDict[:CFunctionPointer], Ptr{Cfloat}, (Cint,), 10), 10)"));
+    
+    //execute this 2 times to see that actually it's correctly allocating the memory in SC's pool!!!!!
+    //jl_eval_string("unsafe_wrap(Vector{Float32}, ccall(GlobalIdDict[:CFunctionPointer], Ptr{Cfloat}, (Cint,), 1152000), 1152000)");
+
+    return true;
+}
+
+bool alloc4(World* world, void* cmd)
+{
+    return true;
+}
+
+void allocCleanup(World* world, void* cmd){}
+
+void JuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)alloc2, (AsyncStageFn)alloc3, (AsyncStageFn)alloc4, allocCleanup, 0, nullptr);
 }
 
 bool gc2(World* world, void* cmd)
@@ -308,4 +340,5 @@ inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
+    DefinePlugInCmd("julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
 }

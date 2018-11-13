@@ -4,6 +4,8 @@ s.boot;
 
 s.sendMsg("/cmd", "julia_include");
 
+s.sendMsg("/cmd", "julia_alloc");
+
 100.do{s.sendMsg("/cmd", "julia_include")};
 
 x = {Julia.ar(440)}.play
