@@ -81,7 +81,13 @@ inline void test_include()
 
 float* dummy_sc_alloc(int size_alloc)
 {
-    return (float*)RTAlloc(global_world, size_alloc * sizeof(float));
+    float* buffer = (float*)RTAlloc(global_world, size_alloc * sizeof(float));
+
+    //Add an extra check here to see if buffer has been allocated correctly. If not, return something
+    //that will still be read by Julia meaningfully
+
+    memset(buffer, 0, size_alloc * sizeof(float));
+    return buffer;
 }
 
 inline void boot_julia()
