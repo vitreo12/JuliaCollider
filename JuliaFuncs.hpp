@@ -73,9 +73,9 @@ inline void test_include()
         sine_jl_path.append("Sine_DSP.jl");
 
         jl_function_t* include_function = jl_get_function(jl_base_module, "include");
-        JL_GC_PUSH1(&include_function);
+        //JL_GC_PUSH1(&include_function);
         jl_call2(include_function, (jl_value_t*)jl_main_module, jl_cstr_to_string(sine_jl_path.c_str()));
-        JL_GC_POP();
+        //JL_GC_POP();
     }
 }
 
@@ -126,11 +126,11 @@ inline void boot_julia()
 			delete_index = jl_get_function(jl_main_module, "delete!");
             
             //maybe i can get rid of all the gc_pushes since gc is disabled here..
-            JL_GC_PUSH3(&id_dict_function, &set_index, &delete_index);
+            //JL_GC_PUSH3(&id_dict_function, &set_index, &delete_index);
             jl_call3(set_index, global_id_dict, (jl_value_t*)id_dict_function, (jl_value_t*)id_dict_function);
             jl_call3(set_index, global_id_dict, (jl_value_t*)set_index, (jl_value_t*)set_index);
             jl_call3(set_index, global_id_dict, (jl_value_t*)delete_index, (jl_value_t*)delete_index);
-            JL_GC_POP();
+            //JL_GC_POP();
 
             /* PASSING A POINTER TO A C FUNCTION TO BE CALLED FROM CCALL IN JULIA: PRECEDING TO WORK WITH SC BUFFER */
             //retrieving a void pointer to the C function

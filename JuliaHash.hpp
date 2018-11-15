@@ -4,10 +4,10 @@ jl_value_t* create_global_id_dict()
 {
     jl_function_t* id_dict_function = jl_get_function(jl_main_module, "IdDict");
     jl_value_t* global_id_dict;
-    JL_GC_PUSH2(&id_dict_function, &global_id_dict);
+    //JL_GC_PUSH2(&id_dict_function, &global_id_dict);
     global_id_dict = jl_call0(id_dict_function);
     jl_set_global(jl_main_module, jl_symbol("GlobalIdDict"), global_id_dict);
-    JL_GC_POP();
+    //JL_GC_POP();
 
     return global_id_dict;
 }
