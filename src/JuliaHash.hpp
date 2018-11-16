@@ -1,5 +1,7 @@
 #include "julia.h"
 
+#pragma once
+
 jl_value_t* create_global_id_dict()
 {
     jl_function_t* id_dict_function = jl_get_function(jl_main_module, "IdDict");

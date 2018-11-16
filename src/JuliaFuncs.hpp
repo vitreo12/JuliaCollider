@@ -1,7 +1,9 @@
 #include "JuliaHash.hpp"
-#include "JuliaUtilities.h"
+#include "JuliaUtilities.hpp"
 #include "SC_PlugIn.hpp"
 #include <string>
+
+#pragma once
 
 //use vvmap to get a map of the active processes under scsynth. then grep Julia.scx to get the path where it's running from.
 //-m1, first occurence
@@ -64,12 +66,14 @@ jl_function_t* delete_index = nullptr;
 bool julia_initialized = false; 
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
+std::string juliaCollider_folder = "julia/JuliaCollider/";
 
 inline void test_include()
 {
     if(julia_initialized)
     {
         std::string sine_jl_path = julia_dir;
+        sine_jl_path.append(juliaCollider_folder);
         sine_jl_path.append("Sine_DSP.jl");
 
         jl_function_t* include_function = jl_get_function(jl_base_module, "include");

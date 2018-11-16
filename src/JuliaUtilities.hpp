@@ -1,5 +1,7 @@
 #include "julia.h"
 
+#pragma once
+
 #define jl_get_module(name) \
             (jl_module_t*)jl_get_global(jl_main_module, jl_symbol(name))
 

@@ -94,14 +94,15 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-add_library(${PROJECT} MODULE ${FILENAME})
+#Julia.cpp is inside src/ folder. Headers are all in there, should probably simply include the directory aswell
+add_library(${PROJECT} MODULE "src/${FILENAME}")
 
 #JULIA LINKER FLAGS
 if(APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     #linking when building. linking against the julia folder inside the source files.
     target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib'")
-    #linking when executing the shared library. it will link against the julia/lib folder inside the Julia package. Linux equivalent to @loader_path is $ORIGIN
+    #linking when executing the shared library Julia.scx(MacOs), Julia.so(Linux). it will link against the julia/lib folder inside the Julia package. Linux equivalent to @loader_path is $ORIGIN
     target_link_libraries(${PROJECT} "-Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
 endif()
 #target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
@@ -112,4 +113,3 @@ if(SUPERNOVA)
     set_property(TARGET ${PROJECT}_supernova
                  PROPERTY COMPILE_DEFINITIONS SUPERNOVA)
 endif()
-
