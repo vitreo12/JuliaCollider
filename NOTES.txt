@@ -1,3 +1,10 @@
+For generic Intel builds, in Make.user:
+JULIA_THREADS=0
+MARCH=x86-64
+JULIA_CPU_TARGET=x86-64
+
+add -DNATIVE=ON to cmakelists for Julia.scx when building for own machine.
+
 GC ISSUES:
 When turning GC back on in NRT thread, the RT thread could call into it when creating a new object.
 

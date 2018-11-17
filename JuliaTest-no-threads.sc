@@ -14,8 +14,8 @@ z = {SinOsc.ar(440)}.play
 x.free;
 z.free;
 
-50.do{{Julia.ar(440) / 50}.play}
-50.do{{SinOsc.ar(440) / 50}.play}
+50.do{{Julia.ar(rrand(220, 1000)) / 50}.play}
+50.do{{SinOsc.ar(rrand(220, 1000)) / 50}.play}
 
 s.scope;
 s.quit;

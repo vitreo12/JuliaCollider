@@ -9,7 +9,6 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
-set(JULIA_PATH "${CMAKE_SOURCE_DIR}/julia")
 if(APPLE)
     include_directories(${JULIA_PATH}/include/julia)
 endif()
@@ -79,6 +78,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     endif()
 
     if(NATIVE)
+        message(STATUS "NATIVE : ON")
         add_definitions(-march=native)
     endif()
 

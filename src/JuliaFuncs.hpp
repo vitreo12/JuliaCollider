@@ -66,14 +66,14 @@ jl_function_t* delete_index = nullptr;
 bool julia_initialized = false; 
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
-std::string juliaCollider_folder = "julia/JuliaCollider/";
+std::string JuliaDSP_folder = "julia/JuliaDSP/";
 
 inline void test_include()
 {
     if(julia_initialized)
     {
         std::string sine_jl_path = julia_dir;
-        sine_jl_path.append(juliaCollider_folder);
+        sine_jl_path.append(JuliaDSP_folder);
         sine_jl_path.append("Sine_DSP.jl");
 
         jl_function_t* include_function = jl_get_function(jl_base_module, "include");
