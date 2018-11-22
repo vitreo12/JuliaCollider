@@ -9,9 +9,7 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
-if(APPLE)
-    include_directories(${JULIA_PATH}/include/julia)
-endif()
+include_directories(${JULIA_PATH}/include/julia)
 ###############
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
@@ -94,18 +92,20 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-#Julia.cpp is inside src/ folder. Headers are all in there, should probably simply include the directory aswell
+#Julia.cpp is inside src/ folder. Headers are all in there, should probably simply include the whole src directory aswell
 add_library(${PROJECT} MODULE "src/${FILENAME}")
 
 #JULIA LINKER FLAGS
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     #linking when building. linking against the julia folder inside the source files.
     target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib'")
     #linking when executing the shared library Julia.scx(MacOs), Julia.so(Linux). it will link against the julia/lib folder inside the Julia package. Linux equivalent to @loader_path is $ORIGIN
     target_link_libraries(${PROJECT} "-Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
+elseif(LINUX)
+    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic")
+    target_link_libraries(${PROJECT} "-Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia")
 endif()
-#target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
 ###########################################
 
 if(SUPERNOVA)
