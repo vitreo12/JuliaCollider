@@ -24,11 +24,11 @@ BREAKDOWN:
     //pgrep gives me the PID, pmap shows me the map as vmmap. -p shows the full path to files.
     //the variable in pmap is 4.
     //I need to run: i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#"$extra_string"}; printf "%s" "${final_string//"Julia.so"/}"
+    #define JULIA_DIRECTORY_PATH "i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
 #endif
 
 std::string get_julia_dir() 
 {
-#ifdef __APPLE__
     //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash script)
     FILE* pipe = popen(JULIA_DIRECTORY_PATH, "r");
     
@@ -47,8 +47,6 @@ std::string get_julia_dir()
     pclose(pipe);
 
     return result;
-#elif __linux__
-#endif 
 }
 
 static InterfaceTable *ft;
@@ -114,7 +112,7 @@ inline void boot_julia()
 #ifdef __APPLE__
             jl_init_with_image(julia_image_folder.c_str(), "sys.dylib");
 #elif __linux__
-            jl_init_with_image(julia_dir.c_str(), "sys.so");
+            jl_init_with_image(julia_image_folder.c_str(), "sys.so");
 #endif
         }
 
