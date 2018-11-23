@@ -14,7 +14,7 @@ if [ ! -d "$JULIA_PATH" ]; then
     exit 1
 fi
 
-JULIA_PATH=$(find "$JULIA_PATH" -type d -name "lib" -maxdepth 2) #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
+JULIA_PATH=$(find "$JULIA_PATH" -maxdepth 2 -type d -name "lib") #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
 JULIA_PATH=${JULIA_PATH::${#JULIA_PATH}-4}                       #remove "/lib"
 
 SC_PATH="${2/#\~/$HOME}"                  #expand tilde on second argument
@@ -44,9 +44,13 @@ make
 #make a Julia dir, inside of ./build, and put all the built stuff with includes and libs
 mkdir -p Julia
 echo "Copying files over..."
-rsync -r --links --update "$JULIA_PATH/lib" ./julia/Julia #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
-rsync -r --links --update ../src/JuliaDSP ./julia/Julia   #copy JuliaDSP/.jl stuff to the same julia/ subdirectory of Julia
-cp Julia.scx ./Julia                                      #copy compiled .scx/.so file
+rsync -r --links --update "$JULIA_PATH/lib" ./Julia/julia #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
+rsync -r --links --update ../src/JuliaDSP ./Julia/julia   #copy JuliaDSP/.jl stuff to the same julia/ subdirectory of Julia
+if [[ "$OSTYPE" == "darwin"* ]]; then                     #copy compiled .scx/.so file
+    cp Julia.scx ./Julia     
+elif [[ "$OSTYPE" == "linux-gnu" ]]; then  
+    cp Julia.so ./Julia    
+fi          
 cp ../src/Julia.sc ./Julia                                #copy .sc class
 
 #copy stuff over to SC's User Extension directory

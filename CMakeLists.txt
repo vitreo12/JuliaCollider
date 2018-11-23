@@ -97,12 +97,12 @@ add_library(${PROJECT} MODULE "src/${FILENAME}")
 
 #JULIA LINKER FLAGS
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-if(APPLE)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #linking when building. linking against the julia folder inside the source files.
     target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib'")
     #linking when executing the shared library Julia.scx(MacOs), Julia.so(Linux). it will link against the julia/lib folder inside the Julia package. Linux equivalent to @loader_path is $ORIGIN
     target_link_libraries(${PROJECT} "-Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
-elseif(LINUX)
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic")
     target_link_libraries(${PROJECT} "-Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia")
 endif()
