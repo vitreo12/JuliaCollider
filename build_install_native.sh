@@ -5,7 +5,7 @@ mkdir -p build
 cd build
 
 #setup env variables
-#./build_install_native.sh '~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-generic' '~/SuperCollider' '~/Library/Application Support/SuperCollider/Extensions'
+#./build_install_native.sh '~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native' '~/SuperCollider' '~/Library/Application Support/SuperCollider/Extensions'
 JULIA_PATH="${1/#\~/$HOME}"               #expand tilde on first
 JULIA_PATH=${JULIA_PATH%/}                #remove trailing slash, if there is one
 
@@ -14,7 +14,7 @@ if [ ! -d "$JULIA_PATH" ]; then
     exit 1
 fi
 
-JULIA_PATH=$(find "$JULIA_PATH" -type d -name "lib" -maxdepth 2) #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
+JULIA_PATH=$(find "$JULIA_PATH" -maxdepth 2 -type d -name "lib") #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
 JULIA_PATH=${JULIA_PATH::${#JULIA_PATH}-4}                       #remove "/lib"
 
 SC_PATH="${2/#\~/$HOME}"                  #expand tilde on second argument

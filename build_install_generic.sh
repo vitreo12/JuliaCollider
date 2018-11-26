@@ -14,7 +14,7 @@ if [ ! -d "$JULIA_PATH" ]; then
     exit 1
 fi
 
-JULIA_PATH=$(find "$JULIA_PATH" -type d -name "lib" -maxdepth 2) #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
+JULIA_PATH=$(find "$JULIA_PATH" -maxdepth 2 -type d -name "lib") #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
 JULIA_PATH=${JULIA_PATH::${#JULIA_PATH}-4}                       #remove "/lib"
 
 SC_PATH="${2/#\~/$HOME}"                  #expand tilde on second argument

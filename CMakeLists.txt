@@ -9,9 +9,7 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
-if(APPLE)
-    include_directories(${JULIA_PATH}/include/julia)
-endif()
+include_directories(${JULIA_PATH}/include/julia)
 ###############
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
@@ -80,6 +78,10 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     if(NATIVE)
         message(STATUS "NATIVE : ON")
         add_definitions(-march=native)
+    else()
+        #x86-64 architectures only for generic builds???
+        message(STATUS "NATIVE : OFF")
+        add_definitions(-march=x86-64)
     endif()
 
     if(CPP11)
