@@ -184,43 +184,6 @@ inline void boot_julia()
         printf("WARNING: Couldn't boot Julia \n");
 }
 
-inline void quit_julia()
-{
-    if(jl_is_initialized())
-    {
-        printf("-> Quitting Julia..\n");
-        delete_global_id_dict();
-        perform_gc(1);
-        jl_atexit_hook(0);
-    }
-}
-
-//nrt thread. 
-bool quit2(World* world, void* cmd)
-{
-    quit_julia(); 
-    return true;
-}
-
-//rt thread (audio blocks if too heavy of a call!!!)
-bool quit3(World* world, void* cmd)
-{ 
-    return true;
-}
-
-//nrt thread
-bool quit4(World* world, void* cmd)
-{
-    return true;
-}
-
-void quitCleanup(World* world, void* cmd){}
-
-void JuliaQuit(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
-{
-    DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)quit2, (AsyncStageFn)quit3, (AsyncStageFn)quit4, quitCleanup, 0, nullptr);
-}
-
 void precompile(World* world, jl_value_t* object_id_dict, jl_value_t** args)
 {
     args[0] = perform_fun; //already in id dict
@@ -368,7 +331,6 @@ void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *r
 
 inline void DefineJuliaCmds()
 {
-    DefinePlugInCmd("julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
 }

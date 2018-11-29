@@ -105,3 +105,16 @@ PluginLoad(JuliaUGens)
 
     boot_julia();
 }
+
+//Destructor function called when the shared library Julia.so gets unloaded from server (when server is quitted)
+void julia_destructor(void) __attribute__((destructor));
+void julia_destructor(void)
+{
+    if(jl_is_initialized())
+    {
+        printf("-> Quitting Julia..\n");
+        delete_global_id_dict();
+        perform_gc(1);
+        jl_atexit_hook(0);
+    }
+}
