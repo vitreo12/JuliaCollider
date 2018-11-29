@@ -3,6 +3,10 @@
 #include "SC_PlugIn.hpp"
 #include <string>
 
+#ifdef __linux__
+#include <dlfcn.h>
+#endif
+
 #pragma once
 
 //use vvmap to get a map of the active processes under scsynth. then grep Julia.scx to get the path where it's running from.
@@ -52,6 +56,10 @@ std::string get_julia_dir()
 static InterfaceTable *ft;
 World* global_world;
 
+#ifdef __linux__
+void* handle;
+#endif
+
 jl_mutex_t* gc_mutex;
 
 jl_function_t* sine_fun = nullptr;
@@ -65,6 +73,15 @@ bool julia_initialized = false;
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
 std::string JuliaDSP_folder = "julia/JuliaDSP/";
+
+inline void open_juliaCollider_lib()
+{
+    handle = dlopen("JuliaCollider.so", RTLD_NOW | RTLD_GLOBAL);
+    if (!handle) {
+        fprintf (stderr, "%s\n", dlerror());
+        exit(1);
+    }
+}
 
 inline void test_include()
 {
@@ -96,6 +113,11 @@ inline void boot_julia()
 {
     if(!jl_is_initialized())
     {
+
+    #ifdef __linux__
+        open_juliaCollider_lib();
+    #endif
+
         //get path to the Julia.scx and julia lib and includes.
         //doing "const char* julia_dir = get_julia_dir().c_str()"" is buggy for I don't know what reason. Sometimes it 
         //just gives out a blank string, while the std::string actually stores the path.
@@ -109,11 +131,11 @@ inline void boot_julia()
         
         if(julia_image_folder.c_str())
         {
-#ifdef __APPLE__
+        #ifdef __APPLE__
             jl_init_with_image(julia_image_folder.c_str(), "sys.dylib");
-#elif __linux__
+        #elif __linux__
             jl_init_with_image(julia_image_folder.c_str(), "sys.so");
-#endif
+        #endif
         }
 
         if(jl_is_initialized())
