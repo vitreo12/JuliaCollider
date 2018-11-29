@@ -74,14 +74,17 @@ std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
 std::string JuliaDSP_folder = "julia/JuliaDSP/";
 
+#ifdef __linux__
+//Loading libjulia directly. Opening it with RTLD_NOW | RTLD_GLOBAL allows for all symbols to be correctly found.
 inline void open_juliaCollider_lib()
 {
-    handle = dlopen("JuliaCollider.so", RTLD_NOW | RTLD_GLOBAL);
+    handle = dlopen("libjulia.so", RTLD_NOW | RTLD_GLOBAL);
     if (!handle) {
         fprintf (stderr, "%s\n", dlerror());
         exit(1);
     }
 }
+#endif
 
 inline void test_include()
 {

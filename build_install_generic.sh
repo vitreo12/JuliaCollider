@@ -49,10 +49,6 @@ rsync -r --links --update ../src/JuliaDSP ./Julia/julia   #copy JuliaDSP/.jl stu
 if [[ "$OSTYPE" == "darwin"* ]]; then                     
     cp Julia.scx ./Julia                                  #copy compiled Julia.scx
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then 
-    #build the bridge shared library. Should have a cmake here too...
-    g++ -c ../src/JuliaCollider.cpp -std=c++11 -march=x86-64 -O3 -fPIC
-    g++ -shared -o JuliaCollider.so JuliaCollider.o -std=c++11 -march=x86-64 -O3 -fPIC -L"$JULIA_PATH/lib" -Wl,--export-dynamic -Wl,-rpath,"$ORIGIN/lib" -Wl,-rpath,"$ORIGIN/lib/julia" -ljulia
-    cp JuliaCollider.so ./Julia/julia                     #copy compiled shared library which bridges (with dlopen(RTLD_NOW | RTLD_GLOBAL)) to Julia's libs
     cp Julia.so ./Julia                                   #copy compiled Julia.so file
 fi          
 cp ../src/Julia.sc ./Julia                                #copy .sc class
