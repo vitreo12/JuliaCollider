@@ -5,7 +5,7 @@ mkdir -p build
 cd build
 
 #setup env variables
-#./build_install_native.sh '~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-generic' '~/SuperCollider' '~/Library/Application Support/SuperCollider/Extensions'
+#./build_install_native.sh '~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native' '~/SuperCollider' '~/Library/Application Support/SuperCollider/Extensions'
 JULIA_PATH="${1/#\~/$HOME}"               #expand tilde on first
 JULIA_PATH=${JULIA_PATH%/}                #remove trailing slash, if there is one
 

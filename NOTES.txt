@@ -1,12 +1,8 @@
-For generic Intel builds, in Make.user:
-JULIA_THREADS=0
-MARCH=x86-64
-JULIA_CPU_TARGET=x86-64
+                    *******************************************
+                    **************** GC ISSUES ****************
+                    *******************************************
 
-add -DNATIVE=ON to cmakelists for Julia.scx when building for own machine.
-
-GC ISSUES:
-When turning GC back on in NRT thread, the RT thread could call into it when creating a new object.
+- When turning GC back on in NRT thread, the RT thread could call into it when creating a new object.
 
 Way to fix it:
 Only ever create objects when the GC is disabled. Also, while in the middle of creating objects,
@@ -15,12 +11,11 @@ The priority must be the objects, as I can still collect the GC at a later stage
 most of the time will be of very small data, while the call is very expensive. Need to think of a way of 
 only collecting when it is actually purposeful to do so.
 
-
 NRT THREAD                      RT THREAD
 jl_gc_enable(1);
                                  
-//now gc is open,                   
-                                jl_call...... (creating an object might trigger a gc call on rt thread)
+//now gc is turned on....                 
+                                jl_call...... (creating an object might trigger a jl_gc_collect call on rt thread)
 
 jl_gc_collect(1);
 
@@ -29,4 +24,111 @@ SOLUTIONS:
 1) Could just keep gc disabled at all times, since Julia will reuse the memory once a variable has been
    set to jl_nothing
 
-2) Preallocate a big vector, set it to nothing, and see if julia will reuse that memory
+2) ??? Preallocate a big vector, set it to nothing, and see if julia will reuse that memory ???
+
+
+                    *******************************************
+                    ************ VARIABLE ARGUMENTS ***********
+                    *******************************************
+
+- How to have multiple arguments within the same Julia UGen?
+
+SOLUTIONS:
+1) Dispatching the created object to different SC classes that handle different arguments to Julia, up to 32 ins and outs
+   (e.g. Julia1_1 (1in 1out), Julia2_1, Julia3_1..........Julia1_2, Julia1_3........Julia32_32)
+
+
+                    *******************************************
+                    ************** SC INTERFACE ***************
+                    *******************************************
+
+- How to interface with Julia from sclang side?
+
+SOLUTIONS:
+1) Including, parsing and precompiling on the NRT thread with an async call. 
+   e.g:
+    ~sinePath = Platform.userExtensionDir++"/JuliaCollider/Sine.jl";
+
+    //edit the file in whatever text editor
+    JuliaLang.edit(~sinePath);
+
+    //add to server. Including, parsing and precompiling on NRT thread.
+    JuliaLang.add(\Sine, ~sinePath)
+
+    SynthDef(\JuliaSine, {
+        arg frequency = 440;
+        var signal = Julia.ar(\Sine, frequency);
+        Out.ar(0, signal);
+    }).add;
+
+    x = Synth(\JuliaSine);
+
+
+                    *******************************************
+                    ************ JULIA INTERFACE **************
+                    *******************************************
+
+- What is the Julia syntax?
+
+SOLUTIONS:
+1) Extensive use of macros to tie together the code. Is it too detailed to give constructor and destructor???
+   e.g:
+    @object Sine
+        @inputs 1 ("frequency")
+        @outputs 1
+
+        mutable struct PhaseIncrement
+            p::Float64
+        end
+
+        @constructor
+            PhaseIncrement.p = 0.0
+        end
+
+        #sampleRate, bufSize, inverseSampleRate, in1, out1...
+        @perform
+            frequency::Float64 = in1
+            @sample
+                phase::Float64 = PhaseIncrement.p
+
+                if(phase >= 1.0)
+                    phase = 0.0
+                end
+
+                out1 = cos(phase * 2pi)
+
+                phase += frequency * inverseSampleRate
+                PhaseIncrement.p = phase
+            end
+        end
+
+        @destructor 
+        end
+    end
+
+                    *******************************************
+                    ************ BUFFER ALLOCATION ************
+                    *******************************************
+
+- Julia wrapper and interface to SC's real-time allocator.
+
+SOLUTIONS:
+1) Have a Buffer struct in Julia which wraps, with a ccall, a void pointer C function which allocates memory in SC.
+   The void pointer is stored in the GlobalIdDict under the symbol :CFunctionPointer
+   e.g:
+    struct Buffer
+        size::Int32
+        data::Vector{Float32}
+
+        function Buffer(size::Int32)
+            data::Vector{Float32} = ccall(unsafe_wrap(Vector{Float32}, ccall(GlobalIdDict[:CFunctionPointer], Ptr{Cfloat}, (Cint,), size), size))
+            return new(size, data)
+        end
+    end
+
+
+                    *******************************************
+                    ************** OBJECTS DICTS **************
+                    *******************************************
+
+- Do I have an individual IdDict per allocated object, or do I deal with each of them individually through the GlobalIdDict?

@@ -79,6 +79,10 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     if(NATIVE)
         message(STATUS "NATIVE : ON")
         add_definitions(-march=native)
+    else()
+        #x86-64 architectures only for generic builds???
+        message(STATUS "NATIVE : OFF")
+        add_definitions(-march=x86-64)
     endif()
 
     if(CPP11)
