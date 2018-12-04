@@ -5,23 +5,26 @@ mkdir -p build
 cd build
 
 #setup env variables
-#./build_install_generic.sh '~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-generic' '~/SuperCollider' '~/Library/Application Support/SuperCollider/Extensions'
-JULIA_PATH="${1/#\~/$HOME}"               #expand tilde on first
-JULIA_PATH=${JULIA_PATH%/}                #remove trailing slash, if there is one
+#MAC: ./build_install_generic.sh '~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-generic' '~/SuperCollider' '~/Library/Application Support/SuperCollider/Extensions'
+#LINUX: ./build_install_generic.sh ~/Sources/julia-generic/usr ~/Sources/SuperCollider-3.10beta2 ~/.local/share/SuperCollider/Extensions
+INPUT_JULIA_PATH="${1/#\~/$HOME}"               #expand tilde on first argument
+JULIA_PATH=${INPUT_JULIA_PATH%/}                #remove trailing slash, if there is one
 
-if [ ! -d "$JULIA_PATH" ]; then
-    echo "Couldn't find path to Julia at: $JULIA_PATH"
+JULIA_PATH=$(find "$JULIA_PATH" -maxdepth 2 -type d -name "lib") #find lib folder, in case the user inserts the path to julia source and not to built stuff in /usr inside the source directory
+
+#if JULIA_PATH is empty or the last three characters are not "lib", it means the find command didn't find the folder
+if [ -z ${JULIA_PATH} ] || [ ${JULIA_PATH:(-3)} != "lib" ]; then
+    echo "Couldn't find path to Julia at: $INPUT_JULIA_PATH"
     exit 1
 fi
-
-JULIA_PATH=$(find "$JULIA_PATH" -maxdepth 2 -type d -name "lib") #find lib folder, in case use puts the path to julia source and not to built stuff in /usr inside the source directory
+#else, just stip "/lib out"
 JULIA_PATH=${JULIA_PATH::${#JULIA_PATH}-4}                       #remove "/lib"
 
 SC_PATH="${2/#\~/$HOME}"                  #expand tilde on second argument
 SC_PATH=${SC_PATH%/}                      #remove trailing slash, if there is one
 
 if [ ! -d "$SC_PATH" ]; then
-    echo "Couldn't find path to SuperCollider source at: $SC_PATH"
+    echo "Couldn't find path to SuperCollider's source code at: $SC_PATH"
     exit 1
 fi
 
