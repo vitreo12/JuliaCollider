@@ -76,12 +76,12 @@ std::string JuliaDSP_folder = "julia/JuliaDSP/";
 
 #ifdef __linux__
 //Loading libjulia directly. Opening it with RTLD_NOW | RTLD_GLOBAL allows for all symbols to be correctly found.
-inline void open_juliaCollider_lib()
+inline void open_julia_shared_library()
 {
     handle = dlopen("libjulia.so", RTLD_NOW | RTLD_GLOBAL);
     if (!handle) {
         fprintf (stderr, "%s\n", dlerror());
-        exit(1);
+        printf("Could not find Julia. \n");
     }
 }
 #endif
@@ -114,13 +114,12 @@ float* dummy_sc_alloc(int size_alloc)
 
 inline void boot_julia()
 {
+    #ifdef __linux__
+        open_julia_shared_library();
+    #endif
+    
     if(!jl_is_initialized())
     {
-
-    #ifdef __linux__
-        open_juliaCollider_lib();
-    #endif
-
         //get path to the Julia.scx and julia lib and includes.
         //doing "const char* julia_dir = get_julia_dir().c_str()"" is buggy for I don't know what reason. Sometimes it 
         //just gives out a blank string, while the std::string actually stores the path.

@@ -121,14 +121,16 @@ SOLUTIONS:
         data::Vector{Float32}
 
         function Buffer(size::Int32)
-            data::Vector{Float32} = ccall(unsafe_wrap(Vector{Float32}, ccall(GlobalIdDict[:CFunctionPointer], Ptr{Cfloat}, (Cint,), size), size))
+            data::Vector{Float32} = unsafe_wrap(Vector{Float32}, ccall(GlobalIdDict[:CFunctionPointer], Ptr{Cfloat}, (Cint,), size), size)
             return new(size, data)
         end
     end
 
 
                     *******************************************
-                    ************** OBJECTS DICTS **************
+                    ************** MINOR ISSUES ***************
                     *******************************************
 
-- Do I have an individual IdDict per allocated object, or do I deal with each of them individually through the GlobalIdDict?
+1) Check JL_TRY and JL_CATCH BETTER.
+2) Do I have an individual IdDict per allocated object, or do I deal with each of them individually through the GlobalIdDict?
+3) Split the code into .hpp and .cpp files for easier use. (JuliaInclude, JuliaHash, JuliaBootAndQuit, JuliaPrecompile, etc...)
