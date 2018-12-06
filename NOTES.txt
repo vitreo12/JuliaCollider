@@ -26,6 +26,11 @@ SOLUTIONS:
 
 2) ??? Preallocate a big vector, set it to nothing, and see if julia will reuse that memory ???
 
+                    *******************************************
+                    *********** PRINT ON SC CONSOLE ***********
+                    *******************************************
+
+- Need to collect errors when including a file, parsing it and precompiling it and posting them on the SC console.
 
                     *******************************************
                     ************ VARIABLE ARGUMENTS ***********
