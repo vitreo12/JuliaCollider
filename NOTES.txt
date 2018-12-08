@@ -66,6 +66,28 @@ SOLUTIONS:
 
 - Need to collect errors when including a file, parsing it and precompiling it and posting them on the SC console.
 
+SOLUTIONS: 
+1) Using JL_TRY and JL_CATCH in cojunction with sprint and showerror to print the exceptions on console:
+   e.g:
+    JL_TRY
+    {
+        //faulty bit of code...
+        jl_eval_string("a = sqrrrt(2)");
+    }
+    JL_CATCH
+    {
+        jl_value_t* exception = jl_exception_occurred();
+        jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+        jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+        if(exception)
+        {
+            const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+            printf("ERROR: %s\n", returned_exception);
+        }
+    }
+
+
                     *******************************************
                     ********** AUTOWATCH JULIA FILES **********
                     *******************************************
@@ -181,7 +203,15 @@ SOLUTIONS:
                     ************** MINOR ISSUES ***************
                     *******************************************
 
-1) Check JL_TRY and JL_CATCH better.
-2) Check if jl_gc_wb() is necessary when updating the audio pointer or the variables in the dsp loop. 
-3) Do I have an individual IdDict per allocated object, or do I deal with each of them individually through the GlobalIdDict?
-4) Split the code into .hpp and .cpp files for easier use. (JuliaInclude, JuliaHash, JuliaBootAndQuit, JuliaPrecompile, etc...)
+1) Do I have an individual IdDict per allocated object, or do I deal with each of them individually through the GlobalIdDict?
+2) Split the code into .hpp and .cpp files for easier use. (JuliaInclude, JuliaHash, JuliaBootAndQuit, JuliaPrecompile, etc...)
+3) Check JL_TRY and JL_CATCH better.
+4) Check if jl_gc_wb() is necessary when updating the audio pointer or the variables in the dsp loop:
+    Actually, by looking at how jl_ptr_to_array_1d works, i am sure there is no need for jl_gc_wb(), as it is setting
+    the data simply with a pointer the same way i am doing it in the dsp loop. I would not change the julia stuff it is
+    pointing at, but just the C pointer. Need to verify if the same is for jl_box() values for parameters.
+    It probaly is  the same case again, since i am not updating any julia data, as it still is boxing a float64, or whatever value. 
+    Just changing the C content of it. (ASK ON THE FORUM ABOUT THIS SPECIFIC BIT)
+
+5) Use jl_base_module instead of jl_main_module to retrieve functions from Base.
+6) Wrap jl_call_no_gc() calls in JL_TRY, JL_CATCH, where JL_CATCH fills the output buffers with zeros.
