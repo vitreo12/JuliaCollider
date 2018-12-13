@@ -1,4 +1,17 @@
                     *******************************************
+                    ************* JULIA_THREADS=0 *************
+                    *******************************************
+
+- Why do I need to build Julia with Multithreading disabled? (Also check: https://discourse.julialang.org/t/c-embedding-interface-called-from-multiple-threads/18609)
+  Because, otherwise, Julia will have a thread local storage that is just Julia accessible from the thread where Julia is initialised.
+  If trying to access Julia from another C thread that Julia isn't aware of, there will be given a jl_enter_handler error.
+  It turns out that Julia tries to access information from the thread local storage. With the audio real-time thread unknown to Julia, 
+  it does not find an associate local storage in the audiothread and the walks right into accessing uninitialised memory.
+  By building with threading disabled, though, there is just one TLS and accessible (if made thread safe) from any C thread. 
+  Any calls into Julia will not look into the TLS from that specific thread (which would be undefined), but it will just look for the 
+  global TLS, thus made accessible by any C thread. (look at tls.h)
+
+                    *******************************************
                     **************** GC ISSUES ****************
                     *******************************************
 
@@ -98,12 +111,15 @@ SOLUTIONS:
                     ************ VARIABLE ARGUMENTS ***********
                     *******************************************
 
-- How to have multiple arguments within the same Julia UGen?
+- How to have multiple arguments within the same Julia UGen? Also, how do I let SC know that an included Julia file can only 
+  take a set amount of inputs and outputs?? How can I evaluate that when I add the SynthDef to the server????
 
 SOLUTIONS:
 1) Dispatching the created object to different SC classes that handle different arguments to Julia, up to 32 ins and outs
    (e.g. Julia1_1 (1in 1out), Julia2_1, Julia3_1..........Julia1_2, Julia1_3........Julia32_32)
 
+2) Alex said that the UGen on the server doesn't actually know how many inputs and outputs are given from sclang. I might just have
+   a single Julia shared object which supports up to 32 ins 32 outs and do the deal on the lang side with Julia1_1, Julia1_2, etc...
 
                     *******************************************
                     ************** SC INTERFACE ***************
