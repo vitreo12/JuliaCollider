@@ -216,6 +216,16 @@ SOLUTIONS:
 - How to pass a SC Buffer as an argument to do processing on it?
 
                     *******************************************
+                    ************ SC CLIENT/SERVER *************
+                    *******************************************
+
+- What about when sclang and scsynth are not on the same machine, but the Julia code is on the sclang machine? 
+
+SOLUTIONS:
+1) I should probably send  the contents of the Julia files are string to the server to be parsed there on the NRT thread, 
+   as include() wouldn't work since the file would not be on the server computer.
+
+                    *******************************************
                     ************** MINOR ISSUES ***************
                     *******************************************
 
