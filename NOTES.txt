@@ -2,14 +2,28 @@
                     ************* JULIA_THREADS=0 *************
                     *******************************************
 
-- Why do I need to build Julia with Multithreading disabled? (Also check: https://discourse.julialang.org/t/c-embedding-interface-called-from-multiple-threads/18609)
+- Why do I need to build Julia with Multithreading disabled? 
+  (Also check: https://discourse.julialang.org/t/c-embedding-interface-called-from-multiple-threads/18609)
   Because, otherwise, Julia will have a thread local storage that is just Julia accessible from the thread where Julia is initialised.
   If trying to access Julia from another C thread that Julia isn't aware of, there will be given a jl_enter_handler error.
   It turns out that Julia tries to access information from the thread local storage. With the audio real-time thread unknown to Julia, 
-  it does not find an associate local storage in the audiothread and the walks right into accessing uninitialised memory.
+  it does not find an associate local storage in the audio thread and then walks right into accessing uninitialised memory.
   By building with threading disabled, though, there is just one TLS and accessible (if made thread safe) from any C thread. 
   Any calls into Julia will not look into the TLS from that specific thread (which would be undefined), but it will just look for the 
   global TLS, thus made accessible by any C thread. (look at tls.h)
+
+OTHER SOLUTIONS WORTH LOOKING INTO:
+1) It's possible to call uv_async_send from any thread in C and receive it via AsyncCondition in Julia:
+   https://docs.julialang.org/en/v1.1-dev/manual/calling-c-and-fortran-code/#Thread-safety-1 
+   This handles audio thread-to-Julia part but I would still need to code up Julia-to-audio thread communication.
+
+2) Find a way to initialize a thread local storage (TLS) on the audio thread and make it accessible. 
+   Probably not worth it since it can go wrong in many ways with possible problems when calling into the GC etc...
+
+3) Find a way to link every call into a TLS from the audio thread to the TLS in the thread where Julia was initialised.
+
+4) See how things will work with PARTR when it will be merged (https://github.com/JuliaLang/julia/pull/22631). 
+
 
                     *******************************************
                     **************** GC ISSUES ****************
