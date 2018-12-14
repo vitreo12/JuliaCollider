@@ -1,6 +1,9 @@
 #include "JuliaHash.hpp"
 #include "JuliaUtilities.hpp"
 #include "SC_PlugIn.hpp"
+#include "SC_Node.h"
+#include "scsynthsend.h"
+#include "SC_ReplyImpl.hpp"
 #include <string>
 
 #ifdef __linux__
@@ -11,7 +14,7 @@
 
 //use vvmap to get a map of the active processes under scsynth. then grep Julia.scx to get the path where it's running from.
 //-m1, first occurence
-//i=10; final_string=""; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); while true; do test_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string" | grep -o 'Julia.scx'); final_string+=$(awk -v var="$i" '{print $var}' <<< "$complete_string")" "; if [ "$test_string" == "Julia.scx" ]; then break; fi; let "i+=1"; done; printf '%s' "${final_string//"Julia.scx"/}"
+//i=10; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); file_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#"$extra_string"}; printf "%s" "${final_string//"Julia.scx"/}"
 /* 
 BREAKDOWN:
 - i = 10; variable for looping. 10 is the position in the awk output where the string of the directory should be
@@ -21,6 +24,7 @@ BREAKDOWN:
 - final_string=${complete_string#"$extra_string"}; remove the extra string from the complete one. This will give out the path that I need, including spaces in the name of folders.
 - printf "%s" "${final_string//"Julia.scx"/}" return the path without the "Julia.scx". It is the path to the Julia folder.
 */
+
 #ifdef __APPLE__
     #define JULIA_DIRECTORY_PATH "i=10; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.scx\"/}\""
 #elif __linux__
@@ -31,6 +35,7 @@ BREAKDOWN:
     #define JULIA_DIRECTORY_PATH "i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
 #endif
 
+//WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS...
 std::string get_julia_dir() 
 {
     //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash script)
@@ -271,7 +276,7 @@ void includeCleanup(World* world, void* cmd){}
 
 void JuliaInclude(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)include2, (AsyncStageFn)include3, (AsyncStageFn)include4, includeCleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_include", (void*)nullptr, (AsyncStageFn)include2, (AsyncStageFn)include3, (AsyncStageFn)include4, includeCleanup, 0, nullptr);
 }
 
 bool alloc2(World* world, void* cmd)
@@ -305,7 +310,7 @@ void allocCleanup(World* world, void* cmd){}
 
 void JuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)alloc2, (AsyncStageFn)alloc3, (AsyncStageFn)alloc4, allocCleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_alloc", (void*)nullptr, (AsyncStageFn)alloc2, (AsyncStageFn)alloc3, (AsyncStageFn)alloc4, allocCleanup, 0, nullptr);
 }
 
 bool gc2(World* world, void* cmd)
@@ -328,11 +333,78 @@ void gcCleanup(World* world, void* cmd){}
 
 void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, nullptr, "", (void*)nullptr, (AsyncStageFn)gc2, (AsyncStageFn)gc3, (AsyncStageFn)gc4, gcCleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_gc", (void*)nullptr, (AsyncStageFn)gc2, (AsyncStageFn)gc3, (AsyncStageFn)gc4, gcCleanup, 0, nullptr);
+}
+
+ReplyAddress* server_reply_address;
+
+struct MyCmdData // data for each command
+{
+	ReplyAddress* reply_addr;
+};
+
+void send_osc_to_scland(ReplyAddress* replyAddr)
+{
+    small_scpacket packet;
+	packet.adds("/Julia_IO");
+	packet.maketags(4);
+	packet.addtag(',');
+	packet.addtag('s');
+	packet.adds("/Sine");
+	packet.addtag('i');
+	packet.addi(1); //number of inputs here...
+    packet.addtag('i');
+	packet.addi(1); //number of outputs here...
+
+	SendReply(replyAddr, packet.data(), packet.size());
+}
+
+bool sendReply2(World* world, void* cmd)
+{
+    MyCmdData* myCmdData = (MyCmdData*)cmd;
+    
+    send_osc_to_scland(server_reply_address);
+    
+    return true;
+}
+
+//RT thread
+bool sendReply3(World* world, void* cmd)
+{
+    MyCmdData* myCmdData = (MyCmdData*)cmd;
+    
+    return true;
+}
+
+bool sendReply4(World* world, void* cmd)
+{
+    MyCmdData* myCmdData = (MyCmdData*)cmd;
+    return true;
+}
+
+void sendReplyCleanup(World* world, void* cmd)
+{
+    MyCmdData* myCmdData = (MyCmdData*)cmd;
+    RTFree(world, myCmdData);
+}
+
+//DON'T KNOW WHY if using myCmdData->replyAddr it crashes for SendReply()
+//logs says that it is a problem with:
+//boost::exception_detail::clone_impl<boost::exception_detail::error_info_injector<boost::asio::ip::bad_address_cast> >: bad address cast
+void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+	MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
+    myCmdData->reply_addr = (ReplyAddress*)replyAddr;
+
+    if(replyAddr != server_reply_address) //could actually get rid of the if here...
+        server_reply_address = (ReplyAddress*)replyAddr;
+
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_send_reply", (void*)myCmdData, (AsyncStageFn)sendReply2, (AsyncStageFn)sendReply3, (AsyncStageFn)sendReply4, sendReplyCleanup, 0, nullptr);
 }
 
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
+    DefinePlugInCmd("julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
 }

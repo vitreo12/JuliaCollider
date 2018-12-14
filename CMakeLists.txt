@@ -103,11 +103,12 @@ add_library(${PROJECT} MODULE "src/${FILENAME}")
 #JULIA LINKER FLAGS.
 #-L'${JULIA_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
 #-ldl needed for <dlfcn.h>
+#-lboost_system needed to send OSC messages from
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
+    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia -lboost_system")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -ldl")
+    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -lboost_system -ldl")
 endif()
 ###########################################
 
