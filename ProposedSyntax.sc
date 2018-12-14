@@ -26,3 +26,24 @@ SynthDef(\JuliaSound, {
 }).add;
 
 x = Synth(\JuliaSound);
+
+//Simulate the message that the server would run to return the IO for /Sine to sclang
+{SendReply.kr(Impulse.kr(3), '/JuliaSineInputsOutputs', [4, 2])}.play(s);
+
+//Receiver function which would then receive the values. It will be limited to the server
+//that they were sent from.
+(
+~juliaReceiveIO = {
+	arg targetAddr, name;
+	OSCFunc({
+		arg msg, time, addr;
+		if(addr == targetAddr, {
+			msg.postln
+		});
+	}, name
+    );
+};
+)
+
+//Actually instantiate with the correct name.
+~juliaReceiveIO.value(s.addr, '/JuliaSineInputsOutputs');
