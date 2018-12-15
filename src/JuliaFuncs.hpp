@@ -38,20 +38,27 @@ BREAKDOWN:
 //WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS...
 std::string get_julia_dir() 
 {
+    std::string result = "";
+
     //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash script)
     FILE* pipe = popen(JULIA_DIRECTORY_PATH, "r");
     
     if (!pipe) 
-        return "ERROR: couldn't run command.";
+    {
+        result = "ERROR: couldn't run command.";
+        return result;
+    }
     
     char buffer[128];
-    std::string result = "";
-    while(!feof(pipe)) 
-    {
-        //get the text out
-        if(fgets(buffer, 128, pipe) != NULL)
+    //while(!feof(pipe)) 
+    //{
+        //get the text out line by line
+        while(fgets(buffer, 128, pipe) != NULL)
+        {
+            printf("YES\n");
             result += buffer;
-    }
+        }
+    //}
 
     pclose(pipe);
 
@@ -343,14 +350,14 @@ struct MyCmdData // data for each command
 	ReplyAddress* reply_addr;
 };
 
-void send_osc_to_scland(ReplyAddress* replyAddr)
+void send_osc_to_sclang(ReplyAddress* replyAddr)
 {
     small_scpacket packet;
 	packet.adds("/Julia_IO");
 	packet.maketags(4);
 	packet.addtag(',');
 	packet.addtag('s');
-	packet.adds("/Sine");
+	packet.adds("/Sine"); //name representing symbol of the compiled Julia program...
 	packet.addtag('i');
 	packet.addi(1); //number of inputs here...
     packet.addtag('i');
@@ -361,9 +368,9 @@ void send_osc_to_scland(ReplyAddress* replyAddr)
 
 bool sendReply2(World* world, void* cmd)
 {
-    MyCmdData* myCmdData = (MyCmdData*)cmd;
+    //MyCmdData* myCmdData = (MyCmdData*)cmd;
     
-    send_osc_to_scland(server_reply_address);
+    send_osc_to_sclang(server_reply_address);
     
     return true;
 }
@@ -371,33 +378,34 @@ bool sendReply2(World* world, void* cmd)
 //RT thread
 bool sendReply3(World* world, void* cmd)
 {
-    MyCmdData* myCmdData = (MyCmdData*)cmd;
-    
     return true;
 }
 
 bool sendReply4(World* world, void* cmd)
 {
-    MyCmdData* myCmdData = (MyCmdData*)cmd;
     return true;
 }
 
 void sendReplyCleanup(World* world, void* cmd)
 {
-    MyCmdData* myCmdData = (MyCmdData*)cmd;
-    RTFree(world, myCmdData);
+    //MyCmdData* myCmdData = (MyCmdData*)cmd;
+    //RTFree(world, myCmdData);
 }
 
 //DON'T KNOW WHY if using myCmdData->replyAddr it crashes for SendReply()
 //logs says that it is a problem with:
 //boost::exception_detail::clone_impl<boost::exception_detail::error_info_injector<boost::asio::ip::bad_address_cast> >: bad address cast
+//The problem is that probably, if sending a lot of requests, the RTAlloc is not called fast enough to allocate them all and
+//then, some of them, would be pointing at junk memory instead of the actual replyAddr
 void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-	MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
-    myCmdData->reply_addr = (ReplyAddress*)replyAddr;
+	ReplyAddress* replyAddrCast = (ReplyAddress*)replyAddr;
+    
+    //MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
+    //myCmdData->reply_addr = replyAddrCast;
 
-    if(replyAddr != server_reply_address) //could actually get rid of the if here...
-        server_reply_address = (ReplyAddress*)replyAddr;
+    if(replyAddrCast != server_reply_address) //could actually get rid of the if here...
+        server_reply_address = replyAddrCast;
 
     DoAsynchronousCommand(inWorld, replyAddr, "jl_send_reply", (void*)myCmdData, (AsyncStageFn)sendReply2, (AsyncStageFn)sendReply3, (AsyncStageFn)sendReply4, sendReplyCleanup, 0, nullptr);
 }
