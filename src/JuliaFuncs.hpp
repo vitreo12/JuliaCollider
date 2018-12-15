@@ -35,7 +35,7 @@ BREAKDOWN:
     #define JULIA_DIRECTORY_PATH "i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
 #endif
 
-//WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS...
+//WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS ON MACOS. ON LINUX IT WORKS JUST FINE...
 std::string get_julia_dir() 
 {
     std::string result = "";
@@ -45,7 +45,7 @@ std::string get_julia_dir()
     
     if (!pipe) 
     {
-        result = "ERROR: couldn't run command.";
+        result = "ERROR: couldn't find Julia.";
         return result;
     }
     
@@ -54,10 +54,7 @@ std::string get_julia_dir()
     //{
         //get the text out line by line
         while(fgets(buffer, 128, pipe) != NULL)
-        {
-            printf("YES\n");
             result += buffer;
-        }
     //}
 
     pclose(pipe);
