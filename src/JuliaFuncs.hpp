@@ -388,8 +388,8 @@ bool sendReply4(World* world, void* cmd)
 
 void sendReplyCleanup(World* world, void* cmd)
 {
-    //MyCmdData* myCmdData = (MyCmdData*)cmd;
-    //RTFree(world, myCmdData);
+    MyCmdData* myCmdData = (MyCmdData*)cmd;
+    RTFree(world, myCmdData);
 }
 
 //DON'T KNOW WHY if using myCmdData->replyAddr it crashes for SendReply()
@@ -401,8 +401,8 @@ void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 {
 	ReplyAddress* replyAddrCast = (ReplyAddress*)replyAddr;
     
-    //MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
-    //myCmdData->reply_addr = replyAddrCast;
+    MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
+    myCmdData->reply_addr = replyAddrCast;
 
     if(replyAddrCast != server_reply_address) //could actually get rid of the if here...
         server_reply_address = replyAddrCast;
