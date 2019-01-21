@@ -367,8 +367,9 @@ bool sendReply2(World* world, void* cmd)
 {
     //MyCmdData* myCmdData = (MyCmdData*)cmd;
     
+    printf("-> Request received by server...\n");
     send_osc_to_sclang(server_reply_address);
-    
+    printf("-> Data sent by server to sclang...\n");
     return true;
 }
 
