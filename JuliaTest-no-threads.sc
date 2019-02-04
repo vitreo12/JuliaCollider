@@ -1,8 +1,8 @@
-//CHECK Julia.sc for new Julia functions on server (overridden quit)
-
 s.boot;
 
 s.sendMsg(\cmd, \julia_boot);
+
+s.sendMsg(\cmd, \julia_checkWorldAndFt);
 
 s.sendMsg("/cmd", "julia_include");
 
