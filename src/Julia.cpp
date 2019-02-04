@@ -103,7 +103,9 @@ PluginLoad(JuliaUGens)
 
     DefineJuliaCmds();
 
-    boot_julia();
+    #ifdef __linux__
+        open_julia_shared_library();
+    #endif
 }
 
 //Destructor function called when the shared library Julia.so gets unloaded from server (when server is quitted)
@@ -116,9 +118,10 @@ void julia_destructor(void)
         delete_global_id_dict();
         perform_gc(1);
         jl_atexit_hook(0);
+    }
+
     #ifdef __linux__
         //close handle to libjulia.so. It is probably not needed as Julia.so is unloaded anyway, and with it also the handle to libjulia.so
         dlclose(handle);
     #endif
-    }
 }

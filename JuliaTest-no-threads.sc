@@ -2,6 +2,8 @@
 
 s.boot;
 
+s.sendMsg(\cmd, \julia_boot);
+
 s.sendMsg("/cmd", "julia_include");
 
 s.sendMsg("/cmd", "julia_alloc");
