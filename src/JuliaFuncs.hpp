@@ -237,6 +237,32 @@ void JuliaCheckWorldAndFt(World *inWorld, void* inUserData, struct sc_msg_iter *
     DoAsynchronousCommand(inWorld, replyAddr, "jl_checkWorldAndFt", (void*)nullptr, (AsyncStageFn)checkWorldAndFt2, (AsyncStageFn)checkWorldAndFt3, (AsyncStageFn)checkWorldAndFt4, checkWorldAndFtCleanup, 0, nullptr);
 }
 
+bool APIAlloc2(World* world, void* cmd)
+{
+    printf("NRT ALLOC: \n");
+    jl_SC_alloc(20);
+    return true;
+}
+
+bool APIAlloc3(World* world, void* cmd)
+{
+    //printf("RT ALLOC: \n");
+    //jl_SC_alloc(10);
+    return true;
+}
+
+bool APIAlloc4(World* world, void* cmd)
+{
+    return true;
+}
+
+void APIAllocCleanup(World* world, void* cmd){}
+
+void JuliaAPIAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_APIAlloc", (void*)nullptr, (AsyncStageFn)APIAlloc2, (AsyncStageFn)APIAlloc3, (AsyncStageFn)APIAlloc4, APIAllocCleanup, 0, nullptr);
+}
+
 void precompile(World* world, jl_value_t* object_id_dict, jl_value_t** args)
 {
     args[0] = perform_fun; //already in id dict
@@ -454,6 +480,7 @@ inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("julia_checkWorldAndFt", (PlugInCmdFunc)JuliaCheckWorldAndFt, nullptr);
+    DefinePlugInCmd("julia_API_alloc", (PlugInCmdFunc)JuliaAPIAlloc, nullptr);
     DefinePlugInCmd("julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
     DefinePlugInCmd("julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
