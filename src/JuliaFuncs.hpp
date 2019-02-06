@@ -6,6 +6,7 @@
 #include "SC_ReplyImpl.hpp"
 #include <string>
 
+//for dlopen
 #ifdef __linux__
 #include <dlfcn.h>
 #endif
@@ -263,6 +264,63 @@ void JuliaAPIAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, v
     DoAsynchronousCommand(inWorld, replyAddr, "jl_APIAlloc", (void*)nullptr, (AsyncStageFn)APIAlloc2, (AsyncStageFn)APIAlloc3, (AsyncStageFn)APIAlloc4, APIAllocCleanup, 0, nullptr);
 }
 
+bool TestAlloc_include2(World* world, void* cmd)
+{
+    if(julia_initialized)
+    {
+        std::string sine_jl_path = julia_dir;
+        sine_jl_path.append(JuliaDSP_folder);
+        sine_jl_path.append("TestAlloc.jl");
+
+        jl_function_t* include_function = jl_get_function(jl_base_module, "include");
+        jl_call2(include_function, (jl_value_t*)jl_main_module, jl_cstr_to_string(sine_jl_path.c_str()));
+    }
+    return true;
+}
+
+bool TestAlloc_include3(World* world, void* cmd)
+{
+    return true;
+}
+
+bool TestAlloc_include4(World* world, void* cmd)
+{
+    return true;
+}
+
+void TestAlloc_includeCleanup(World* world, void* cmd){}
+
+void JuliaTestAllocInclude(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_TestAlloc_include", (void*)nullptr, (AsyncStageFn)TestAlloc_include2, (AsyncStageFn)TestAlloc_include3, (AsyncStageFn)TestAlloc_include4, TestAlloc_includeCleanup, 0, nullptr);
+}
+
+bool TestAlloc_perform2(World* world, void* cmd)
+{
+    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test1");
+    jl_call0(alloc_fun);
+    return true;
+}
+
+bool TestAlloc_perform3(World* world, void* cmd)
+{
+    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test2");
+    jl_call0(alloc_fun);
+    return true;
+}
+
+bool TestAlloc_perform4(World* world, void* cmd)
+{
+    return true;
+}
+
+void TestAlloc_performCleanup(World* world, void* cmd){}
+
+void JuliaTestAllocPerform(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_TestAlloc_perform", (void*)nullptr, (AsyncStageFn)TestAlloc_perform2, (AsyncStageFn)TestAlloc_perform3, (AsyncStageFn)TestAlloc_perform4, TestAlloc_performCleanup, 0, nullptr);
+}
+
 void precompile(World* world, jl_value_t* object_id_dict, jl_value_t** args)
 {
     args[0] = perform_fun; //already in id dict
@@ -470,7 +528,7 @@ void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
     MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
     myCmdData->reply_addr = replyAddrCast;
 
-    if(replyAddrCast != server_reply_address) //could actually get rid of the if here...
+    if(replyAddrCast != server_reply_address)
         server_reply_address = replyAddrCast;
 
     DoAsynchronousCommand(inWorld, replyAddr, "jl_send_reply", (void*)myCmdData, (AsyncStageFn)sendReply2, (AsyncStageFn)sendReply3, (AsyncStageFn)sendReply4, sendReplyCleanup, 0, nullptr);
@@ -481,6 +539,9 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("julia_checkWorldAndFt", (PlugInCmdFunc)JuliaCheckWorldAndFt, nullptr);
     DefinePlugInCmd("julia_API_alloc", (PlugInCmdFunc)JuliaAPIAlloc, nullptr);
+    DefinePlugInCmd("julia_TestAlloc_include", (PlugInCmdFunc)JuliaTestAllocInclude, nullptr);
+    DefinePlugInCmd("julia_TestAlloc_perform", (PlugInCmdFunc)JuliaTestAllocPerform, nullptr);
+    DefinePlugInCmd("julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
     DefinePlugInCmd("julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);

@@ -6,11 +6,17 @@ s.sendMsg(\cmd, \julia_checkWorldAndFt);
 
 s.sendMsg(\cmd, \julia_API_alloc);
 
+s.sendMsg(\cmd, \julia_GC);
+
 s.sendMsg(\cmd, \julia_include);
 
 s.sendMsg(\cmd, \julia_alloc);
 
 100.do{s.sendMsg(\cmd, \julia_include)};
+
+s.sendMsg(\cmd, \julia_TestAlloc_include);
+//Profile it with Instruments. Both RT and NRT thread are calling to see where memory is allocated. All calls are into posix_memalign() and malloc
+s.sendMsg(\cmd, \julia_TestAlloc_perform);
 
 t = Server.new(\server2, NetAddr("127.0.0.1", 57111));
 t.boot;

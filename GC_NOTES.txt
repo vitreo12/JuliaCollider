@@ -1,0 +1,7 @@
+Using jl_finalize at object destructor to collect its memory? (For SC buffers, at least?)
+
+Allocation calls are into: 
+    1) jl_gc_big_alloc -> jl_malloced_align -> posix_memalign
+    2) jl_gc_pool_alloc -> add_page -> malloc
+                   
+    I NEED TO FIND THE RELATIVE FREE CALLS

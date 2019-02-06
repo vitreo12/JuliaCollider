@@ -25,7 +25,8 @@ public:
 
                 args[0] = perform_fun; //already in id dict
                 
-                //I should make NO GC functions to jl_call0, 1, 2, 3, 4....
+                //Can't use jl_new_struct, as I need to call the constructor function. jl_new_struct would require me to know all the elements
+                //to create the struct.
                 sine = jl_call0(sine_fun); //create sine obj
                 args[1] = sine;
                 jl_call3(set_index, object_id_dict, sine, sine);
