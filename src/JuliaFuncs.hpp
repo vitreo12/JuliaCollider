@@ -139,7 +139,7 @@ inline void boot_julia(World* inWorld)
         if(julia_image_folder.c_str())
         {
         #ifdef __APPLE__
-            jl_init_with_image(julia_image_folder.c_str(), "sys.dylib");
+            jl_init_with_image_SC(julia_image_folder.c_str(), "sys.dylib", inWorld, ft);
         #elif __linux__
             jl_init_with_image_SC(julia_image_folder.c_str(), "sys.so", inWorld, ft);
         #endif
