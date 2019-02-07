@@ -25,17 +25,19 @@ module TestAlloc
         end)
     end
 
-    #create the struct
+    #create the struct. 1000 Float64 is 8kb (64000 bits)
     @create_struct Test 1000 Float64 0.5
 
     #create an object
     function test1()
-        a = Test()
+        a = zeros(44100)
+        a = nothing
     end
 
     #alternative call to create object
     function test2()
         a = ccall(:jl_call0, Any, (Any,), Test)
+        a = nothing;
     end
 
 end
