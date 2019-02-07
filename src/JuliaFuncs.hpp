@@ -240,15 +240,15 @@ void JuliaCheckWorldAndFt(World *inWorld, void* inUserData, struct sc_msg_iter *
 
 bool APIAlloc2(World* world, void* cmd)
 {
-    printf("NRT ALLOC: \n");
-    jl_SC_alloc(20);
+    printf("NRT thread \n");
+    jl_SC_alloc(0, 10);
     return true;
 }
 
 bool APIAlloc3(World* world, void* cmd)
 {
-    //printf("RT ALLOC: \n");
-    //jl_SC_alloc(10);
+    printf("RT thread: \n");
+    jl_SC_alloc(1, 10);
     return true;
 }
 

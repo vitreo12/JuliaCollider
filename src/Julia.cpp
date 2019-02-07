@@ -99,14 +99,14 @@ private:
 
 PluginLoad(JuliaUGens) 
 {
+    #ifdef __linux__
+        open_julia_shared_library();
+    #endif
+    
     ft = inTable;
     registerUnit<Julia>(ft, "Julia");
 
     DefineJuliaCmds();
-
-    #ifdef __linux__
-        open_julia_shared_library();
-    #endif
 }
 
 //Destructor function called when the shared library Julia.so gets unloaded from server (when server is quitted)

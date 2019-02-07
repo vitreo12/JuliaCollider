@@ -1,3 +1,5 @@
+CHECK LOCKS INSIDE THE USE OF GC TO ASSURE LOCK IN GC WHEN DOING GC COLLECTION.
+
 Using jl_finalize at object destructor to collect its memory? (For SC buffers, at least?)
 
 Allocation calls are into: 
@@ -5,7 +7,7 @@ Allocation calls are into:
     2) jl_gc_pool_alloc -> add_page -> malloc
     3) jl_gc_managed_malloc -> jl_malloc_aligned -> posix_memalign
     4) _jl_gc_collect -> _jl_gc_queue_remset -> gc_mark_stack_resize -> realloc
-    5) _jl_gc_collect -> gc_mark_loop -> _arraylist_push -> realloc
+    5) _jl_gc_collect -> gc_mark_loop -> _arraylist_push -> LLT_REALLOC -> realloc
 
     Look also into standard constructors (array, tuples, etc...)
                    
