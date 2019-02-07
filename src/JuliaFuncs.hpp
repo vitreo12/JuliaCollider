@@ -366,18 +366,13 @@ void precompile_object(World* world)
 //nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool include2(World* world, void* cmd)
 {
-    //preallocates memory for objects creation.. Use Instruments -> Allocations to check on scsynth
-    //jl_gc_allocobj(100000000);
-
     test_include();
 
     sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
     perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
 
-    //JL_GC_PUSH2(sine_fun, perform_fun)
     jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
     jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
-    //JL_GC_POP();  
 
     return true;
 }
@@ -395,7 +390,7 @@ bool include4(World* world, void* cmd)
 
     jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
     //call on the GC after each include to cleanup stuff
-    perform_gc(1);
+    //perform_gc(1);
 
     printf("-> Include completed\n");
     
