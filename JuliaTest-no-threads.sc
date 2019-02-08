@@ -6,6 +6,8 @@ s.sendMsg(\cmd, \julia_checkWorldAndFt);
 
 s.sendMsg(\cmd, \julia_API_alloc);
 
+s.sendMsg(\cmd, \julia_posix_memalign);
+
 s.sendMsg(\cmd, \julia_GC);
 
 s.sendMsg(\cmd, \julia_include);

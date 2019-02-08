@@ -264,6 +264,29 @@ void JuliaAPIAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, v
     DoAsynchronousCommand(inWorld, replyAddr, "jl_APIAlloc", (void*)nullptr, (AsyncStageFn)APIAlloc2, (AsyncStageFn)APIAlloc3, (AsyncStageFn)APIAlloc4, APIAllocCleanup, 0, nullptr);
 }
 
+bool PosixMemalign2(World* world, void* cmd)
+{
+    jl_SC_posix_memalign((size_t)64, (size_t)576000);
+    return true;
+}
+
+bool PosixMemalign3(World* world, void* cmd)
+{
+    return true;
+}
+
+bool PosixMemalign4(World* world, void* cmd)
+{
+    return true;
+}
+
+void PosixMemalignCleanup(World* world, void* cmd){}
+
+void JuliaPosixMemalign(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_PosixMemalign", (void*)nullptr, (AsyncStageFn)PosixMemalign2, (AsyncStageFn)PosixMemalign3, (AsyncStageFn)PosixMemalign4, PosixMemalignCleanup, 0, nullptr);
+}
+
 bool TestAlloc_include2(World* world, void* cmd)
 {
     if(julia_initialized)
@@ -534,6 +557,7 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("julia_checkWorldAndFt", (PlugInCmdFunc)JuliaCheckWorldAndFt, nullptr);
     DefinePlugInCmd("julia_API_alloc", (PlugInCmdFunc)JuliaAPIAlloc, nullptr);
+    DefinePlugInCmd("julia_posix_memalign", (PlugInCmdFunc)JuliaPosixMemalign, nullptr);
     DefinePlugInCmd("julia_TestAlloc_include", (PlugInCmdFunc)JuliaTestAllocInclude, nullptr);
     DefinePlugInCmd("julia_TestAlloc_perform", (PlugInCmdFunc)JuliaTestAllocPerform, nullptr);
     DefinePlugInCmd("julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);

@@ -118,11 +118,12 @@ void julia_destructor(void)
         printf("-> Quitting Julia..\n");
         delete_global_id_dict();
         perform_gc(1);
-        jl_atexit_hook(0);
+        jl_atexit_hook(0); //on linux it freezes here
     }
-
+    
     #ifdef __linux__
         //close handle to libjulia.so. It is probably not needed as Julia.so is unloaded anyway, and with it also the handle to libjulia.so
         dlclose(handle);
     #endif
+    
 }
