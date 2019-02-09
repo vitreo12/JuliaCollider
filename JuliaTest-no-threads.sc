@@ -1,3 +1,5 @@
+s.options.memSize = 65536;
+
 s.boot;
 
 s.sendMsg(\cmd, \julia_boot);

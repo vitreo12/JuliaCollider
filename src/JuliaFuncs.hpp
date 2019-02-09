@@ -266,7 +266,7 @@ void JuliaAPIAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, v
 
 bool PosixMemalign2(World* world, void* cmd)
 {
-    jl_SC_posix_memalign((size_t)64, (size_t)576000);
+    jl_SC_posix_memalign((size_t)64, (size_t)88200);
     return true;
 }
 

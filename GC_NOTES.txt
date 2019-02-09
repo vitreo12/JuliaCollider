@@ -12,3 +12,7 @@ Allocation calls are into:
     Look also into standard constructors (array, tuples, etc...)
                    
     I NEED TO FIND THE RELATIVE FREE CALLS
+
+NEXT THINGS:
+1) Only restrict RTAlloc to gc stuff. Right now I get a lot of jl_malloc_aligned calls from other parts.
+2) jl_gc_collect is broken. Probably not all memory was allocated with RTAlloc and free() calls are made.
