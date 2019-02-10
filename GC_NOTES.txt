@@ -14,5 +14,6 @@ Allocation calls are into:
     I NEED TO FIND THE RELATIVE FREE CALLS
 
 NEXT THINGS:
-1) Only restrict RTAlloc to gc stuff. Right now I get a lot of jl_malloc_aligned calls from other parts.
-2) jl_gc_collect is broken. Probably not all memory was allocated with RTAlloc and free() calls are made.
+1) Find a more elegant way to define and check that standard free() would be called on 
+   jl_arrays that have taken ownership (own_buffer=1) of void* data malloced() from somewhere else
+2) Remove all the threadgroup stuff from the RTAllocation, and just use the malloc / free standard one.
