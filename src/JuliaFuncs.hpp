@@ -320,14 +320,16 @@ void JuliaTestAllocInclude(World *inWorld, void* inUserData, struct sc_msg_iter 
 
 bool TestAlloc_perform2(World* world, void* cmd)
 {
-    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test1");
+    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test2");
     jl_call0(alloc_fun);
     return true;
 }
 
 bool TestAlloc_perform3(World* world, void* cmd)
 {
-    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test2");
+    //Test if a = zeros(44100) and the allocation of an array would stop audio thread with 
+    //GC allocating in the SC RT allocator.    
+    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test1");
     jl_call0(alloc_fun);
     return true;
 }

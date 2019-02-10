@@ -14,6 +14,6 @@ Allocation calls are into:
     I NEED TO FIND THE RELATIVE FREE CALLS
 
 NEXT THINGS:
-1) Find a more elegant way to define and check that standard free() would be called on 
-   jl_arrays that have taken ownership (own_buffer=1) of void* data malloced() from somewhere else
-2) Remove all the threadgroup stuff from the RTAllocation, and just use the malloc / free standard one.
+1) Check deeply into GC call when quitting the server. Check if it was half-processed also before
+   all the rewriting of the Julia allocator. Check if it is actually necessary to even run it, or if
+   it is enough to turn GC on, and let it collect on jl_atexit_hook.

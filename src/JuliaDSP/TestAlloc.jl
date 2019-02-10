@@ -31,14 +31,14 @@ module TestAlloc
     #create an object
     function test1()
         a = zeros(44100)
-        println(a)
+        #println(a)
         a = nothing
     end
 
     #alternative call to create object
     function test2()
         a = ccall(:jl_call0, Any, (Any,), Test)
-        println(a)
+        #println(a)
         a = nothing
     end
 
