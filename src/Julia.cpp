@@ -117,7 +117,11 @@ void julia_destructor(void)
     {
         printf("-> Quitting Julia..\n");
         delete_global_id_dict();
-        perform_gc(1);
+        
+        //Since now GC lives inside of SC's allocator, there is no need to run a gc run, as all the memory will be collected anyway.
+        //Not entirely true, as the GC also might collect memory from wrappers around external malloc() calls.
+        //perform_gc(1);
+        
         jl_atexit_hook(0); //on linux it freezes here
     }
     

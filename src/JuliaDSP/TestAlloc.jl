@@ -38,6 +38,7 @@ module TestAlloc
     #alternative call to create object
     function test2()
         a = ccall(:jl_call0, Any, (Any,), Test)
+        println(a)
         a = nothing
     end
 

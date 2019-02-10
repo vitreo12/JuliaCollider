@@ -1,8 +1,11 @@
 s.options.memSize = 65536;
 
-s.boot;
-
-s.sendMsg(\cmd, \julia_boot);
+(
+s.waitForBoot({
+	s.sendMsg(\cmd, \julia_boot);
+	s.sync;
+})
+)
 
 s.sendMsg(\cmd, \julia_checkWorldAndFt);
 
