@@ -468,7 +468,12 @@ void JuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
 
 /* To be honest, it appears that jl_gc_enable() already works as a lock around the GC. 
 In fact, by running old versions without the gc_allocation_state atomic, it still worked.
-Nevertheless, the more checks, the better */
+Nevertheless, the more checks, the better. 
+Actually, by thinking on it, this atomic mechanism is required because while in the middle 
+of this creation of objects, the GC could be enabled again by the NRT thread if there was a call
+to the perform_gc() function. Now, the NRT thread will wait for 500ms to wait for the 
+atomic "false" on gc_allocation_state, which is set at the end of object creation if it was previously
+set to true. Check the constructor in Julia.cpp */
 inline void perform_gc(int full)
 {
     bool expected_val = false;
