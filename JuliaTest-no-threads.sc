@@ -14,9 +14,22 @@ s.sendMsg(\cmd, \julia_API_alloc);
 s.sendMsg(\cmd, \julia_posix_memalign);
 
 s.sendMsg(\cmd, \julia_GC);
-x = {Julia.ar(440)}.play
 
 s.sendMsg(\cmd, \julia_include);
+
+(
+s.bind({
+	50.do{{Julia.ar(rrand(220, 1000)) / 50}.play};
+	s.sendMsg(\cmd, \julia_GC);
+})
+)
+
+(
+s.bind({
+	x = {Julia.ar(440)}.play;
+	s.sendMsg(\cmd, \julia_GC);
+})
+)
 
 s.sendMsg(\cmd, \julia_alloc);
 
