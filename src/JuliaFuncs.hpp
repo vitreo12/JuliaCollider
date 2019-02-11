@@ -5,6 +5,7 @@
 #include "scsynthsend.h"
 #include "SC_ReplyImpl.hpp"
 #include <string>
+#include <atomic>
 
 //for dlopen
 #ifdef __linux__
@@ -71,6 +72,10 @@ void* handle;
 #endif
 
 jl_mutex_t* gc_mutex;
+
+//false = free
+//true = busy (either performing GC, or allocating an object)
+std::atomic<bool> gc_allocation_state(false);
 
 jl_function_t* sine_fun = nullptr;
 jl_function_t* perform_fun = nullptr;
@@ -414,8 +419,6 @@ bool include4(World* world, void* cmd)
     precompile_object(world);
 
     jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
-    //call on the GC after each include to cleanup stuff
-    //perform_gc(1);
 
     printf("-> Include completed\n");
     
@@ -461,6 +464,42 @@ void allocCleanup(World* world, void* cmd){}
 void JuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     DoAsynchronousCommand(inWorld, replyAddr, "jl_alloc", (void*)nullptr, (AsyncStageFn)alloc2, (AsyncStageFn)alloc3, (AsyncStageFn)alloc4, allocCleanup, 0, nullptr);
+}
+
+inline void perform_gc(int full)
+{
+    bool expected_val = false;
+    int count = 0;
+    while(!gc_allocation_state.compare_exchange_weak(expected_val, true))
+    {
+        printf("Julia: Some objects are using the GC. Wait...\n");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        count++;
+        if(count > 1000) //Break after 1 second and don't perform the collection
+        {
+            printf("Julia: Could not perform GC.\n");
+            return;
+        }
+        expected_val = false;
+    }
+
+    printf("ATOMIC VALUE: %i\n", gc_allocation_state.load());
+
+    if(!jl_gc_is_enabled())
+    {
+        printf("-> Enabling GC...\n");
+        jl_gc_enable(1);
+    }
+    printf("-> Performing GC...\n");
+    jl_gc_collect(full);
+    printf("-> Completed GC\n");
+    if(jl_gc_is_enabled())
+    {
+        printf("-> Disabling GC...\n");
+        jl_gc_enable(0);
+    }
+
+    gc_allocation_state = false;
 }
 
 bool gc2(World* world, void* cmd)

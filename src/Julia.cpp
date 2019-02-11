@@ -1,22 +1,17 @@
 #include "JuliaFuncs.hpp"
 
-static int allocating;
-
 struct Julia : public SCUnit 
 {
 public:
     Julia() 
     { 
-        if(julia_initialized)
-        {
-            //ONLY Called once.
-            //This means that, even if changed the reference script, the synth will still play using the old references, which are stored in args anyway.
-            //Also, if synth is still playing, the object id dict is still pushed to the global one, keeping all the references alive.
-
-            //ONLY EVER CREATE A NEW OBJECT IS GC IS DISABLED, meaning that it is now safe to call into it.
-            //This is not safe yet, because while in the middle of this creation of objects, GC could be disabled again by the
-            //NRT thread if there is a call there. Need a way to prevent the calls from either ways if one of them is dealing with the GC.
-            if(sine_fun != nullptr && !jl_gc_is_enabled())
+        if(julia_initialized && sine_fun != nullptr)
+        {   
+            bool expected_val = false;
+            //If the gc_allocation_state is false, which means that the GC is not running, set
+            //gc_allocation_state to true and run the object allocation function. 
+            //Otherwise, if gc_allocation_state is true, it means that the GC is running, so don't make any calls.
+            if(gc_allocation_state.compare_exchange_strong(expected_val, true))
             {
                 //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
@@ -43,13 +38,18 @@ public:
                 args[5] = jl_box_float64((double)440.0);
                 jl_call3(set_index, object_id_dict, args[5], args[5]);
 
+                //execute = successful object creation.
                 execute = true;
+
+                //reset gc_allocation_state to false. 
+                gc_allocation_state = false; //operation is atomic
+                //gc_allocation_state.compare_exchange_strong(true_value, false); //(compare_exchange_strong here, perhaps?)
             }
             else
-                Print("WARNING: NO FUNCTION DEFINITION\n");
+                Print("WARNING: GC is running. Object was not created.\n");
         }
         else
-            Print("WARNING: Julia not initialized\n");
+            Print("WARNING: Julia not initialized or function not defined\n");
 
 
         set_calc_function<Julia, &Julia::next>();
@@ -90,9 +90,7 @@ private:
         else
         {
             for (int i = 0; i < inNumSamples; i++) 
-            {
                 output[i] = 0.0f;
-            }
         }
     }
 };

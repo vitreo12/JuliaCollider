@@ -14,6 +14,7 @@ s.sendMsg(\cmd, \julia_API_alloc);
 s.sendMsg(\cmd, \julia_posix_memalign);
 
 s.sendMsg(\cmd, \julia_GC);
+x = {Julia.ar(440)}.play
 
 s.sendMsg(\cmd, \julia_include);
 
