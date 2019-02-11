@@ -473,7 +473,10 @@ Actually, by thinking on it, this atomic mechanism is required because while in 
 of this creation of objects, the GC could be enabled again by the NRT thread if there was a call
 to the perform_gc() function. Now, the NRT thread will wait for 500ms to wait for the 
 atomic "false" on gc_allocation_state, which is set at the end of object creation if it was previously
-set to true. Check the constructor in Julia.cpp */
+set to true. Check the constructor in Julia.cpp
+/SHOULD I ALSO HAVE THIS MECHANISM FOR THE OTHER CALLS IN THE NRT? I don't think so, since they happen
+on the same thread, and thus they are scheduled (Meaning, that no function on the NRT thread will ever be called
+in between the jl_enable(1) and jl_enable(0)). Maybe I can just add a jl_gc_is_enabled() check */
 inline void perform_gc(int full)
 {
     bool expected_val = false;
