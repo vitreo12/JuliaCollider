@@ -466,24 +466,29 @@ void JuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     DoAsynchronousCommand(inWorld, replyAddr, "jl_alloc", (void*)nullptr, (AsyncStageFn)alloc2, (AsyncStageFn)alloc3, (AsyncStageFn)alloc4, allocCleanup, 0, nullptr);
 }
 
+/* To be honest, it appears that jl_gc_enable() already works as a lock around the GC. 
+In fact, by running old versions without the gc_allocation_state atomic, it still worked.
+Nevertheless, the more checks, the better */
 inline void perform_gc(int full)
 {
     bool expected_val = false;
     int count = 0;
+    printf("ATOMIC VALUE BEFORE: %i\n", gc_allocation_state.load());
     while(!gc_allocation_state.compare_exchange_weak(expected_val, true))
     {
         printf("Julia: Some objects are using the GC. Wait...\n");
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        count++;
-        if(count > 1000) //Break after 1 second and don't perform the collection
+        if(count >= 500) //Break after half a second of attempts and don't perform the collection
         {
-            printf("Julia: Could not perform GC.\n");
+            printf("WARNING: Julia could not perform GC.\n");
             return;
         }
+        count++;
+        //reset expected_val to false as it's been changed in compare_exchange_weak to true
         expected_val = false;
     }
 
-    printf("ATOMIC VALUE: %i\n", gc_allocation_state.load());
+    printf("ATOMIC VALUE IN BETWEEN: %i\n", gc_allocation_state.load());
 
     if(!jl_gc_is_enabled())
     {
@@ -499,7 +504,9 @@ inline void perform_gc(int full)
         jl_gc_enable(0);
     }
 
-    gc_allocation_state = false;
+    gc_allocation_state = false; //operation is atomic. reset the GC state to free, for objects to be created.
+
+    printf("ATOMIC VALUE AFTER: %i\n", gc_allocation_state.load());
 }
 
 bool gc2(World* world, void* cmd)

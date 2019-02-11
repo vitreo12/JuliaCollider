@@ -7,11 +7,12 @@ public:
     { 
         if(julia_initialized && sine_fun != nullptr)
         {   
-            bool expected_val = false;
             //If the gc_allocation_state is false, which means that the GC is not running, set
             //gc_allocation_state to true and run the object allocation function. 
             //Otherwise, if gc_allocation_state is true, it means that the GC is running, so don't make any calls.
-            if(gc_allocation_state.compare_exchange_strong(expected_val, true))
+            bool expected_val = false;
+            bool allocation_state = gc_allocation_state.compare_exchange_strong(expected_val, true); //Set gc_allocation_state to true, busy, only if gc_allocation_state was false.
+            if(!jl_gc_is_enabled() && allocation_state) //extra check to be sure the GC is disabled. 
             {
                 //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
@@ -46,7 +47,7 @@ public:
                 //gc_allocation_state.compare_exchange_strong(true_value, false); //(compare_exchange_strong here, perhaps?)
             }
             else
-                Print("WARNING: GC is running. Object was not created.\n");
+                Print("WARNING: Julia's GC is running. Object was not created.\n");
         }
         else
             Print("WARNING: Julia not initialized or function not defined\n");
