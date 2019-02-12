@@ -52,12 +52,12 @@ std::string get_julia_dir()
     }
     
     char buffer[128];
-    //while(!feof(pipe)) 
-    //{
+    while(!feof(pipe)) 
+    {
         //get the text out line by line
         while(fgets(buffer, 128, pipe) != NULL)
             result += buffer;
-    //}
+    }
 
     pclose(pipe);
 
@@ -76,6 +76,14 @@ jl_mutex_t* gc_mutex;
 //false = free
 //true = busy (either performing GC, or allocating an object)
 std::atomic<bool> gc_allocation_state(false);
+/* The mechanism is simple: when the RT thread allocates a new object, it checks if the state of
+gc_allocation_state is set to true, which means that the NRT thread has set it to perform GC.
+If the state is false, on the other hand, it means that the GC is not performing any collection, and thus
+it is possible to allocate the new object. The RT thread, then, sets gc_allocation_state to true, preventing
+the NRT thread from collecting while allocating a new object. The NRT thread will wait until the state has been
+set back to false. If more objects are allocated within the same call, it doesn't affect the algorithm, as the
+function calls are happening in the same thread one after the other. There is no risk that, on scsynth, an object
+wouldn't be allocated becauase of another object being allocated. */
 /* This wouldn't work with supernova, as multiple objects could be allocating at the same time
 and thus, setting the gc_allocation_state to busy from one object, would prevent me to allocate another one
 from another thread. A solution might be to have a:
