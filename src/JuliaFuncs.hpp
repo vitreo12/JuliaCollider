@@ -76,6 +76,18 @@ jl_mutex_t* gc_mutex;
 //false = free
 //true = busy (either performing GC, or allocating an object)
 std::atomic<bool> gc_allocation_state(false);
+/* This wouldn't work with supernova, as multiple objects could be allocating at the same time
+and thus, setting the gc_allocation_state to busy from one object, would prevent me to allocate another one
+from another thread. A solution might be to have a:
+struct gc_allocation_state
+{
+    std::atomic<bool> gc_busy;
+    std::atomic<bool> object_busy;
+}
+gc_busy would be used only from NRT thread, while object_busy from any other audio thread.  
+gc_busy will be used in objects to check if NRT thread is performing GC, and object_busy will be used only in
+NRT thread to see if any object from any thread is allocating. This way, on any thread, I can just check on 
+gc_busy, and set object_busy. Objects won't be looking if object_busy.load() = true, but only to gc_busy.load() = true*/
 
 jl_function_t* sine_fun = nullptr;
 jl_function_t* perform_fun = nullptr;
@@ -500,7 +512,7 @@ inline void perform_gc(int full)
             printf("WARNING: Julia could not perform GC.\n");
             return;
         }
-        
+
         count++;
         //reset expected_val to false as it's been changed in compare_exchange_weak to true
         expected_val = false;
