@@ -7,13 +7,18 @@ public:
     { 
         if(julia_initialized && sine_fun != nullptr)
         {   
+            printf("Object gc_allocation_state BEFORE: %i\n", gc_allocation_state.load());
             //If the gc_allocation_state is false, which means that the GC is not running, set
             //gc_allocation_state to true and run the object allocation function. 
             //Otherwise, if gc_allocation_state is true, it means that the GC is running, so don't make any calls.
             bool expected_val = false;
-            bool allocation_state = gc_allocation_state.compare_exchange_strong(expected_val, true); //Set gc_allocation_state to true, busy, only if gc_allocation_state was false.
-            if(!jl_gc_is_enabled() && allocation_state) //extra check to be sure the GC is disabled. 
+            //Set gc_allocation_state to true, which means "busy", only if gc_allocation_state was previously false
+            bool allocation_state = gc_allocation_state.compare_exchange_strong(expected_val, true);
+            //Extra check to be sure the GC is disabled.
+            if(!jl_gc_is_enabled() && allocation_state) 
             {
+                printf("Object gc_allocation_state MIDDLE: %i\n", gc_allocation_state.load());
+
                 //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
 
@@ -42,12 +47,14 @@ public:
                 //execute = successful object creation.
                 execute = true;
 
-                //reset gc_allocation_state to false. 
-                gc_allocation_state = false; //operation is atomic
+                //Reset gc_allocation_state to false, "free". Assignment operation is atomic. (same as gc_allocation_state.store(false))
+                gc_allocation_state = false;
                 //gc_allocation_state.compare_exchange_strong(true_value, false); //(compare_exchange_strong here, perhaps?)
             }
             else
                 Print("WARNING: Julia's GC is running. Object was not created.\n");
+            
+            printf("Object gc_allocation_state AFTER: %i\n", gc_allocation_state.load());
         }
         else
             Print("WARNING: Julia not initialized or function not defined\n");

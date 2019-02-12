@@ -31,6 +31,13 @@ s.bind({
 })
 )
 
+(
+s.bind({
+	s.sendMsg(\cmd, \julia_include);
+	s.sendMsg(\cmd, \julia_GC);
+})
+)
+
 s.sendMsg(\cmd, \julia_alloc);
 
 100.do{s.sendMsg(\cmd, \julia_include)};

@@ -481,22 +481,32 @@ inline void perform_gc(int full)
 {
     bool expected_val = false;
     int count = 0;
-    printf("ATOMIC VALUE BEFORE: %i\n", gc_allocation_state.load());
+    printf("GC gc_allocation_state BEFORE: %i\n", gc_allocation_state.load());
+
+    //Set gc_allocation_state to true, which means "busy", only if it was previously set to false.
+    //If gc_allocation_state was true, repeat operation for 500 times (500ms) waiting for the RT thread
+    //to set gc_allocation_state to false.
     while(!gc_allocation_state.compare_exchange_weak(expected_val, true))
     {
-        printf("Julia: Some objects are using the GC. Wait...\n");
+        if(count == 0)
+            printf("WARNING: Some object is using the GC. Wait...\n");
+
+        //Wait 1ms on this thread. perform_gc() should only be called from NRT thread
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        if(count >= 500) //Break after half a second of attempts and don't perform the collection
+        
+        //Break after half a second of attempts and don't perform the collection at all.
+        if(count >= 500) 
         {
             printf("WARNING: Julia could not perform GC.\n");
             return;
         }
+        
         count++;
         //reset expected_val to false as it's been changed in compare_exchange_weak to true
         expected_val = false;
     }
 
-    printf("ATOMIC VALUE IN BETWEEN: %i\n", gc_allocation_state.load());
+    printf("GC gc_allocation_state MIDDLE: %i\n", gc_allocation_state.load());
 
     if(!jl_gc_is_enabled())
     {
@@ -512,9 +522,9 @@ inline void perform_gc(int full)
         jl_gc_enable(0);
     }
 
-    gc_allocation_state = false; //operation is atomic. reset the GC state to free, for objects to be created.
-
-    printf("ATOMIC VALUE AFTER: %i\n", gc_allocation_state.load());
+    //Reset gc_allocation_state to false, "free". Assignment operation is atomic. (same as gc_allocation_state.store(false))
+    gc_allocation_state = false; 
+    printf("GC gc_allocation_state AFTER: %i\n", gc_allocation_state.load());
 }
 
 bool gc2(World* world, void* cmd)
