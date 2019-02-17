@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 //MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
-//LINUX:
+//LINUX: ./build_install_native.sh ~/Sources/JuliaCollider/vitreo12-julia/julia-native ~/Sources/SuperCollider-3.10.0 ~/.local/share/SuperCollider/Extensions
 
 //for dlopen
 #ifdef __linux__
@@ -49,6 +49,9 @@ std::string get_julia_dir()
     //Get process id and convert it to string
     pid_t scsynth_pid = getpid();
     const char* scsynth_pid_string = (std::to_string(scsynth_pid)).c_str();
+
+    //Print PID to check if multiple servers have it different...
+    printf("PID: %i\n", scsynth_pid);
 
     //Set the scsynthPID enviromental variable, used in the JULIA_DIRECTORY_PATH bash script
     setenv("scsynthPID", scsynth_pid_string, 1);
