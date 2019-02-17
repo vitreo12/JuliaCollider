@@ -1,3 +1,5 @@
+//server would crash with small memory. I need to wrap RTAlloc calls
+//into checking if it actually has allocated...
 s.options.memSize = 65536;
 
 (
@@ -47,9 +49,13 @@ s.sendMsg(\cmd, \julia_TestAlloc_include);
 s.sendMsg(\cmd, \julia_TestAlloc_perform);
 
 t = Server.new(\server2, NetAddr("127.0.0.1", 57111));
-t.boot;
-
-t.sendMsg(\cmd, \julia_boot);
+t.options.memSize = 65536;
+(
+t.waitForBoot({
+	t.sendMsg(\cmd, \julia_boot);
+	t.sync;
+})
+)
 
 t.sendMsg(\cmd, \julia_checkWorldAndFt);
 
@@ -61,7 +67,7 @@ t.sendMsg(\cmd, \julia_alloc);
 
 100.do{t.sendMsg(\cmd, \julia_include)};
 
-x = {Julia.ar(440)}.play
+x = {Julia.ar(440)}.play(t)
 z = {SinOsc.ar(440)}.play
 
 x.free;

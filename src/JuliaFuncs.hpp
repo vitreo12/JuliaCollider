@@ -6,6 +6,11 @@
 #include "SC_ReplyImpl.hpp"
 #include <string>
 #include <atomic>
+#include <stdlib.h>
+#include <unistd.h>
+
+//MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
+//LINUX:
 
 //for dlopen
 #ifdef __linux__
@@ -28,19 +33,25 @@ BREAKDOWN:
 */
 
 #ifdef __APPLE__
-    #define JULIA_DIRECTORY_PATH "i=10; complete_string=$(vmmap -w scsynth | grep -m 1 'Julia.scx'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.scx\"/}\""
+    #define JULIA_DIRECTORY_PATH "i=10; complete_string=$(vmmap -w $scsynthPID | grep -m 1 'Julia.scx'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.scx\"/}\""
 #elif __linux__
     //in linux there is no vvmap.
-    //pgrep gives me the PID, pmap shows me the map as vmmap. -p shows the full path to files.
     //the variable in pmap is 4.
     //I need to run: i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var="$i" '{print $var}' <<< "$complete_string"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#"$extra_string"}; printf "%s" "${final_string//"Julia.so"/}"
-    #define JULIA_DIRECTORY_PATH "i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
+    #define JULIA_DIRECTORY_PATH "i=4; complete_string=$(pmap -p $scsynthPID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
 #endif
 
 //WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS ON MACOS. ON LINUX IT WORKS JUST FINE...
 std::string get_julia_dir() 
 {
     std::string result = "";
+
+    //Get process id and convert it to string
+    pid_t scsynth_pid = getpid();
+    const char* scsynth_pid_string = (std::to_string(scsynth_pid)).c_str();
+
+    //Set the scsynthPID enviromental variable, used in the JULIA_DIRECTORY_PATH bash script
+    setenv("scsynthPID", scsynth_pid_string, 1);
 
     //run script and get a FILE pointer back to the result of the script (which is what's returned by printf in bash script)
     FILE* pipe = popen(JULIA_DIRECTORY_PATH, "r");
