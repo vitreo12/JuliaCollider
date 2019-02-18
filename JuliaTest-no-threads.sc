@@ -9,6 +9,8 @@ s.waitForBoot({
 })
 )
 
+s.sendMsg(\cmd, \julia_argumentTest, "HELLO");
+
 s.sendMsg(\cmd, \julia_checkWorldAndFt);
 
 s.sendMsg(\cmd, \julia_API_alloc);

@@ -254,6 +254,42 @@ void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     DoAsynchronousCommand(inWorld, replyAddr, "jl_boot", (void*)nullptr, (AsyncStageFn)boot2, (AsyncStageFn)boot3, (AsyncStageFn)boot4, bootCleanup, 0, nullptr);
 }
 
+struct ArgumentTestData
+{
+    const char* string_argument;
+};
+
+bool argumentTest2(World* world, void* cmd)
+{
+    const char* string_argument = ((ArgumentTestData*)cmd)->string_argument;
+    printf("ARGUMENT: %s\n", string_argument);
+    return true;
+}
+
+bool argumentTest3(World* world, void* cmd)
+{
+    return true;
+}
+
+bool argumentTest4(World* world, void* cmd)
+{
+    //printf("FINISHED\n");
+    return true;
+}
+
+void argumentTestCleanup(World* world, void* cmd)
+{
+    ArgumentTestData* arguments = (ArgumentTestData*)cmd;
+    RTFree(world, arguments);
+}
+
+void JuliaArgumentTest(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    ArgumentTestData* arguments = (ArgumentTestData*)RTAlloc(inWorld, sizeof(ArgumentTestData));
+    arguments->string_argument = args->gets();
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_argumentTest", (void*)arguments, (AsyncStageFn)argumentTest2, (AsyncStageFn)argumentTest3, (AsyncStageFn)argumentTest4, argumentTestCleanup, 0, nullptr);
+}
+
 bool checkWorldAndFt2(World* world, void* cmd)
 {
     return true;
@@ -655,6 +691,7 @@ void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
+    DefinePlugInCmd("julia_argumentTest", (PlugInCmdFunc)JuliaArgumentTest, nullptr);
     DefinePlugInCmd("julia_checkWorldAndFt", (PlugInCmdFunc)JuliaCheckWorldAndFt, nullptr);
     DefinePlugInCmd("julia_API_alloc", (PlugInCmdFunc)JuliaAPIAlloc, nullptr);
     DefinePlugInCmd("julia_posix_memalign", (PlugInCmdFunc)JuliaPosixMemalign, nullptr);
