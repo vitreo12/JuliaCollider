@@ -166,8 +166,8 @@ inline void boot_julia(World* inWorld)
     if(!jl_is_initialized())
     {
         //get path to the Julia.scx and julia lib and includes.
-        //doing "const char* julia_dir = get_julia_dir().c_str()"" is buggy for I don't know what reason. Sometimes it 
-        //just gives out a blank string, while the std::string actually stores the path.
+        //doing "const char* julia_dir = get_julia_dir().c_str()"" is buggy because, when the std::string
+        //gets popped out of the stack, also its const char* buffer (the one I get with .c_str()) gets.
         //Calling c_str() everytime is ugly but it works better here.
         julia_dir = get_julia_dir();
         
