@@ -690,15 +690,15 @@ void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
 
 inline void DefineJuliaCmds()
 {
-    DefinePlugInCmd("julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
-    DefinePlugInCmd("julia_argumentTest", (PlugInCmdFunc)JuliaArgumentTest, nullptr);
-    DefinePlugInCmd("julia_checkWorldAndFt", (PlugInCmdFunc)JuliaCheckWorldAndFt, nullptr);
-    DefinePlugInCmd("julia_API_alloc", (PlugInCmdFunc)JuliaAPIAlloc, nullptr);
-    DefinePlugInCmd("julia_posix_memalign", (PlugInCmdFunc)JuliaPosixMemalign, nullptr);
-    DefinePlugInCmd("julia_TestAlloc_include", (PlugInCmdFunc)JuliaTestAllocInclude, nullptr);
-    DefinePlugInCmd("julia_TestAlloc_perform", (PlugInCmdFunc)JuliaTestAllocPerform, nullptr);
-    DefinePlugInCmd("julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);
-    DefinePlugInCmd("julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
-    DefinePlugInCmd("julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
-    DefinePlugInCmd("julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
+    DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
+    DefinePlugInCmd("/julia_argumentTest", (PlugInCmdFunc)JuliaArgumentTest, nullptr);
+    DefinePlugInCmd("/julia_checkWorldAndFt", (PlugInCmdFunc)JuliaCheckWorldAndFt, nullptr);
+    DefinePlugInCmd("/julia_API_alloc", (PlugInCmdFunc)JuliaAPIAlloc, nullptr);
+    DefinePlugInCmd("/julia_posix_memalign", (PlugInCmdFunc)JuliaPosixMemalign, nullptr);
+    DefinePlugInCmd("/julia_TestAlloc_include", (PlugInCmdFunc)JuliaTestAllocInclude, nullptr);
+    DefinePlugInCmd("/julia_TestAlloc_perform", (PlugInCmdFunc)JuliaTestAllocPerform, nullptr);
+    DefinePlugInCmd("/julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);
+    DefinePlugInCmd("/julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
+    DefinePlugInCmd("/julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
+    DefinePlugInCmd("/julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
 }
