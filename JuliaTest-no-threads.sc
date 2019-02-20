@@ -21,6 +21,8 @@ s.sendMsg(\cmd, "/julia_GC");
 
 s.sendMsg(\cmd, "/julia_include");
 
+s.sendMsg(\cmd, "/julia_testJuliaAlloc");
+
 (
 s.bind({
 	50.do{{Julia.ar(rrand(220, 1000)) / 50}.play};

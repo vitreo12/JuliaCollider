@@ -15,6 +15,11 @@ module Sine_DSP
         end
     end
 
+    function dummy_alloc()
+        a = zeros(10^6)
+        a = nothing
+    end
+
     function perform(unit::Sine, sample_rate::Float64, vector_size::Int32, output_vector::Vector{Float32}, frequency::Float64)
         @inbounds for i::Int64 = 1 : vector_size
             phase::Float64 = unit.p.phase

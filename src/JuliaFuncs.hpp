@@ -161,6 +161,68 @@ float* dummy_sc_alloc(int size_alloc)
     return buffer;
 }
 
+
+/* To be honest, it appears that jl_gc_enable() already works as a lock around the GC. 
+In fact, by running old versions without the gc_allocation_state atomic, it still worked.
+Nevertheless, the more checks, the better. 
+Actually, by thinking on it, this atomic mechanism is required because while in the middle 
+of this creation of objects, the GC could be enabled again by the NRT thread if there was a call
+to the perform_gc() function. Now, the NRT thread will wait for 500ms to wait for the 
+atomic "false" on gc_allocation_state, which is set at the end of object creation if it was previously
+set to true. Check the constructor in Julia.cpp
+/SHOULD I ALSO HAVE THIS MECHANISM FOR THE OTHER CALLS IN THE NRT? I don't think so, since they happen
+on the same thread, and thus they are scheduled (Meaning, that no function on the NRT thread will ever be called
+in between the jl_enable(1) and jl_enable(0)). Maybe I can just add a jl_gc_is_enabled() check */
+inline void perform_gc(int full)
+{
+    bool expected_val = false;
+    int count = 0;
+    printf("GC gc_allocation_state BEFORE: %i\n", gc_allocation_state.load());
+
+    //Set gc_allocation_state to true, which means "busy", only if it was previously set to false.
+    //If gc_allocation_state was true, repeat operation for 500 times (500ms) waiting for the RT thread
+    //to set gc_allocation_state to false.
+    while(!gc_allocation_state.compare_exchange_weak(expected_val, true))
+    {
+        if(count == 0)
+            printf("WARNING: Some object is using the GC. Wait...\n");
+
+        //Wait 1ms on this thread. perform_gc() should only be called from NRT thread
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        
+        //Break after half a second of attempts and don't perform the collection at all.
+        if(count >= 500) 
+        {
+            printf("WARNING: Julia could not perform GC.\n");
+            return;
+        }
+
+        count++;
+        //reset expected_val to false as it's been changed in compare_exchange_weak to true
+        expected_val = false;
+    }
+
+    printf("GC gc_allocation_state MIDDLE: %i\n", gc_allocation_state.load());
+
+    if(!jl_gc_is_enabled())
+    {
+        printf("-> Enabling GC...\n");
+        jl_gc_enable(1);
+    }
+    printf("-> Performing GC...\n");
+    jl_gc_collect(full);
+    printf("-> Completed GC\n");
+    if(jl_gc_is_enabled())
+    {
+        printf("-> Disabling GC...\n");
+        jl_gc_enable(0);
+    }
+
+    //Reset gc_allocation_state to false, "free". Assignment operation is atomic. (same as gc_allocation_state.store(false))
+    gc_allocation_state = false; 
+    printf("GC gc_allocation_state AFTER: %i\n", gc_allocation_state.load());
+}
+
 inline void boot_julia(World* inWorld)
 {
     if(!jl_is_initialized())
@@ -216,6 +278,9 @@ inline void boot_julia(World* inWorld)
             //precompile println fun for id dicts.
             //i should precompile all the prints i need.
             jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+
+            //PERFORM GC AT START TO RESET STATE:
+            perform_gc(1);
 
             printf("**************************\n");
             printf("**************************\n");
@@ -486,13 +551,22 @@ bool include3(World* world, void* cmd)
 //nrt thread
 bool include4(World* world, void* cmd)
 {
-    precompile_object(world);
+    //Exception for RT allocation...
+    try
+    {    
+        precompile_object(world);
 
-    jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+        jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
 
-    printf("-> Include completed\n");
-    
-    return true;
+        printf("-> Include completed\n");
+
+        return true;
+    }
+    catch (std::exception& exc) 
+    {
+		printf("RT Alloc exception: %s\n", exc.what());
+        return true;
+    }
 }
 
 void includeCleanup(World* world, void* cmd){}
@@ -536,70 +610,35 @@ void JuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void
     DoAsynchronousCommand(inWorld, replyAddr, "jl_alloc", (void*)nullptr, (AsyncStageFn)alloc2, (AsyncStageFn)alloc3, (AsyncStageFn)alloc4, allocCleanup, 0, nullptr);
 }
 
-/* To be honest, it appears that jl_gc_enable() already works as a lock around the GC. 
-In fact, by running old versions without the gc_allocation_state atomic, it still worked.
-Nevertheless, the more checks, the better. 
-Actually, by thinking on it, this atomic mechanism is required because while in the middle 
-of this creation of objects, the GC could be enabled again by the NRT thread if there was a call
-to the perform_gc() function. Now, the NRT thread will wait for 500ms to wait for the 
-atomic "false" on gc_allocation_state, which is set at the end of object creation if it was previously
-set to true. Check the constructor in Julia.cpp
-/SHOULD I ALSO HAVE THIS MECHANISM FOR THE OTHER CALLS IN THE NRT? I don't think so, since they happen
-on the same thread, and thus they are scheduled (Meaning, that no function on the NRT thread will ever be called
-in between the jl_enable(1) and jl_enable(0)). Maybe I can just add a jl_gc_is_enabled() check */
-inline void perform_gc(int full)
-{
-    bool expected_val = false;
-    int count = 0;
-    printf("GC gc_allocation_state BEFORE: %i\n", gc_allocation_state.load());
-
-    //Set gc_allocation_state to true, which means "busy", only if it was previously set to false.
-    //If gc_allocation_state was true, repeat operation for 500 times (500ms) waiting for the RT thread
-    //to set gc_allocation_state to false.
-    while(!gc_allocation_state.compare_exchange_weak(expected_val, true))
-    {
-        if(count == 0)
-            printf("WARNING: Some object is using the GC. Wait...\n");
-
-        //Wait 1ms on this thread. perform_gc() should only be called from NRT thread
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        
-        //Break after half a second of attempts and don't perform the collection at all.
-        if(count >= 500) 
-        {
-            printf("WARNING: Julia could not perform GC.\n");
-            return;
-        }
-
-        count++;
-        //reset expected_val to false as it's been changed in compare_exchange_weak to true
-        expected_val = false;
-    }
-
-    printf("GC gc_allocation_state MIDDLE: %i\n", gc_allocation_state.load());
-
-    if(!jl_gc_is_enabled())
-    {
-        printf("-> Enabling GC...\n");
-        jl_gc_enable(1);
-    }
-    printf("-> Performing GC...\n");
-    jl_gc_collect(full);
-    printf("-> Completed GC\n");
-    if(jl_gc_is_enabled())
-    {
-        printf("-> Disabling GC...\n");
-        jl_gc_enable(0);
-    }
-
-    //Reset gc_allocation_state to false, "free". Assignment operation is atomic. (same as gc_allocation_state.store(false))
-    gc_allocation_state = false; 
-    printf("GC gc_allocation_state AFTER: %i\n", gc_allocation_state.load());
-}
-
 bool gc2(World* world, void* cmd)
 {
-    perform_gc(1);
+    printf("*** BEFORE GC: \n");
+    printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
+    printf("GC total_allcod %lli\n", (jl_gc_total_allocd_SC() / 1000000));
+    printf("GC deferred alloc %lli\n", jl_gc_deferred_alloc_SC() / 1000000);
+    printf("GC interval %lli\n", jl_gc_interval_SC() / 1000000);
+
+    /* Problem with crash here is that, if exception is raised when RTAllocating and memory is not allocated, Julia doesn't
+       actually know about that. And it would still try to free the pointer. Gotta protect the behaviour in some way. Maybe
+       having the exception in the allocation code in Julia itself, so that pointers don't get allocated there??? */
+    try
+    {
+        //perform_gc(0) causes a crash with exception. Check what that is about...
+        perform_gc(1);
+    }
+    catch (std::exception& exc) 
+    {
+        gc_allocation_state = false; 
+        printf("RT Alloc exception: %s\n", exc.what());
+        return true;
+    }
+
+    printf("*** AFTER GC: \n");
+    printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
+    printf("GC total_allcod %lli\n", (jl_gc_total_allocd_SC() / 1000000));
+    printf("GC deferred alloc %lli\n", jl_gc_deferred_alloc_SC() / 1000000);
+    printf("GC interval %lli\n", jl_gc_interval_SC() / 1000000);
+
     return true;
 }
 
@@ -618,6 +657,46 @@ void gcCleanup(World* world, void* cmd){}
 void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     DoAsynchronousCommand(inWorld, replyAddr, "jl_gc", (void*)nullptr, (AsyncStageFn)gc2, (AsyncStageFn)gc3, (AsyncStageFn)gc4, gcCleanup, 0, nullptr);
+}
+
+bool testJuliaAlloc2(World* world, void* cmd)
+{
+    try
+    {
+        printf("*** BEFORE ALLOC: \n");
+        printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
+        printf("GC total_allcod %lli\n", (jl_gc_total_allocd_SC() / 1000000));
+        printf("GC deferred alloc %lli\n", jl_gc_deferred_alloc_SC() / 1000000);
+        printf("GC interval %lli\n", jl_gc_interval_SC() / 1000000);
+
+        jl_call0(jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc"));
+
+        printf("*** AFTER ALLOC: \n");
+        printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
+        printf("GC total_allcod %lli\n", (jl_gc_total_allocd_SC() / 1000000));
+        printf("GC deferred alloc %lli\n", jl_gc_deferred_alloc_SC() / 1000000);
+        printf("GC interval %lli\n", jl_gc_interval_SC() / 1000000);
+
+        //INTERVAL (~22mb) is the limit after the GC collects
+        //GC_ALLOCD (negative value from -22 up to 0) is the memory being allocated and not freed. It is modulod against the interval.
+        //GC_DEFERRED is an accumulator for the GC_ALLOCD memory which surpassed the INTERVAL. It accumulates over and over.
+        printf("*** Actual allocated memory: %lli\n", (jl_gc_interval_SC() + jl_gc_allocd_SC() + jl_gc_deferred_alloc_SC()) / 1000000);
+    }
+    catch (std::exception& exc) 
+    {
+        gc_allocation_state = false; 
+        printf("RT Alloc exception: %s\n", exc.what());
+        return true;
+    }
+
+    return true;
+}
+
+void testJuliaCleanup(World* world, void* cmd){}
+
+void JuliaTestJuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_testJuliaAlloc", (void*)nullptr, (AsyncStageFn)testJuliaAlloc2, 0, 0, testJuliaCleanup, 0, nullptr);
 }
 
 ReplyAddress* server_reply_address;
@@ -698,6 +777,7 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_TestAlloc_include", (PlugInCmdFunc)JuliaTestAllocInclude, nullptr);
     DefinePlugInCmd("/julia_TestAlloc_perform", (PlugInCmdFunc)JuliaTestAllocPerform, nullptr);
     DefinePlugInCmd("/julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);
+    DefinePlugInCmd("/julia_testJuliaAlloc", (PlugInCmdFunc)JuliaTestJuliaAlloc, nullptr);
     DefinePlugInCmd("/julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("/julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
     DefinePlugInCmd("/julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
