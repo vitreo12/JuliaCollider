@@ -14,8 +14,8 @@ public:
             bool expected_val = false;
             //Set gc_allocation_state to true, which means "busy", only if gc_allocation_state was previously false
             bool allocation_state = gc_allocation_state.compare_exchange_strong(expected_val, true);
-            //Extra check to be sure the GC is disabled.
-            if(!jl_gc_is_enabled() && allocation_state) 
+            //NO CHECK FOR !jl_gc_enabled(), it's useless here.
+            if(allocation_state) 
             {
                 printf("Object gc_allocation_state MIDDLE: %i\n", gc_allocation_state.load());
 
@@ -60,6 +60,9 @@ public:
             Print("WARNING: Julia not initialized or function not defined\n");
 
 
+        /* Changes here: If object couldn't get the lock on the atomic bool before, have another ::next function which would simply
+        check at every buffer size if the lock has been freed. If that's the case, allocate the object that it wasn't
+        previously allowed to allocate. Objects are allocated in the buffer period anyway, so it would just delay the allocation. */
         set_calc_function<Julia, &Julia::next>();
         next(1);
     }
