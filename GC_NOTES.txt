@@ -1,3 +1,15 @@
+IMPORTANT FILES IN JULIA SOURCE:
+SC_Julia.h
+SC_Julia.cpp
+SC_AllocMacros.h
+arraylist.c
+julia_internal.h
+julia.h
+gc.c
+gc-pages.c
+threadgroup.c
+Makefile in /src: Added SC_Julia to compiled files and -fexception flag to .cpp to compile try/catch blocks.
+
 CHECK LOCKS INSIDE THE USE OF GC TO ASSURE LOCK IN GC WHEN DOING GC COLLECTION.
 
 Using jl_finalize at object destructor to collect its memory? (For SC buffers, at least?)
