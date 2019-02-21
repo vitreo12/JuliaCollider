@@ -621,17 +621,17 @@ bool gc2(World* world, void* cmd)
     /* Problem with crash here is that, if exception is raised when RTAllocating and memory is not allocated, Julia doesn't
        actually know about that. And it would still try to free the pointer. Gotta protect the behaviour in some way. Maybe
        having the exception in the allocation code in Julia itself, so that pointers don't get allocated there??? */
-    try
-    {
+    //try
+    //{
         //perform_gc(0) causes a crash with exception. Check what that is about...
         perform_gc(1);
-    }
-    catch (std::exception& exc) 
-    {
-        gc_allocation_state = false; 
-        printf("RT Alloc exception: %s\n", exc.what());
-        return true;
-    }
+    //}
+    //catch (std::exception& exc) 
+    //{
+    //    gc_allocation_state = false; 
+    //    printf("RT Alloc exception: %s\n", exc.what());
+    //    return true;
+    //}
 
     printf("*** AFTER GC: \n");
     printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
@@ -661,8 +661,8 @@ void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *r
 
 bool testJuliaAlloc2(World* world, void* cmd)
 {
-    try
-    {
+    //try
+    //{
         printf("*** BEFORE ALLOC: \n");
         printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
         printf("GC total_allcod %lli\n", (jl_gc_total_allocd_SC() / 1000000));
@@ -681,13 +681,13 @@ bool testJuliaAlloc2(World* world, void* cmd)
         //GC_ALLOCD (negative value from -22 up to 0) is the memory being allocated and not freed. It is modulod against the interval.
         //GC_DEFERRED is an accumulator for the GC_ALLOCD memory which surpassed the INTERVAL. It accumulates over and over.
         printf("*** Actual allocated memory: %lli\n", (jl_gc_interval_SC() + jl_gc_allocd_SC() + jl_gc_deferred_alloc_SC()) / 1000000);
-    }
-    catch (std::exception& exc) 
-    {
-        gc_allocation_state = false; 
-        printf("RT Alloc exception: %s\n", exc.what());
-        return true;
-    }
+    //}
+    //catch (std::exception& exc) 
+    //{
+    //    gc_allocation_state = false; 
+    //    printf("RT Alloc exception: %s\n", exc.what());
+    //    return true;
+    //}
 
     return true;
 }
