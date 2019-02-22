@@ -16,7 +16,8 @@ module Sine_DSP
     end
 
     function dummy_alloc()
-        a = zeros(10^6)
+        a = zeros(10)
+        println(a)
         a = nothing
     end
 

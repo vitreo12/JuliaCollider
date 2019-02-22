@@ -23,6 +23,12 @@ s.sendMsg(\cmd, "/julia_include");
 
 s.sendMsg(\cmd, "/julia_testJuliaAlloc");
 
+s.sendMsg(\cmd, "/julia_test_lookup");
+
+s.sendMsg(\cmd, "/julia_test_invoke");
+
+10.do{s.sendMsg(\cmd, "/julia_test_invoke")};
+
 (
 s.bind({
 	50.do{{Julia.ar(rrand(220, 1000)) / 50}.play};

@@ -62,7 +62,7 @@ std::string get_julia_dir()
     if (!pipe) 
     {
         result = "ERROR: couldn't find Julia.";
-        return result;
+        return "";
     }
     
     char buffer[128];
@@ -117,6 +117,8 @@ jl_function_t* id_dict_function = nullptr;
 jl_value_t* global_id_dict = nullptr;
 jl_function_t* set_index = nullptr;
 jl_function_t* delete_index = nullptr;
+
+jl_method_instance_t* method_instance_test = nullptr;
 
 bool julia_initialized = false; 
 std::string julia_dir;
@@ -699,6 +701,47 @@ void JuliaTestJuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *a
     DoAsynchronousCommand(inWorld, replyAddr, "jl_testJuliaAlloc", (void*)nullptr, (AsyncStageFn)testJuliaAlloc2, 0, 0, testJuliaCleanup, 0, nullptr);
 }
 
+
+bool testLookup(World* world, void* cmd)
+{
+    jl_function_t* dummy_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+
+    //compile it once first?
+    //jl_call0(dummy_function);
+
+    //find lookup. Is there a way to make it global????
+    method_instance_test = jl_lookup_generic_SC(&dummy_function, 1);
+
+    //make MethodInstance (this it the julia type) for the function global
+    jl_call3(set_index, global_id_dict, (jl_value_t*)method_instance_test, (jl_value_t*)method_instance_test);
+    jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+
+    return true;
+}
+
+void testLookupCleanup(World* world, void* cmd){}
+
+void JuliaTestLookup(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_testLookup", (void*)nullptr, (AsyncStageFn)testLookup, 0, 0, testLookupCleanup, 0, nullptr);
+}
+
+bool testInvoke(World* world, void* cmd)
+{
+    jl_function_t* dummy_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+
+    jl_invoke_SC(method_instance_test, &dummy_function, 1);
+
+    return true;
+}
+
+void testInvokeCleanup(World* world, void* cmd){}
+
+void JuliaTestInvoke(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_testInvoke", (void*)nullptr, (AsyncStageFn)testInvoke, 0, 0, testInvokeCleanup, 0, nullptr);
+}
+
 ReplyAddress* server_reply_address;
 
 struct MyCmdData // data for each command
@@ -778,6 +821,8 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_TestAlloc_perform", (PlugInCmdFunc)JuliaTestAllocPerform, nullptr);
     DefinePlugInCmd("/julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("/julia_testJuliaAlloc", (PlugInCmdFunc)JuliaTestJuliaAlloc, nullptr);
+    DefinePlugInCmd("/julia_test_lookup", (PlugInCmdFunc)JuliaTestLookup, nullptr);
+    DefinePlugInCmd("/julia_test_invoke", (PlugInCmdFunc)JuliaTestInvoke, nullptr);
     DefinePlugInCmd("/julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("/julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
     DefinePlugInCmd("/julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
