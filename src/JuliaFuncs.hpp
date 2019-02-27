@@ -119,6 +119,7 @@ jl_function_t* set_index = nullptr;
 jl_function_t* delete_index = nullptr;
 
 jl_method_instance_t* method_instance_test = nullptr;
+jl_function_t* dummy_lookup_function = nullptr;
 
 bool julia_initialized = false; 
 std::string julia_dir;
@@ -127,6 +128,7 @@ std::string JuliaDSP_folder = "julia/JuliaDSP/";
 
 #ifdef __linux__
 //Loading libjulia directly. Opening it with RTLD_NOW | RTLD_GLOBAL allows for all symbols to be correctly found.
+//In julia.h, #define JL_RTLD_DEFAULT (JL_RTLD_LAZY | JL_RTLD_DEEPBIND) is defined. I might just redefine the flags there?
 inline void open_julia_shared_library()
 {
     handle = dlopen("libjulia.so", RTLD_NOW | RTLD_GLOBAL);
@@ -137,19 +139,48 @@ inline void open_julia_shared_library()
 }
 #endif
 
-inline void test_include()
+inline bool test_include()
 {
+    bool include_completed;
+
     if(julia_initialized)
     {
         std::string sine_jl_path = julia_dir;
         sine_jl_path.append(JuliaDSP_folder);
         sine_jl_path.append("Sine_DSP.jl");
 
-        jl_function_t* include_function = jl_get_function(jl_base_module, "include");
-        //JL_GC_PUSH1(&include_function);
-        jl_call2(include_function, (jl_value_t*)jl_main_module, jl_cstr_to_string(sine_jl_path.c_str()));
-        //JL_GC_POP();
+        JL_TRY {
+            //DO I NEED TO ADVANCE AGE HERE???? Perhaps, I do.
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
+            
+            jl_load(jl_main_module, sine_jl_path.c_str());
+
+            jl_exception_clear();
+
+            include_completed = true;
+        }
+        JL_CATCH {
+            jl_get_ptls_states()->previous_exception = jl_current_exception();
+
+            /* These could just be global. And I could just use jl_method_instance_t* */
+            jl_value_t* exception = jl_exception_occurred();
+            jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+            jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+            if(exception)
+            {
+                const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+                printf("ERROR: %s\n", returned_exception);
+            }
+
+            include_completed = false;
+        }
+
+        //Advance age after each include? YESSSS!! NEEDED OR CRASH WHEN precompiling()
+        jl_get_ptls_states()->world_age = jl_get_world_counter();
     }
+
+    return include_completed;
 }
 
 float* dummy_sc_alloc(int size_alloc)
@@ -283,6 +314,12 @@ inline void boot_julia(World* inWorld)
 
             //PERFORM GC AT START TO RESET STATE:
             perform_gc(1);
+
+            //Get world_counter right away, otherwise last_age, in include sections, would be
+            //still age 1. This update here allows me to only advance age on the NRT thread, while 
+            //on the RT thread I only invoke methods that are been already compiled and would work 
+            //between their world age minimum and maximum.
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
 
             printf("**************************\n");
             printf("**************************\n");
@@ -533,13 +570,23 @@ void precompile_object(World* world)
 //nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool include2(World* world, void* cmd)
 {
-    test_include();
+    //The test_include() function already updates world age.
+    bool include_completed = test_include();
 
-    sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
-    perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
+    if(include_completed)
+    {
+        sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
+        perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
 
-    jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
-    jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
+        jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
+        jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
+
+        precompile_object(world);
+
+        printf("-> Julia: Include completed\n");
+    }
+    else
+        printf("ERROR: Julia could not complete object precompilation \n");    
 
     return true;
 }
@@ -553,22 +600,7 @@ bool include3(World* world, void* cmd)
 //nrt thread
 bool include4(World* world, void* cmd)
 {
-    //Exception for RT allocation...
-    try
-    {    
-        precompile_object(world);
-
-        jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
-
-        printf("-> Include completed\n");
-
-        return true;
-    }
-    catch (std::exception& exc) 
-    {
-		printf("RT Alloc exception: %s\n", exc.what());
-        return true;
-    }
+    return true;
 }
 
 void includeCleanup(World* world, void* cmd){}
@@ -704,17 +736,14 @@ void JuliaTestJuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *a
 
 bool testLookup(World* world, void* cmd)
 {
-    jl_function_t* dummy_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+    dummy_lookup_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
 
-    //compile it once first?
-    //jl_call0(dummy_function);
+    method_instance_test = jl_lookup_generic_and_compile_SC(&dummy_lookup_function, 1);
 
-    //find lookup. Is there a way to make it global????
-    method_instance_test = jl_lookup_generic_SC(&dummy_function, 1);
-
-    //make MethodInstance (this it the julia type) for the function global
+    //make the MethodInstance (this it the Julia type for a jl_method_instance_t) global, setting it in the GlobalIdDict
     jl_call3(set_index, global_id_dict, (jl_value_t*)method_instance_test, (jl_value_t*)method_instance_test);
-    jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+    
+    printf("Lookup completed\n");
 
     return true;
 }
@@ -726,11 +755,11 @@ void JuliaTestLookup(World *inWorld, void* inUserData, struct sc_msg_iter *args,
     DoAsynchronousCommand(inWorld, replyAddr, "jl_testLookup", (void*)nullptr, (AsyncStageFn)testLookup, 0, 0, testLookupCleanup, 0, nullptr);
 }
 
+//CALLED ON RT THREAD
 bool testInvoke(World* world, void* cmd)
 {
-    jl_function_t* dummy_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
-
-    jl_invoke_SC(method_instance_test, &dummy_function, 1);
+    //Use the already retrieved and precompiled method_instance_test to run...
+    jl_invoke_already_compiled_SC(method_instance_test, &dummy_lookup_function, 1);
 
     return true;
 }
@@ -739,7 +768,7 @@ void testInvokeCleanup(World* world, void* cmd){}
 
 void JuliaTestInvoke(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "jl_testInvoke", (void*)nullptr, (AsyncStageFn)testInvoke, 0, 0, testInvokeCleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_testInvoke", (void*)nullptr, 0, (AsyncStageFn)testInvoke, 0, testInvokeCleanup, 0, nullptr);
 }
 
 ReplyAddress* server_reply_address;

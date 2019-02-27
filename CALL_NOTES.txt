@@ -9,3 +9,10 @@ This way, I ignore all the jl_call overhead in looking for specific dispatch of 
 
 2) IS IT SAFE TO HANDLE world_age FROM MULTIPLE THREADS???? It's a problem with 
    jl_call aswell, not just jl_invoke.
+
+CALLS:
+
+meth->invoke goes to:
+
+1) JL_DLLEXPORT jl_value_t *jl_fptr_args(jl_method_instance_t *m, jl_value_t **args, uint32_t nargs), 
+   which actually goes directly to assembly code.

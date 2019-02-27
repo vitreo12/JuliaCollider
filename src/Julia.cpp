@@ -95,7 +95,12 @@ private:
             ((jl_array_t*)(args[4]))->data = output;
             //set frequency
             *(double*)jl_data_ptr(args[5]) = input;
-
+            
+            //Check if the method_instance_test (need to run the "/julia_test_lookup" command first) works on RT thread.
+            //Of course, since I am not protecting the pointer at all, It would often crash if I run the "/julia_test_lookup" commnad
+            //while the Julia UGen is running this function...
+            jl_invoke_already_compiled_SC(method_instance_test, &dummy_lookup_function, 1);
+                
             jl_call_no_gc(args, 6);
         }
         else

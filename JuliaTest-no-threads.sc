@@ -25,9 +25,11 @@ s.sendMsg(\cmd, "/julia_testJuliaAlloc");
 
 s.sendMsg(\cmd, "/julia_test_lookup");
 
+100.do{s.sendMsg(\cmd, "/julia_test_lookup")};
+
 s.sendMsg(\cmd, "/julia_test_invoke");
 
-10.do{s.sendMsg(\cmd, "/julia_test_invoke")};
+100.do{s.sendMsg(\cmd, "/julia_test_invoke")};
 
 (
 s.bind({
@@ -52,7 +54,7 @@ s.bind({
 
 s.sendMsg(\cmd, "/julia_alloc");
 
-100.do{s.sendMsg(\cmd, "/julia_include")};
+500.do{s.sendMsg(\cmd, "/julia_include")};
 
 s.sendMsg(\cmd, "/julia_TestAlloc_include");
 //Profile it with Instruments. Both RT and NRT thread are calling to see where memory is allocated. All calls are into posix_memalign() and malloc
