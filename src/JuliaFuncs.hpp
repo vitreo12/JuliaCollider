@@ -8,6 +8,7 @@
 #include <atomic>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
 
 //MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
 //LINUX: ./build_install_native.sh ~/Sources/JuliaCollider/vitreo12-julia/julia-native ~/Sources/SuperCollider-3.10.0 ~/.local/share/SuperCollider/Extensions
@@ -1314,6 +1315,145 @@ void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, 
     DoAsynchronousCommand(inWorld, replyAddr, "jl_send_reply", (void*)myCmdData, (AsyncStageFn)sendReply2, (AsyncStageFn)sendReply3, (AsyncStageFn)sendReply4, sendReplyCleanup, 0, nullptr);
 }
 
+bool TestOuts2(World* world, void* cmd)
+{
+    long num_chans = 32;
+    long buf_size = 512;
+    
+    /* Just like ins/outs of UGen. Memory is not contiguous */
+    float** outs_sc = (float**)RTAlloc(world, sizeof(float*) * num_chans);
+    float** outs_julia = (float**)RTAlloc(world, sizeof(float*) * num_chans);
+    float** outs_julia_ptr = (float**)RTAlloc(world, sizeof(float*) * num_chans);
+    for(int i = 0; i < num_chans; i++)
+    {
+        outs_sc[i] = (float*)RTAlloc(world, sizeof(float) * buf_size);
+        outs_julia[i] = (float*)RTAlloc(world, sizeof(float) * buf_size);
+        outs_julia_ptr[i] = (float*)RTAlloc(world, sizeof(float) * buf_size);
+    }
+
+
+    for(int i = 0; i < num_chans; i++)
+    {
+        for(int y = 0; y < buf_size; y++)
+        {
+            outs_julia[i][y] = 1.0f;
+            outs_julia_ptr[i][y] = 1.0f;
+        }
+    }
+
+    /*
+    printf("SC: \n");
+
+    for(int i = 0; i < num_chans; i++)
+    {
+        for(int y = 0; y < buf_size; y++)
+        {
+            outs_sc[i][y] = (float)y;
+            printf("SC[%i, %i] = %f\n", i, y, outs_sc[i][y]);
+        }
+    }
+    
+    printf("JULIA: \n");
+    */
+
+    jl_value_t* num_chans_julia = jl_box_int64(num_chans);
+    jl_value_t* buf_size_julia = jl_box_int64(buf_size);
+
+    //Vector{Float32}
+    jl_value_t* vector_float32 = jl_apply_array_type((jl_value_t*)jl_float32_type, 1);
+    
+    //Vector{Vector{Float32}} == Array{Array{Float32, 1}, 1} of size = num_chans
+    jl_value_t* vector_of_vectors_float32 = jl_apply_array_type(vector_float32, 1);
+    jl_value_t* outs_julia_vector = (jl_value_t*)jl_alloc_array_1d(vector_of_vectors_float32, num_chans);
+
+    //jl_value_t* outs_julia_vector = (jl_value_t*)jl_ptr_to_array_1d(vector_of_vectors_float32, outs_julia, num_chans, 0);
+
+    //1D Array for each output channel
+    jl_value_t** outs_julia_vector_1d = (jl_value_t**)RTAlloc(world, sizeof(jl_value_t*) * num_chans);
+
+    //In constructor: create ptrs of nullptr of buf_size, and assign them to the entries of outs::Vector{Vector{Float32}}
+    for(int i = 0; i < num_chans; i++)
+    {
+        outs_julia_vector_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(vector_float32, nullptr, buf_size, 0);
+        jl_call3(set_index, outs_julia_vector, outs_julia_vector_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+    }
+
+    //Then, in dsp loop, change the data the jl_ptr_to_array are pointing at, without allocating new ones:
+    for(int i = 0; i < num_chans; i++)
+        ((jl_array_t*)(outs_julia_vector_1d[i]))->data = outs_julia[i];
+
+    jl_function_t* test_outs_fun = jl_get_function(jl_get_module("Sine_DSP"), "test_outs");
+    jl_call3(test_outs_fun, num_chans_julia, buf_size_julia, outs_julia_vector);
+
+
+    /* Ptr{Ptr{Float32}} solution */
+    jl_value_t* ptr_ptr_float32 = jl_eval_string("Ptr{Ptr{Float32}}");
+    jl_value_t* ptr_to_outs_julia = jl_call1(ptr_ptr_float32, jl_box_voidpointer(outs_julia_ptr));
+
+    jl_function_t* test_outs_ptr_fun = jl_get_function(jl_get_module("Sine_DSP"), "test_outs_ptr");
+    jl_call3(test_outs_ptr_fun, num_chans_julia, buf_size_julia, ptr_to_outs_julia);
+
+
+    /* BENCHMARKS */
+    clock_t begin_vec, end_vec, begin_ptr, end_ptr; // time_t is a datatype to store time values.
+    
+    begin_vec = clock(); // note time before execution
+    for(long i = 0; i < 100000; i++)
+    {   
+        for(int y = 0; y < num_chans; y++)
+            ((jl_array_t*)(outs_julia_vector_1d[y]))->data = outs_julia[y];
+        jl_call3(test_outs_fun, num_chans_julia, buf_size_julia, outs_julia_vector);
+    }
+    end_vec = clock(); // note time after execution
+    double difference_vec = double(end_vec - begin_vec)/CLOCKS_PER_SEC;
+
+    begin_ptr = clock(); // note time before execution
+    for(long i = 0; i < 100000; i++)
+        jl_call3(test_outs_ptr_fun, num_chans_julia, buf_size_julia, ptr_to_outs_julia);
+    end_ptr = clock(); // note time after execution
+    double difference_ptr = double(end_ptr - begin_ptr)/CLOCKS_PER_SEC;
+
+    printf("TIME VEC: %f seconds\n", difference_vec);
+    printf("TIME PTR: %f seconds\n", difference_ptr);
+
+    /* PRINT OUT
+    for(int i = 0; i < num_chans; i++)
+    {
+        for(int y = 0; y < buf_size; y++)
+            printf("JULIA[%i, %i] = %f\n", i, y, outs_julia[i][y]);
+    } 
+
+    for(int i = 0; i < num_chans; i++)
+    {
+        for(int y = 0; y < buf_size; y++)
+            printf("JULIA_PTR[%i, %i] = %f\n", i, y, outs_julia_ptr[i][y]);
+    } 
+    */
+
+    /* FREE MEMORY */
+    for(int i = 0; i < num_chans; i++)
+    {
+        RTFree(world, outs_sc[i]);
+        RTFree(world, outs_julia[i]);
+        RTFree(world, outs_julia_ptr[i]);
+    }
+
+    RTFree(world, outs_sc);
+    RTFree(world, outs_julia);
+    RTFree(world, outs_julia_ptr);
+    RTFree(world, outs_julia_vector_1d);
+
+    return true;
+}
+
+void TestOutsCleanup(World* world, void* cmd) {}
+
+void JuliaTestOuts(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_test_outs", nullptr, (AsyncStageFn)TestOuts2, 0, 0, TestOutsCleanup, 0, nullptr);
+}
+
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
@@ -1330,4 +1470,5 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("/julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
     DefinePlugInCmd("/julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
+    DefinePlugInCmd("/julia_test_outs", (PlugInCmdFunc)JuliaTestOuts, nullptr);
 }

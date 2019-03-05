@@ -31,6 +31,8 @@ s.sendMsg(\cmd, "/julia_test_invoke");
 
 100.do{s.sendMsg(\cmd, "/julia_test_invoke")};
 
+s.sendMsg(\cmd, "/julia_test_outs");
+
 (
 s.bind({
 	50.do{{Julia.ar(rrand(220, 1000)) / 50}.play};
