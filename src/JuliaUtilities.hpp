@@ -3,8 +3,7 @@
 
 #pragma once
 
-#define jl_get_module(name) \
-            (jl_module_t*)jl_get_global(jl_main_module, jl_symbol(name))
+#define jl_get_module(name) (jl_module_t*)jl_get_global(jl_main_module, jl_symbol(name))
 
 //This is the same as jl_call, but it doesn't perform the GC pushing and popping, since
 //it will be called on objects that I know already that won't be picked up by

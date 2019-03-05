@@ -41,6 +41,479 @@ BREAKDOWN:
     #define JULIA_DIRECTORY_PATH "i=4; complete_string=$(pmap -p $scsynthPID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
 #endif
 
+/*
+GC IS DISABLED AT ALL TIMES, EXCEPT WHEN IT IS CALLED DIRECTLY IN THE GC COLLECT FUNCTION.
+SINCE ALL THE JULIA CODE HAPPENS IN NRT THREAD, THERE IS NO CONTENTION: GC WILL ALWAYS BE DISABLED:
+NO NEED FOR ANY JL_GC_PUSH AND JL_GC_POP.
+*/
+
+static InterfaceTable *ft;
+World* global_world;
+
+//Overload new and delete operators with RTAlloc and RTFree calls
+class RTClassAlloc
+{
+    public:
+        void* operator new(size_t size, World* in_world)
+        {
+            //printf("RTALLOC\n");
+            return (void*)RTAlloc(in_world, size);
+        }
+
+        void operator delete(void* p, World* in_world) 
+        {
+            //printf("RTFREE\n");
+            RTFree(in_world, p);
+        }
+    private:
+};
+
+#define JULIA_CHAR_BUFFER_SIZE 500
+#define JULIA_OBJECTS_NUM_ENTRIES 100
+
+class JuliaReply : public RTClassAlloc
+{
+    public:
+        JuliaReply(int OSC_unique_id_)
+        {
+            count_char = 0;
+            OSC_unique_id = OSC_unique_id_;
+        }
+
+        ~JuliaReply(){}
+
+        /* Using pointers to the buffer, shifted by count_char. */
+        int append_string(char* buffer_, size_t size, const char* string)
+        {
+            return snprintf(buffer_, size, "%s\n", string);
+        }
+        
+        int append_string(char* buffer_, size_t size, int value)
+        {
+            return snprintf(buffer_, size, "%i\n", value);
+        }
+
+        //for jl_unbox_int64
+        int append_string(char* buffer_, size_t size, long value)
+        {
+            return snprintf(buffer_, size, "%ld\n", value);
+        }
+
+        //for id
+        int append_string(char* buffer_, size_t size, unsigned long value)
+        {
+            return snprintf(buffer_, size, "%lu\n", value);
+        }
+
+        //Exit condition. No more VarArgs to consume
+        void create_done_command() {return;}
+
+        template<typename T, typename... VarArgs>
+        void create_done_command(T&& arg, VarArgs&&... args)
+        {    
+            //Append string to the end of the previous one. Keep count of the position with "count_char"
+            count_char += append_string(buffer + count_char, JULIA_CHAR_BUFFER_SIZE - count_char, arg); //std::forward<T>(arg...) ?
+
+            //Call function recursively
+            if(count_char && count_char < JULIA_CHAR_BUFFER_SIZE)
+                create_done_command(args...); //std::forward<VarArgs>(args...) ?
+        }
+
+        int get_OSC_unique_id()
+        {
+            return OSC_unique_id;
+        }
+
+        char* get_buffer()
+        {
+            return buffer;
+        }
+
+    private:
+        char buffer[JULIA_CHAR_BUFFER_SIZE];
+        int count_char;
+        int OSC_unique_id; //sent from SC. used for OSC parsing
+};
+
+typedef struct JuliaGlobalUtilities
+{
+    /* Global objects */
+    jl_value_t* sc_synth;
+    jl_value_t* global_id_dict;
+    /* Utilities functions */
+    jl_function_t* set_index;
+    jl_function_t* delete_index;
+    jl_function_t* sprint_fun;
+    jl_function_t* showerror_fun;
+    /* Datatypes */
+    jl_value_t* vector_float32;
+    jl_value_t* vector_of_vectors_float32;
+    jl_value_t* ptr_ptr_float32;
+} JuliaGlobalUtilities;
+
+typedef struct JuliaObject
+{
+    jl_method_instance_t* constructor;
+    jl_method_instance_t* perform;
+    jl_method_instance_t* destructor;
+    bool compiled;
+    //bool RT_busy;
+} JuliaObject;
+
+/* Number of active entries */
+class JuliaEntriesCounter
+{
+    public:
+        inline void advance_active_entries()
+        {
+            active_entries++;
+        }
+
+        inline void decrease_active_entries()
+        {
+            active_entries--;
+            if(active_entries < 0)
+                active_entries = 0;
+        }
+
+        inline unsigned long get_active_entries()
+        {
+            return active_entries;
+        }
+
+    private:
+        unsigned long active_entries;
+};
+
+/* eval and compile an individual JuliaObject in NRT thread. Using just one args and changing 
+args[0] for each function call, as only one thread (the NRT one) at a time will call into this*/
+class JuliaObjectCompiler
+{
+    public:
+        JuliaObjectCompiler()
+        {
+            init_perform_args();
+        }
+
+        ~JuliaObjectCompiler()
+        {
+            destroy_perform_args();
+        }
+
+        inline jl_module_t* compile_julia_object(JuliaObject* julia_object, const char* path, JuliaReply* julia_reply)
+        {
+            jl_module_t* evaluated_module = eval_julia_file(path);
+
+            if(evaluated_module)
+            {
+                if(precompile_julia_object(evaluated_module))
+                {
+                    
+                } 
+            }
+
+            if(!julia_object)
+                printf("WARNING: Failed in compiling JuliaObject \n");
+
+            return evaluated_module;
+        }
+
+        inline void unload_julia_object(JuliaObject* julia_object)
+        {
+            if(julia_object->compiled)
+            {
+                //Remove from GlobalIdDict and set memory back to 0s
+
+                //Reset memory pointer for this object
+                memset(julia_object, 0, sizeof(JuliaObject));
+            }
+        }
+    
+    private:
+        /* EVAL FILE */
+        inline jl_module_t* eval_julia_file(const char* path)
+        {
+            jl_module_t* evaluated_module;
+            
+            JL_TRY {
+                //DO I NEED TO ADVANCE AGE HERE???? Perhaps, I do.
+                jl_get_ptls_states()->world_age = jl_get_world_counter();
+                
+                //The file MUST ONLY contain an @object definition (which loads a module)
+                jl_module_t* evaluated_module = (jl_module_t*)jl_load(jl_main_module, path);
+
+                if(!jl_is_module(evaluated_module))
+                    jl_error("Included file is not a Julia module\n");
+                
+                //Try to retrieve something like __inputs__. If not, it's not a @object genereated module
+                if(!jl_get_global(evaluated_module, jl_symbol("__inputs__")))
+                    jl_error("Included file is not a Julia @object\n");
+
+                jl_exception_clear();
+            }
+            JL_CATCH {
+                jl_get_ptls_states()->previous_exception = jl_current_exception();
+
+                /* These could just be global. And I could just use jl_method_instance_t* */
+                jl_value_t* exception = jl_exception_occurred();
+                jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+                jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+                if(exception)
+                {
+                    const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+                    printf("ERROR: %s\n", returned_exception);
+                }
+
+                evaluated_module = nullptr;
+            }
+
+            //Advance age after each include
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
+
+            return evaluated_module;
+        };
+
+        /* PRECOMPILATION */
+        jl_value_t** perform_args;
+
+        inline void init_perform_args()
+        {
+            perform_args = (jl_value_t**)calloc(4, sizeof(jl_value_t*));
+            //perform_args[0] is the individual object out of __constructor__()
+            //perform_args[1] = ; //__ins__
+            //perform_args[2] = ; //__outs__
+            //perform_args[3] = ; //__SCSynth__
+        }
+
+        inline void destroy_perform_args()
+        {
+            free(perform_args);
+        }
+
+        inline bool precompile_julia_object(jl_module_t* module)
+        {
+            bool precompile_state;
+
+            //Add to global_id_dict
+            
+            return precompile_state;
+        }
+};
+
+class JuliaAtomicBarrier
+{
+    public:
+        /* To be called from NRT thread only */
+        inline void NRT_Lock()
+        {
+            bool expected_val = false;
+            //Spinlock. Wait ad-infinitum until the RT thread has set barrier to false.
+            while(!barrier.compare_exchange_weak(expected_val, true))
+            {
+                //reset expected_val to false as it's been changed in compare_exchange_weak to true
+                expected_val = false;
+            }
+        }
+
+        inline void NRT_Unlock()
+        {
+            barrier.store(false);
+        }
+
+        /* To be called from RT thread only. Returns false if compare_exchange_strong fails.*/
+        inline bool RT_CheckLock()
+        {
+            bool expected_val = false;
+            bool barrier_acquired = barrier.compare_exchange_strong(expected_val, true);
+            return barrier_acquired;
+        }
+
+        inline void RT_Unlock()
+        {
+            barrier.store(false);
+        }
+
+    private:
+        std::atomic<bool> barrier{false};
+};
+
+/* Allocate it with a unique_ptr? Or just a normal new/delete? */
+class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier, public JuliaEntriesCounter
+{
+    public:
+        JuliaObjectsArray()
+        {
+            init_julia_objects_array();
+        }
+
+        ~JuliaObjectsArray()
+        {
+            destroy_julia_objects_array();
+        }
+
+        /* NRT THREAD. Called at JuliaDef.new() */
+        inline bool create_julia_object(JuliaReply* julia_reply, const char* path)
+        {  
+            NRT_Lock();
+
+            bool result;
+            unsigned long new_id;
+            JuliaObject* julia_object;
+
+            //First, check if there is the need to resize the array.
+            if(get_active_entries() == num_entries)
+                resize_julia_objects_array();
+
+            //Retrieve a new ID be checking out the first free entry in the julia_objects_array
+            for(unsigned long i = 0; i < num_entries; i++)
+            {
+                JuliaObject* this_julia_object = julia_objects_array + i;
+                if(!this_julia_object) //If empty entry, it means I can take ownership
+                {
+                    julia_object = this_julia_object;
+                    new_id = i;
+                }
+            }
+
+            printf("ID: %lu\n", new_id);
+
+            //Run precompilation
+            jl_module_t* evaluated_module = compile_julia_object(julia_object, path, julia_reply);
+
+            //Check if compilation went through. If it did, increase counter of active entries and formulate correct JuliaReply
+            if(julia_object->compiled)
+            {
+                advance_active_entries();
+
+                const char* name = jl_symbol_name(evaluated_module->name);
+                long inputs = jl_unbox_int64(jl_get_global(evaluated_module, jl_symbol("__inputs__")));
+                long outputs = jl_unbox_int64(jl_get_global(evaluated_module, jl_symbol("__outputs__")));
+
+                //MSG: OSC id, cmd, id, name, inputs, outputs
+                julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_compile", new_id, name, inputs, outputs);
+
+                result = true;
+            }
+            else
+            {
+                //Failed. No id, name, inputs, outputs
+                julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_compile", -1, "", -1, -1);
+                result = false;
+            }
+
+            NRT_Unlock();
+
+            return result;
+        }
+
+        /* RT THREAD. Called when a Julia UGen is created on the server */
+        inline bool get_julia_object(unsigned long unique_id, JuliaObject* julia_object)
+        {
+            bool barrier_acquired = RT_CheckLock();
+
+            if(barrier_acquired)
+            {
+                JuliaObject* this_julia_object = julia_objects_array + unique_id;
+
+                julia_object->constructor = this_julia_object->constructor;
+                julia_object->perform     = this_julia_object->perform;
+                julia_object->destructor  = this_julia_object->destructor;
+
+                RT_Unlock();
+            }
+
+            //Return the state, in order to be called again on next buffer if state was false.
+            return barrier_acquired;
+        }
+
+        /* NRT THREAD. Called at JuliaDef.free() */
+        inline void delete_julia_object(unsigned long unique_id, JuliaObject* julia_object)
+        {
+            NRT_Lock();
+
+            JuliaObject* this_julia_object = julia_objects_array + unique_id;
+            
+            unload_julia_object(julia_object);
+
+            decrease_active_entries();
+
+            NRT_Unlock();
+        }
+
+    private:
+        //Array of JuliaObject(s)
+        JuliaObject* julia_objects_array = nullptr;
+
+        //incremental size
+        unsigned long num_entries = JULIA_OBJECTS_NUM_ENTRIES;
+
+        //Constructor
+        inline void init_julia_objects_array()
+        {
+            //RTalloc?
+            JuliaObject* res = (JuliaObject*)calloc(num_entries, sizeof(JuliaObject));
+            
+            if(!res)
+            {
+                printf("Failed to allocate memory for JuliaObjects class \n");
+                return;
+            }
+
+            julia_objects_array = res;
+        }
+
+        //Destructor
+        inline void destroy_julia_objects_array()
+        {
+            free(julia_objects_array);
+        }
+
+        //Called when id > num_entries.
+        inline void resize_julia_objects_array()
+        {
+            unsigned long previous_num_entries = num_entries;
+
+            //Add more entries
+            advance_num_entries();
+
+            //Manual realloc()... more control on the different stages
+            JuliaObject* res = (JuliaObject*)calloc(num_entries, sizeof(JuliaObject));
+
+            //If failed, reset num entries to before and exit.
+            if(!res)
+            {
+                decrease_num_entries();
+                printf("Failed to allocate more memory for JuliaObjects class \n");
+                return; //julia_objects_array is still valid
+            }
+
+            //copy previous entries to new array
+            memcpy(res, julia_objects_array, previous_num_entries);
+            
+            //previous array to be freed
+            JuliaObject* previous_julia_objects_array = julia_objects_array; 
+
+            //swap pointers. No need for atomic, since NRT_Lock has acquired already
+            julia_objects_array = res;
+
+            //free previous array.
+            free(previous_julia_objects_array);
+        }
+
+        inline void advance_num_entries()
+        {
+            num_entries += JULIA_OBJECTS_NUM_ENTRIES;
+        }
+
+        inline void decrease_num_entries()
+        {
+            num_entries -= JULIA_OBJECTS_NUM_ENTRIES;
+            if(num_entries < 0)
+                num_entries = 0;
+        }
+};
+
 //WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS ON MACOS. ON LINUX IT WORKS JUST FINE...
 std::string get_julia_dir() 
 {
@@ -78,8 +551,6 @@ std::string get_julia_dir()
     return result;
 }
 
-static InterfaceTable *ft;
-World* global_world;
 
 #ifdef __linux__
 void* handle;
@@ -153,7 +624,11 @@ inline bool test_include()
             //DO I NEED TO ADVANCE AGE HERE???? Perhaps, I do.
             jl_get_ptls_states()->world_age = jl_get_world_counter();
             
-            jl_load(jl_main_module, sine_jl_path.c_str());
+            jl_module_t* loaded_module = (jl_module_t*)jl_load(jl_main_module, sine_jl_path.c_str());
+
+            const char* module_name = jl_symbol_name(loaded_module->name);
+            printf("MODULE NAME: %s\n", module_name);
+            //jl_call1(jl_get_function(jl_main_module, "println"), (jl_value_t*)loaded_module);
 
             jl_exception_clear();
 

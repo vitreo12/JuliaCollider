@@ -1,0 +1,36 @@
+How do I go about telling a Julia UGen which jl_method_instance_t* it should look for constructor, perform and destructor??
+
+//compiled is used to check on the RT thread if all the jl_method_instance_t* are safe to be called
+//RT_busy is turned to true from the RT thread, in order to not allow the NRT thread to free() on still being used objects.
+//OR it would free it, and I can just check pointer validity for each jl_method_instance_t* to see if it was freed. If it was
+//freed, just forward to a ClearUnitOutputs function.
+typedef struct julia_object_method_instances
+{
+    jl_method_instance_t* constructor;
+    jl_method_instance_t* perform;
+    jl_method_instance_t* destructor;
+    bool compiled;
+    bool RT_busy;
+} julia_object_method_instances_t;
+
+static int julia_object_allocator;
+
+Solution 1)
+Having a similar approach to how server allocates buffer, thanks to the preallocated world->mSndBufs. At server startup,
+scsynth allocates a world->mNumSndBufs of buffers that are available. ((SndBuf*)zalloc(world->mNumSndBufs, sizeof(SndBuf));)
+Then, it has a static int each time a buffer is assigned and keeps augmenting that, up to the limit of world->mNumSndBufs, where,
+if buffers were not freed, it wouldn't allocate anymore.
+I could calloc (zalloc is a calloc replacement) a fixed number of julia_object_method_instances at Julia boot, then I could have
+a static int which would be sent back from the server to the JuliaDef. Then, I could use this integer to index through the calloced()
+array of julia_object_method_instances_t*... I would require the user to have a JuliaDef.free method to release the entries, which would 
+then be reused for other calls.
+OR I could RTAlloc it all, with a small fixed number (say, 100 entries), and RTRealloc 50 more when the static int hits 101, then 50 more at 151... etc...
+
+Solution 2)
+Having a Julia IdDict, and still assign/index it with the static int julia_object_allocator. This approach is more dynamic, but I would be
+using RTAllocation (called from Julia) to allocate the space for the extra IdDict. More scalable, but, perhaps, more memory expensive. Method 1
+with RTAlloc is perhaps better and better controllable in terms of thread safety for access?
+
+Solution 3)
+Implement a custom Hashmap in C++ and still use the struct julia_object_method_instances. Still, I would allocate each entry, even if just pointers
+to RTAllocated memory. Or, I would still need to RTAlloc it...
