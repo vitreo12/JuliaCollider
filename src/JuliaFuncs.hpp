@@ -1204,14 +1204,32 @@ void JuliaTestJuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *a
 
 bool testLookup(World* world, void* cmd)
 {
-    dummy_lookup_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+    JL_TRY {
+        dummy_lookup_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
 
-    method_instance_test = jl_lookup_generic_and_compile_SC(&dummy_lookup_function, 1);
+        method_instance_test = jl_lookup_generic_and_compile_SC(&dummy_lookup_function, 1);
 
-    //make the MethodInstance (this it the Julia type for a jl_method_instance_t) global, setting it in the GlobalIdDict
-    jl_call3(set_index, global_id_dict, (jl_value_t*)method_instance_test, (jl_value_t*)method_instance_test);
-    
-    printf("Lookup completed\n");
+        //make the MethodInstance (this it the Julia type for a jl_method_instance_t) global, setting it in the GlobalIdDict
+        jl_call3(set_index, global_id_dict, (jl_value_t*)method_instance_test, (jl_value_t*)method_instance_test);
+        
+        printf("Lookup completed\n");
+        
+        jl_exception_clear();
+    }
+    JL_CATCH {
+        jl_get_ptls_states()->previous_exception = jl_current_exception();
+
+        /* These could just be global. And I could just use jl_method_instance_t* */
+        jl_value_t* exception = jl_exception_occurred();
+        jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+        jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+        if(exception)
+        {
+            const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+            printf("ERROR: %s\n", returned_exception);
+        }
+    }
 
     return true;
 }
@@ -1239,72 +1257,67 @@ void JuliaTestInvoke(World *inWorld, void* inUserData, struct sc_msg_iter *args,
     DoAsynchronousCommand(inWorld, replyAddr, "jl_testInvoke", (void*)nullptr, 0, (AsyncStageFn)testInvoke, 0, testInvokeCleanup, 0, nullptr);
 }
 
-ReplyAddress* server_reply_address;
-
-struct MyCmdData // data for each command
+/* IS this better than lookup methods??? */
+bool testLookupPrecompile(World* world, void* cmd)
 {
-	ReplyAddress* reply_addr;
-};
+    JL_TRY {
+        dummy_lookup_function_precompile = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+        
+        //tuple of arguments. need typeof() for function
+        jl_svec_t* args_svec = jl_svec(1, (jl_value_t*)jl_typeof(dummy_lookup_function_precompile)); //empty tuple. just function as first element
+        jl_tupletype_t* args_tuple = jl_apply_tuple_type(args_svec);
 
-void send_osc_to_sclang(ReplyAddress* replyAddr)
-{
-    small_scpacket packet;
-	packet.adds("/Julia_IO");
-	packet.maketags(4);
-	packet.addtag(',');
-	packet.addtag('s');
-	packet.adds("/Sine"); //name representing symbol of the compiled Julia program...
-	packet.addtag('i');
-	packet.addi(1); //number of inputs here...
-    packet.addtag('i');
-	packet.addi(1); //number of outputs here...
+        jl_call1(jl_get_function(jl_main_module, "println"), (jl_value_t*)args_tuple);
 
-	SendReply(replyAddr, packet.data(), packet.size());
-}
+        /* both calls are in the same jl_world_counter, since just called from NRT thread */
+        if(jl_compile_hint_SC(args_tuple))
+        {
+            printf("PRECOMPILED!! \n");
+            method_instance_test_precompile = jl_get_specialization1_SC(args_tuple, jl_get_world_counter(), 1);
 
-bool sendReply2(World* world, void* cmd)
-{
-    //MyCmdData* myCmdData = (MyCmdData*)cmd;
-    
-    printf("-> Request received by server...\n");
-    send_osc_to_sclang(server_reply_address);
-    printf("-> Data sent by server to sclang...\n");
+            /* precompile() won't compile the whole function's functions (like calls to anything else, like printf in dummy_alloc()).
+            Need to run it once to do that. */
+            jl_invoke(method_instance_test_precompile, &dummy_lookup_function_precompile, 1);
+        }
+
+        jl_exception_clear();
+    }
+    JL_CATCH {
+        jl_get_ptls_states()->previous_exception = jl_current_exception();
+
+        /* These could just be global. And I could just use jl_method_instance_t* */
+        jl_value_t* exception = jl_exception_occurred();
+        jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+        jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+        if(exception)
+        {
+            const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+            printf("ERROR: %s\n", returned_exception);
+        }
+    }
+
     return true;
 }
 
-//RT thread
-bool sendReply3(World* world, void* cmd)
+void testLookupCleanupPrecompile(World* world, void* cmd){}
+
+void JuliaTestLookupPrecompile(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_testLookupPrecompile", (void*)nullptr, (AsyncStageFn)testLookupPrecompile, 0, 0, testLookupCleanupPrecompile, 0, nullptr);
+}
+
+//CALLED ON RT THREAD
+bool testInvokePrecompile(World* world, void* cmd)
 {
     return true;
 }
 
-bool sendReply4(World* world, void* cmd)
+void testInvokeCleanupPrecompile(World* world, void* cmd){}
+
+void JuliaTestInvokePrecompile(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    return true;
-}
-
-void sendReplyCleanup(World* world, void* cmd)
-{
-    MyCmdData* myCmdData = (MyCmdData*)cmd;
-    RTFree(world, myCmdData);
-}
-
-//DON'T KNOW WHY if using myCmdData->replyAddr it crashes for SendReply()
-//logs says that it is a problem with:
-//boost::exception_detail::clone_impl<boost::exception_detail::error_info_injector<boost::asio::ip::bad_address_cast> >: bad address cast
-//The problem is that probably, if sending a lot of requests, the RTAlloc is not called fast enough to allocate them all and
-//then, some of them, would be pointing at junk memory instead of the actual replyAddr
-void JuliaSendReply(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
-{
-	ReplyAddress* replyAddrCast = (ReplyAddress*)replyAddr;
-    
-    MyCmdData* myCmdData = (MyCmdData*)RTAlloc(inWorld, sizeof(MyCmdData));
-    myCmdData->reply_addr = replyAddrCast;
-
-    if(replyAddrCast != server_reply_address)
-        server_reply_address = replyAddrCast;
-
-    DoAsynchronousCommand(inWorld, replyAddr, "jl_send_reply", (void*)myCmdData, (AsyncStageFn)sendReply2, (AsyncStageFn)sendReply3, (AsyncStageFn)sendReply4, sendReplyCleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "jl_testInvokePrecompile", (void*)nullptr, 0, (AsyncStageFn)testInvokePrecompile, 0, testInvokeCleanupPrecompile, 0, nullptr);
 }
 
 bool TestOuts2(World* world, void* cmd)
@@ -1458,9 +1471,10 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_GC", (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("/julia_testJuliaAlloc", (PlugInCmdFunc)JuliaTestJuliaAlloc, nullptr);
     DefinePlugInCmd("/julia_test_lookup", (PlugInCmdFunc)JuliaTestLookup, nullptr);
+    DefinePlugInCmd("/julia_test_lookup_precompile", (PlugInCmdFunc)JuliaTestLookupPrecompile, nullptr);
     DefinePlugInCmd("/julia_test_invoke", (PlugInCmdFunc)JuliaTestInvoke, nullptr);
+    DefinePlugInCmd("/julia_test_invoke_precompile", (PlugInCmdFunc)JuliaTestInvokePrecompile, nullptr);
     DefinePlugInCmd("/julia_include", (PlugInCmdFunc)JuliaInclude, nullptr);
     DefinePlugInCmd("/julia_alloc", (PlugInCmdFunc)JuliaAlloc, nullptr);
-    DefinePlugInCmd("/julia_send_reply", (PlugInCmdFunc)JuliaSendReply, nullptr);
     DefinePlugInCmd("/julia_test_outs", (PlugInCmdFunc)JuliaTestOuts, nullptr);
 }
