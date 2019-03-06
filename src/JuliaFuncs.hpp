@@ -305,45 +305,44 @@ class JuliaObjectCompiler
 class JuliaAtomicBarrier
 {
     public:
-        /* To be called from NRT thread only */
-        inline void NRT_Lock()
+        /* To be called from NRT thread only. */
+        inline void Spinlock()
         {
             bool expected_val = false;
             //Spinlock. Wait ad-infinitum until the RT thread has set barrier to false.
             while(!barrier.compare_exchange_weak(expected_val, true))
-            {
-                //reset expected_val to false as it's been changed in compare_exchange_weak to true
-                expected_val = false;
-            }
+                expected_val = false; //reset expected_val to false as it's been changed in compare_exchange_weak to true
         }
 
-        inline void NRT_Unlock()
-        {
-            barrier.store(false);
-        }
-
-        /* To be called from RT thread only. Returns false if compare_exchange_strong fails.*/
-        inline bool RT_CheckLock()
+        /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
+        inline bool Checklock()
         {
             bool expected_val = false;
-            bool barrier_acquired = barrier.compare_exchange_strong(expected_val, true);
-            return barrier_acquired;
+            return barrier.compare_exchange_strong(expected_val, true);
         }
 
-        inline void RT_Unlock()
+        inline void Unlock()
         {
             barrier.store(false);
+        }
+
+        inline bool get_barrier_value()
+        {
+            return barrier.load();
         }
 
     private:
         std::atomic<bool> barrier{false};
 };
 
+#define JULIA_OBJECTS_ARRAY_INCREMENT 100
+
 /* Allocate it with a unique_ptr? Or just a normal new/delete? */
 class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier, public JuliaEntriesCounter
 {
     public:
-        JuliaObjectsArray()
+        JuliaObjectsArray(World* in_world_, JuliaGlobalUtilities* julia_global_)
+        : JuliaObjectCompiler(in_world_, julia_global_)
         {
             init_julia_objects_array();
         }
@@ -356,18 +355,22 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* NRT THREAD. Called at JuliaDef.new() */
         inline bool create_julia_object(JuliaReply* julia_reply, const char* path)
         {  
-            NRT_Lock();
-
             bool result;
             unsigned long new_id;
             JuliaObject* julia_object;
+            
+            if(get_active_entries() == num_total_entries)
+            {
+                //Lock the access to the array only when resizing.
+                JuliaAtomicBarrier::Spinlock();
 
-            //First, check if there is the need to resize the array.
-            if(get_active_entries() == num_entries)
                 resize_julia_objects_array();
 
+                JuliaAtomicBarrier::Unlock();
+            }
+
             //Retrieve a new ID be checking out the first free entry in the julia_objects_array
-            for(unsigned long i = 0; i < num_entries; i++)
+            for(unsigned long i = 0; i < num_total_entries; i++)
             {
                 JuliaObject* this_julia_object = julia_objects_array + i;
                 if(!this_julia_object) //If empty entry, it means I can take ownership
@@ -400,10 +403,9 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             {
                 //Failed. No id, name, inputs, outputs
                 julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_compile", -1, "", -1, -1);
+                
                 result = false;
             }
-
-            NRT_Unlock();
 
             return result;
         }
@@ -411,27 +413,33 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* RT THREAD. Called when a Julia UGen is created on the server */
         inline bool get_julia_object(unsigned long unique_id, JuliaObject* julia_object)
         {
-            bool barrier_acquired = RT_CheckLock();
+            bool barrier_acquired = JuliaAtomicBarrier::Checklock();
 
             if(barrier_acquired)
             {
                 JuliaObject* this_julia_object = julia_objects_array + unique_id;
 
-                julia_object->constructor = this_julia_object->constructor;
-                julia_object->perform     = this_julia_object->perform;
-                julia_object->destructor  = this_julia_object->destructor;
+                if(this_julia_object)
+                {
+                    julia_object->constructor_instance = this_julia_object->constructor_instance;
+                    julia_object->perform_instance     = this_julia_object->perform_instance;
+                    julia_object->destructor_instance  = this_julia_object->destructor_instance;
+                    julia_object->compiled             = this_julia_object->compiled;
+                }
+                else
+                    printf("WARNING: Invalid julia_object\n");
 
-                RT_Unlock();
+                JuliaAtomicBarrier::Unlock();
             }
 
-            //Return the state, in order to be called again on next buffer if state was false.
+            //Return if barrier was acquired. If not, it means the code must be run again at next audio buffer.
             return barrier_acquired;
         }
 
         /* NRT THREAD. Called at JuliaDef.free() */
         inline void delete_julia_object(unsigned long unique_id, JuliaObject* julia_object)
         {
-            NRT_Lock();
+            JuliaAtomicBarrier::Spinlock();
 
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
@@ -439,7 +447,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 
             decrease_active_entries();
 
-            NRT_Unlock();
+            JuliaAtomicBarrier::Unlock();
         }
 
     private:
@@ -593,10 +601,16 @@ jl_function_t* delete_index = nullptr;
 jl_method_instance_t* method_instance_test = nullptr;
 jl_function_t* dummy_lookup_function = nullptr;
 
+jl_method_instance_t* method_instance_test_precompile = nullptr;
+jl_function_t* dummy_lookup_function_precompile = nullptr;
+
 bool julia_initialized = false; 
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
 std::string JuliaDSP_folder = "julia/JuliaDSP/";
+
+/* GLOBAL VARS */
+JuliaAtomicBarrier JuliaGCBarrier;
 
 #ifdef __linux__
 //Loading libjulia directly. Opening it with RTLD_NOW | RTLD_GLOBAL allows for all symbols to be correctly found.
@@ -684,34 +698,11 @@ on the same thread, and thus they are scheduled (Meaning, that no function on th
 in between the jl_enable(1) and jl_enable(0)). Maybe I can just add a jl_gc_is_enabled() check */
 inline void perform_gc(int full)
 {
-    bool expected_val = false;
-    int count = 0;
-    printf("GC gc_allocation_state BEFORE: %i\n", gc_allocation_state.load());
+    printf("GC gc_allocation_state BEFORE: %i\n", JuliaGCBarrier.get_barrier_value());
 
-    //Set gc_allocation_state to true, which means "busy", only if it was previously set to false.
-    //If gc_allocation_state was true, repeat operation for 500 times (500ms) waiting for the RT thread
-    //to set gc_allocation_state to false.
-    while(!gc_allocation_state.compare_exchange_weak(expected_val, true))
-    {
-        if(count == 0)
-            printf("WARNING: Some object is using the GC. Wait...\n");
+    JuliaGCBarrier.Spinlock();
 
-        //Wait 1ms on this thread. perform_gc() should only be called from NRT thread
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        
-        //Break after half a second of attempts and don't perform the collection at all.
-        if(count >= 500) 
-        {
-            printf("WARNING: Julia could not perform GC.\n");
-            return;
-        }
-
-        count++;
-        //reset expected_val to false as it's been changed in compare_exchange_weak to true
-        expected_val = false;
-    }
-
-    printf("GC gc_allocation_state MIDDLE: %i\n", gc_allocation_state.load());
+    printf("GC gc_allocation_state MIDDLE: %i\n", JuliaGCBarrier.get_barrier_value());
 
     if(!jl_gc_is_enabled())
     {
@@ -728,8 +719,9 @@ inline void perform_gc(int full)
     }
 
     //Reset gc_allocation_state to false, "free". Assignment operation is atomic. (same as gc_allocation_state.store(false))
-    gc_allocation_state = false; 
-    printf("GC gc_allocation_state AFTER: %i\n", gc_allocation_state.load());
+    JuliaGCBarrier.Unlock();
+    
+    printf("GC gc_allocation_state AFTER: %i\n", JuliaGCBarrier.get_barrier_value());
 }
 
 inline void boot_julia(World* inWorld)
