@@ -5,15 +5,18 @@ struct Julia : public SCUnit
 public:
     Julia() 
     { 
+        double input = (double)(in0(0));
+        printf("INPUT %f\n", input);
+        
         if(julia_initialized && sine_fun != nullptr)
         {   
-            printf("Object gc_allocation_state BEFORE: %i\n", JuliaGCBarrier.get_barrier_value());
+            printf("Object gc_allocation_state BEFORE: %i\n", julia_gc_barrier.get_barrier_value());
             
-            bool gc_state = JuliaGCBarrier.Checklock();
+            bool gc_state = julia_gc_barrier.RTChecklock();
             
             if(gc_state) 
             {
-                printf("Object gc_allocation_state MIDDLE: %i\n", JuliaGCBarrier.get_barrier_value());
+                printf("Object gc_allocation_state MIDDLE: %i\n", julia_gc_barrier.get_barrier_value());
 
                 //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
@@ -43,14 +46,14 @@ public:
                 //execute = successful object creation.
                 execute = true;
 
-                JuliaGCBarrier.Unlock();
+                julia_gc_barrier.RTUnlock();
 
                 //gc_allocation_state.compare_exchange_strong(true_value, false); //(compare_exchange_strong here, perhaps?)
             }
             else
                 Print("WARNING: Julia's GC is running. Object was not created.\n");
             
-            printf("Object gc_allocation_state AFTER: %i\n", JuliaGCBarrier.get_barrier_value());
+            printf("Object gc_allocation_state AFTER: %i\n", julia_gc_barrier.get_barrier_value());
         }
         else
             Print("WARNING: Julia not initialized or function not defined\n");
