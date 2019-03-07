@@ -35,6 +35,10 @@ s.sendMsg(\cmd, "/julia_test_outs");
 
 s.sendMsg(\cmd, "/julia_test_lookup_precompile");
 
+s.sendMsg(\cmd, "/julia_TestAlloc_include");
+
+s.sendMsg(\cmd, "/julia_TestAlloc_perform");
+
 (
 s.bind({
 	50.do{{Julia.ar(rrand(220, 1000)) / 50}.play};

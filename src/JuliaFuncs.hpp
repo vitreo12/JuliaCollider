@@ -1315,8 +1315,44 @@ void JuliaTestAllocInclude(World *inWorld, void* inUserData, struct sc_msg_iter 
 
 bool TestAlloc_perform2(World* world, void* cmd)
 {
-    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test2");
-    jl_call0(alloc_fun);
+    JL_TRY {
+        jl_module_t* invalid_module = jl_get_module_in_main("TestAlloc");
+
+        if(!invalid_module)
+            jl_error("Invalid module");
+
+        jl_function_t* invalid_fun = jl_get_function(invalid_module, "non_existing_function");
+        
+        jl_method_instance_t* invalid_method_instance = jl_lookup_generic_and_compile_SC(&invalid_fun, 1);
+
+        if(!invalid_method_instance)
+            jl_error("Invalid method instance");
+        
+        jl_function_t* invalid_var = jl_get_global_SC(invalid_module, "non_existing_var");
+
+        if(!invalid_var)
+            jl_error("Invalid variable");
+
+
+        if(!invalid_fun)
+            jl_error("Invalid function");
+
+        jl_exception_clear();
+    }
+    JL_CATCH {
+        jl_get_ptls_states()->previous_exception = jl_current_exception();
+
+        jl_value_t* exception = jl_exception_occurred();
+        jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+        jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+        if(exception)
+        {
+            const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+            printf("ERROR: %s\n", returned_exception);
+        }
+    }
+    
     return true;
 }
 
@@ -1324,8 +1360,8 @@ bool TestAlloc_perform3(World* world, void* cmd)
 {
     //Test if a = zeros(44100) and the allocation of an array would stop audio thread with 
     //GC allocating in the SC RT allocator.    
-    jl_function_t* alloc_fun = jl_get_function(jl_get_module("TestAlloc"), "test1");
-    jl_call0(alloc_fun);
+    //jl_function_t* alloc_fun = jl_get_function(jl_get_module_in_main("TestAlloc"), "test1");
+    //jl_call0(alloc_fun);
     return true;
 }
 
@@ -1391,8 +1427,8 @@ bool include2(World* world, void* cmd)
 
     if(include_completed)
     {
-        sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
-        perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
+        sine_fun = jl_get_function(jl_get_module_in_main("Sine_DSP"), "Sine");
+        perform_fun = jl_get_function(jl_get_module_in_main("Sine_DSP"), "perform");
 
         jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
         jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
@@ -1519,7 +1555,7 @@ bool testJuliaAlloc2(World* world, void* cmd)
         printf("GC deferred alloc %lli\n", jl_gc_deferred_alloc_SC() / 1000000);
         printf("GC interval %lli\n", jl_gc_interval_SC() / 1000000);
 
-        jl_call0(jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc"));
+        jl_call0(jl_get_function(jl_get_module_in_main("Sine_DSP"), "dummy_alloc"));
 
         printf("*** AFTER ALLOC: \n");
         printf("GC allocd: %lli\n", (jl_gc_allocd_SC() / 1000000));
@@ -1553,7 +1589,7 @@ void JuliaTestJuliaAlloc(World *inWorld, void* inUserData, struct sc_msg_iter *a
 bool testLookup(World* world, void* cmd)
 {
     JL_TRY {
-        dummy_lookup_function = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+        dummy_lookup_function = jl_get_function(jl_get_module_in_main("Sine_DSP"), "dummy_alloc");
 
         method_instance_test = jl_lookup_generic_and_compile_SC(&dummy_lookup_function, 1);
 
@@ -1609,7 +1645,7 @@ void JuliaTestInvoke(World *inWorld, void* inUserData, struct sc_msg_iter *args,
 bool testLookupPrecompile(World* world, void* cmd)
 {
     JL_TRY {
-        dummy_lookup_function_precompile = jl_get_function(jl_get_module("Sine_DSP"), "dummy_alloc");
+        dummy_lookup_function_precompile = jl_get_function(jl_get_module_in_main("Sine_DSP"), "dummy_alloc");
         
         //tuple of arguments. need typeof() for function
         jl_svec_t* args_svec = jl_svec(1, (jl_value_t*)jl_typeof(dummy_lookup_function_precompile)); //empty tuple. just function as first element
@@ -1735,7 +1771,7 @@ bool TestOuts2(World* world, void* cmd)
     for(int i = 0; i < num_chans; i++)
         ((jl_array_t*)(outs_julia_vector_1d[i]))->data = outs_julia[i];
 
-    jl_function_t* test_outs_fun = jl_get_function(jl_get_module("Sine_DSP"), "test_outs");
+    jl_function_t* test_outs_fun = jl_get_function(jl_get_module_in_main("Sine_DSP"), "test_outs");
     jl_call3(test_outs_fun, num_chans_julia, buf_size_julia, outs_julia_vector);
 
 
@@ -1743,7 +1779,7 @@ bool TestOuts2(World* world, void* cmd)
     jl_value_t* ptr_ptr_float32 = jl_eval_string("Ptr{Ptr{Float32}}");
     jl_value_t* ptr_to_outs_julia = jl_call1(ptr_ptr_float32, jl_box_voidpointer(outs_julia_ptr));
 
-    jl_function_t* test_outs_ptr_fun = jl_get_function(jl_get_module("Sine_DSP"), "test_outs_ptr");
+    jl_function_t* test_outs_ptr_fun = jl_get_function(jl_get_module_in_main("Sine_DSP"), "test_outs_ptr");
     jl_call3(test_outs_ptr_fun, num_chans_julia, buf_size_julia, ptr_to_outs_julia);
 
 
