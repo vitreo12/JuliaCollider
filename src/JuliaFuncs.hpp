@@ -1066,7 +1066,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         inline bool create_julia_object(JuliaReply* julia_reply, const char* path)
         {  
             bool result;
-            unsigned long new_id;
+            unsigned long long new_id;
             JuliaObject* julia_object;
             
             if(get_active_entries() == num_total_entries)
@@ -1080,7 +1080,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             }
 
             //Retrieve a new ID be checking out the first free entry in the julia_objects_array
-            for(unsigned long i = 0; i < num_total_entries; i++)
+            for(unsigned long long i = 0; i < num_total_entries; i++)
             {
                 JuliaObject* this_julia_object = julia_objects_array + i;
                 if(!this_julia_object) //If empty entry, it means I can take ownership
@@ -1090,7 +1090,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 }
             }
 
-            printf("ID: %lu\n", new_id);
+            printf("ID: %llu\n", new_id);
 
             //Run precompilation
             jl_module_t* evaluated_module = compile_julia_object(julia_object, path, julia_reply);
@@ -1109,7 +1109,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 
                 //Set unique_id in newly created module aswell. Used to retrieve JuliaDef by module name.
                 jl_function_t* set_unique_id = jl_get_function(evaluated_module, "__set_unique_id__");
-                jl_call1(set_unique_id, jl_box_int64(new_id));
+                jl_call1(set_unique_id, jl_box_uint64(new_id));
 
                 //MSG: OSC id, cmd, id, name, inputs, outputs
                 julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_compile", new_id, name, inputs, outputs);
@@ -1128,7 +1128,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         }
 
         /* RT THREAD. Called when a Julia UGen is created on the server */
-        inline bool get_julia_object(unsigned long unique_id, JuliaObject* julia_object)
+        inline bool get_julia_object(unsigned long long unique_id, JuliaObject* julia_object)
         {
             bool barrier_acquired = JuliaAtomicBarrier::Checklock();
 
@@ -1137,14 +1137,9 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 JuliaObject* this_julia_object = julia_objects_array + unique_id;
 
                 if(this_julia_object)
-                {
-                    julia_object->constructor_instance = this_julia_object->constructor_instance;
-                    julia_object->perform_instance     = this_julia_object->perform_instance;
-                    julia_object->destructor_instance  = this_julia_object->destructor_instance;
-                    julia_object->compiled             = this_julia_object->compiled;
-                }
+                    julia_object = this_julia_object;
                 else
-                    printf("WARNING: Invalid julia_object\n");
+                    printf("WARNING: Invalid @object\n");
 
                 JuliaAtomicBarrier::Unlock();
             }
