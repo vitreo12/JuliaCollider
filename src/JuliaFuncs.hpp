@@ -55,15 +55,18 @@ World* global_world;
 
 typedef struct JuliaObject
 {
+    jl_value_t* julia_def; //THIS JuliaDef for this JuliaObject.
     jl_module_t* evaluated_module;
+    jl_function_t* ugen_ref_fun;
     jl_function_t* constructor_fun;
     jl_function_t* perform_fun;
     jl_function_t* destructor_fun;
+    jl_method_instance_t* ugen_ref_instance;
     jl_method_instance_t* constructor_instance;
     jl_method_instance_t* perform_instance;
     jl_method_instance_t* destructor_instance;
     bool compiled;
-    //bool RT_busy;
+    bool RT_busy;
 } JuliaObject;
 
 /* CLASSES */
@@ -621,6 +624,12 @@ class JuliaReply : public RTClassAlloc
             return snprintf(buffer_, size, "%lu\n", value);
         }
 
+        //for id
+        int append_string(char* buffer_, size_t size, unsigned long long value)
+        {
+            return snprintf(buffer_, size, "%llu\n", value);
+        }
+
         //Exit condition. No more VarArgs to consume
         void create_done_command() {return;}
 
@@ -814,10 +823,14 @@ class JuliaObjectCompiler
 
         inline void null_julia_object(JuliaObject* julia_object)
         {
+            julia_object->compiled = false;
+            julia_object->RT_busy = false;
             julia_object->evaluated_module = nullptr;
+            julia_object->ugen_ref_fun = nullptr;
             julia_object->constructor_fun = nullptr;
             julia_object->perform_fun = nullptr;
             julia_object->destructor_fun = nullptr;
+            julia_object->ugen_ref_instance = nullptr;
             julia_object->constructor_instance = nullptr;
             julia_object->perform_instance = nullptr;
             julia_object->destructor_instance = nullptr;
@@ -890,10 +903,17 @@ class JuliaObjectCompiler
             JL_TRY {
                 //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
+                //object that will be created in perform and passed in destructor and ugen_ref, without creating new ones...
+                jl_value_t* ugen_object;
+                jl_value_t* ins;
+                jl_value_t* outs;
+
                 /* These functions will throw a jl_error if anything goes wrong. */
                 precompile_constructor(evaluated_module, julia_object);
-                precompile_perform(evaluated_module, julia_object);
-                precompile_destructor(evaluated_module, julia_object);
+                precompile_perform(evaluated_module, ugen_object, ins, outs, julia_object);
+                precompile_destructor(evaluated_module, ugen_object, julia_object);
+                precompile_ugen_ref(evaluated_module, ugen_object, ins, outs, julia_object);
+                create_julia_def(evaluated_module, julia_object);
                 
                 precompile_state = true;
 
@@ -936,23 +956,36 @@ class JuliaObjectCompiler
             julia_object->constructor_instance = compiled_constructor;
         }
 
-        inline void precompile_perform(jl_module_t* evaluated_module, JuliaObject* julia_object)
+        inline void precompile_perform(jl_module_t* evaluated_module, jl_value_t* ugen_object, jl_value_t* ins, jl_value_t* outs, JuliaObject* julia_object)
         {
             /* ARRAY CONSTRUCTION */
             size_t nargs = 6;
             jl_value_t** perform_args = get_perform_args(nargs);
+            if(!perform_args)
+                jl_error("Could not allocate memory for perform_args");
 
             /* FUNCTION = perform_args[0] */
-            jl_function_t* perform_function = jl_get_function(evaluated_module, "__perform__");
-            if(!perform_function)
+            jl_function_t* perform_fun = jl_get_function(evaluated_module, "__perform__");
+            if(!perform_fun)
+            {
+                free_perform_args(perform_args);
                 jl_error("Invalid __perform__ function");
+            }
 
             /* OBJECT CONSTRUCTION = perform_args[1] */
             jl_function_t* ugen_constructor = jl_get_function(evaluated_module, "__constructor__");
             if(!ugen_constructor)
+            {
+                free_perform_args(perform_args);
                 jl_error("Invalid __constructor__ function");
+            }
             
-            jl_value_t* ugen_object = jl_call0(ugen_constructor);
+            ugen_object = jl_call0(ugen_constructor);
+            if(!ugen_object)
+            {
+                free_perform_args(perform_args);
+                jl_error("Invalid __constructor__ function");
+            }
 
             /* INS / OUTS = perform_args[2]/[3] */
             int inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
@@ -960,7 +993,7 @@ class JuliaObjectCompiler
             int buffer_size = 1;
             
             //ins::Vector{Vector{Float32}}
-            jl_value_t* ins =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), inputs);
+            ins =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), inputs);
             
             //1D Array for each input buffer
             jl_value_t** ins_1d = (jl_value_t**)RTAlloc(in_world, sizeof(jl_value_t*) * inputs);
@@ -974,11 +1007,11 @@ class JuliaObjectCompiler
                     dummy_ins[i][y] = 0.0f;
                 
                 ins_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_ins[i], buffer_size, 0);
-                jl_call3(julia_global->get_set_index(), ins, ins_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+                jl_call3(julia_global->get_set_index_fun(), ins, ins_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
             }
 
             //outs::Vector{Vector{Float32}}
-            jl_value_t* outs = (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), outputs);
+            outs = (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), outputs);
 
             //1D Array for each output buffer
             jl_value_t** outs_1d = (jl_value_t**)RTAlloc(in_world, sizeof(jl_value_t*) * outputs);
@@ -992,11 +1025,11 @@ class JuliaObjectCompiler
                     dummy_outs[i][y] = 0.0f;
                 
                 outs_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_outs[i], buffer_size, 0);
-                jl_call3(julia_global->get_set_index(), outs, outs_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+                jl_call3(julia_global->get_set_index_fun(), outs, outs_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
             }
 
             /* ASSIGN TO ARRAY */
-            perform_args[0] = perform_function;
+            perform_args[0] = perform_fun;
             perform_args[1] = ugen_object;
             perform_args[2] = ins;  //__ins__
             perform_args[3] = outs; //__outs__
@@ -1004,7 +1037,7 @@ class JuliaObjectCompiler
             perform_args[5] = julia_global->get_scsynth(); //__SCSynth__
 
             /* COMPILATION. Should it be with precompile() instead? */
-            jl_method_instance_t* compiled_perform = jl_lookup_generic_and_compile_SC(perform_args, nargs);
+            jl_method_instance_t* perform_instance = jl_lookup_generic_and_compile_SC(perform_args, nargs);
 
             /* FREE MEMORY */
             free_perform_args(perform_args);
@@ -1020,28 +1053,102 @@ class JuliaObjectCompiler
             RTFree(in_world, outs_1d);
 
             /* JULIA OBJECT ASSIGN */
-            if(!compiled_perform)
+            if(!perform_instance)
                 jl_error("Could not compile __perform__ function");
 
             //successful compilation...
-            julia_object->perform_fun = perform_function;
-            julia_object->perform_instance = compiled_perform;
+            julia_object->perform_fun = perform_fun;
+            julia_object->perform_instance = perform_instance;
         }
 
-        inline void precompile_destructor(jl_module_t* evaluated_module, JuliaObject* julia_object)
+        inline void precompile_destructor(jl_module_t* evaluated_module, jl_value_t* ugen_object, JuliaObject* julia_object)
         {
-            jl_function_t* ugen_destructor = jl_get_function(evaluated_module, "__destructor__");
-            if(!ugen_destructor)
+            jl_function_t* destructor_fun = jl_get_function(evaluated_module, "__destructor__");
+            if(!destructor_fun)
                 jl_error("Invalid __destructor__ function");
+
+            int32_t nargs = 2;
+            jl_value_t** destructor_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
+            if(!destructor_args)
+                jl_error("Could not allocate memory for destructor_args");
+
+            destructor_args[0] = destructor_fun;
+            destructor_args[1] = ugen_object;
             
             /* COMPILATION */
-            jl_method_instance_t* compiled_destructor = jl_lookup_generic_and_compile_SC(&ugen_destructor, 1);
+            jl_method_instance_t* destructor_instance = jl_lookup_generic_and_compile_SC(destructor_args, nargs);
 
-            if(!compiled_destructor)
+            RTFree(in_world, destructor_args);
+
+            if(!destructor_instance)
                 jl_error("Could not compile __destructor__ function");
 
-            julia_object->destructor_fun = ugen_destructor;
-            julia_object->destructor_instance = compiled_destructor;
+            julia_object->destructor_fun = destructor_fun;
+            julia_object->destructor_instance = destructor_instance;
+        }
+
+        inline void precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t* ugen_object, jl_value_t* ins, jl_value_t* outs, JuliaObject* julia_object)
+        {
+            jl_function_t* ugen_ref_fun = jl_get_function(evaluated_module, "__UGenRef__");
+            if(!ugen_ref_fun)
+                jl_error("Invalid __UGenRef__ function");
+
+            //Ins and outs are pointing to junk data, but I don't care. I just need to precompile the Ref to it.
+
+            int32_t nargs = 4;
+            jl_value_t** ugen_ref_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
+            if(!ugen_ref_args)
+                jl_error("Could not allocate memory for ugen_ref_args");
+            
+            //__UGenRef__ constructor
+            ugen_ref_args[0] = ugen_ref_fun;
+            ugen_ref_args[1] = ugen_object;
+            ugen_ref_args[2] = ins;
+            ugen_ref_args[3] = outs;
+
+            /* COMPILATION */
+            jl_method_instance_t* ugen_ref_instance = jl_lookup_generic_and_compile_SC(ugen_ref_args, nargs);
+
+            RTFree(in_world, ugen_ref_args);
+
+            if(!ugen_ref_instance)
+                jl_error("Could not compile __UGenRef__ function");
+
+            julia_object->ugen_ref_fun = ugen_ref_fun;
+            julia_object->ugen_ref_instance = ugen_ref_instance;
+        }
+
+        inline void create_julia_def(jl_module_t* evaluated_module, JuliaObject* julia_object)
+        {
+            jl_function_t* julia_def_fun = julia_state.get_julia_def_fun();
+            if(!julia_def_fun)
+                jl_error("Invalid julia_def_fun");
+
+            int32_t nargs = 9;
+            jl_value_t** julia_def_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
+            if(!julia_def_args)
+                jl_error("Could not allocate memory for julia_def_args");
+            
+            //__JuliaDef__ constructor
+            julia_def_args[0] = (jl_value_t*)evaluated_module;
+            julia_def_args[1] = (jl_value_t*)julia_object->ugen_ref_fun;
+            julia_def_args[2] = (jl_value_t*)julia_object->constructor_fun;
+            julia_def_args[3] = (jl_value_t*)julia_object->perform_fun;
+            julia_def_args[4] = (jl_value_t*)julia_object->destructor_fun;
+            julia_def_args[5] = (jl_value_t*)julia_object->ugen_ref_instance;
+            julia_def_args[6] = (jl_value_t*)julia_object->constructor_instance;
+            julia_def_args[7] = (jl_value_t*)julia_object->perform_instance;
+            julia_def_args[8] = (jl_value_t*)julia_object->destructor_instance;
+
+            //Create julia_def
+            jl_value_t* julia_def = jl_call(julia_def_fun, julia_def_args, nargs);
+            
+            RTFree(in_world, julia_def_args);
+
+            if(!julia_def)
+                jl_error("Could not create a __JuliaDef__");
+
+            julia_object->julia_def = julia_def;
         }
 };
 
