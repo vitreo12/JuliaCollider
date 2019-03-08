@@ -1662,6 +1662,9 @@ void JuliaTestAllocInclude(World *inWorld, void* inUserData, struct sc_msg_iter 
 bool TestAlloc_perform2(World* world, void* cmd)
 {
     JL_TRY {
+        jl_function_t* dict_int32 = jl_eval_string("Dict{Int32, Int32}");
+        jl_call1(jl_get_function(jl_main_module, "println"), (jl_value_t*)dict_int32);
+
         jl_module_t* invalid_module = jl_get_module_in_main("TestAlloc");
 
         if(!invalid_module)
