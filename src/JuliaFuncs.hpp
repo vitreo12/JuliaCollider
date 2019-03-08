@@ -141,69 +141,75 @@ class JuliaGCBarrier : public JuliaAtomicBarrier
         }
 };
 
+/* IdDict() wrapper.
+Dict() is faster than IdDict(), but it allocates more memory. 
+Also, I must use IdDict{Any, Any} because every __UGenRef__ will be different, as it's defined in each module differently.
+Anyway, it looks like IdDict() is fast enough, at least for now it's fine. */
 class JuliaGlobalIdDict
 {
     public:
         JuliaGlobalIdDict(){}
         ~JuliaGlobalIdDict(){}
 
-        inline bool initialize_global_id_dict()
+        inline bool initialize_id_dict(const char* global_var_name_)
         {
+            global_var_name = global_var_name_;
+
+            set_index_fun = jl_get_function(jl_base_module, "setindex!");
+            if(!set_index_fun)
+                return false;
+
+            delete_index_fun = jl_get_function(jl_base_module, "delete!");
+            if(!delete_index_fun)
+                return false;
+
             jl_function_t* id_dict_function = jl_get_function(jl_base_module, "IdDict");
             if(!id_dict_function)
                 return false;
 
-            global_id_dict = jl_call0(id_dict_function);
-            if(!global_id_dict)
+            id_dict = jl_call0(id_dict_function);
+            if(!id_dict)
                 return false;
 
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalIdDict__"), global_id_dict);
+            //Set it to global in main
+            jl_set_global(jl_main_module, jl_symbol(global_var_name), id_dict);
 
             return true;
         }
 
         //This is perhaps useless. It's executed when Julia is booting off anyway.
-        inline void unload_global_id_dict()
+        inline void unload_id_dict()
         {
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalIdDict__"), jl_nothing);
+            jl_set_global(jl_main_module, jl_symbol(global_var_name), jl_nothing);
         }
         
         /* Will throw exception if things go wrong */
-        inline void add_to_global_id_dict(jl_value_t* var)
+        inline void add_to_id_dict(jl_value_t* var)
         {
-            jl_value_t* result = jl_call3(set_index, global_id_dict, var, var);
+            jl_value_t* result = jl_call3(set_index_fun, id_dict, var, var);
             if(!result)
-                jl_error("Could not add element to JuliaIdDict");
+                jl_errorf("Could not add element to %s", global_var_name);
         }
 
         /* Will throw exception if things go wrong */
-        inline void remove_from_global_id_dict(jl_value_t* var)
+        inline void remove_from_id_dict(jl_value_t* var)
         {
-            jl_value_t* result = jl_call2(delete_index, global_id_dict, var);
+            jl_value_t* result = jl_call2(delete_index_fun, id_dict, var);
             if(!result)
-                jl_error("Could not remove element from JuliaIdDict");
+                jl_errorf("Could not remove element from %s", global_var_name);
         }
 
-        inline jl_value_t* get_global_id_dict()
+        inline jl_value_t* get_id_dict()
         {
-            return global_id_dict;
-        }
-
-        inline jl_function_t* get_set_index()
-        {
-            return set_index;
-        }
-
-        inline jl_function_t* get_delete_index()
-        {
-            return delete_index;
+            return id_dict;
         }
 
     private:
-        jl_value_t* global_id_dict;
+        jl_value_t* id_dict;
+        const char* global_var_name;
 
-        jl_function_t* set_index;
-        jl_function_t* delete_index;
+        jl_function_t* set_index_fun;
+        jl_function_t* delete_index_fun;
 };
 
 class JuliaGlobalUtilities
@@ -226,10 +232,9 @@ class JuliaGlobalUtilities
         inline void unload_global_utilities()
         {
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSCSynth__"), jl_nothing);
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSprintFun__"), jl_nothing);
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalShowerrortFun__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalVectorFloat32__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalVectorOfVectorsFloat32__"), jl_nothing);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaDefFun__"), jl_nothing);
         }
 
         //Requires "using JuliaCollider" to be ran already
@@ -271,10 +276,24 @@ class JuliaGlobalUtilities
             showerror_fun = jl_get_function(jl_base_module, "showerror");
             if(!showerror_fun)
                 return false;
+
+            set_index_fun = jl_get_function(jl_base_module, "setindex!");
+            if(!set_index_fun)
+                return false;
+
+            delete_index_fun = jl_get_function(jl_base_module, "delete!");
+            if(!delete_index_fun)
+                return false;
             
-            //set global
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSprintFun__"), sprint_fun);
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalShowerrortFun__"), showerror_fun);
+            //FUNCTIONS ARE ALREADY GLOBAL (in fact, jl_get_function is just a wrapper of jl_get_global)
+            
+            //Gives for granted that "using JuliaCollider.JuliaDef" was succesfully executed at bootup
+            julia_def_fun = jl_get_function(jl_main_module, "__JuliaDef__");
+            if(!julia_def_fun)
+                return false;
+            
+            //Unneeded?
+            jl_set_global(jl_main_module, jl_symbol("__JuliaDefFun__"), julia_def_fun);
 
             return true;
         }
@@ -312,6 +331,21 @@ class JuliaGlobalUtilities
         {
             return showerror_fun;
         }
+
+        inline jl_function_t* get_set_index_fun()
+        {
+            return set_index_fun;
+        }
+
+        inline jl_function_t* get_delete_index_fun()
+        {
+            return delete_index_fun;
+        }
+
+        inline jl_function_t* get_julia_def_fun()
+        {
+            return julia_def_fun;
+        }
         
         inline jl_value_t* get_vector_float32()
         {
@@ -329,6 +363,9 @@ class JuliaGlobalUtilities
         /* Utilities functions */
         jl_function_t* sprint_fun;
         jl_function_t* showerror_fun;
+        jl_function_t* set_index_fun;
+        jl_function_t* delete_index_fun;
+        jl_function_t* julia_def_fun;
         
         /* Datatypes */
         jl_value_t* vector_float32;
@@ -409,8 +446,7 @@ class JuliaPath
         #endif
 };
 
-//new / delete
-class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGlobalUtilities
+class JuliaState : public JuliaPath, public JuliaGlobalUtilities
 {
     public:
         //Ignoring constructor, as initialization will happen AFTER object creation. It will happen when an 
@@ -441,7 +477,7 @@ class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGloba
 
                 const char* path_to_julia_lib = JuliaPath::get_julia_lib_path();
 
-                printf("Path to Julia lib:\n %s\n", path_to_julia_lib);
+                printf("***\nPath to Julia lib:\n %s\n***", path_to_julia_lib);
                 
                 if(path_to_julia_lib)
                 {
@@ -463,17 +499,24 @@ class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGloba
                         return;
                     }
 
-                    bool initialized_global_id_dict = JuliaGlobalIdDict::initialize_global_id_dict();
-                    if(!initialized_global_id_dict)
-                    {
-                        printf("ERROR: Could not intialize JuliaIdDict \n");
-                        return;
-                    }
-
                     bool initialized_global_utilities = JuliaGlobalUtilities::initialize_global_utilities(SCWorld);
                     if(!initialized_global_utilities)
                     {
                         printf("ERROR: Could not intialize JuliaGlobalUtilities\n");
+                        return;
+                    }
+
+                    bool initialized_global_def_id_dict = global_def_id_dict.initialize_id_dict("__JuliaGlobalDefIdDict__");
+                    if(!initialized_global_def_id_dict)
+                    {
+                        printf("ERROR: Could not intialize JuliaGlobalDefIdDict \n");
+                        return;
+                    }
+
+                    bool initialized_global_object_id_dict = global_object_id_dict.initialize_id_dict("__JuliaGlobalObjectIdDict__");
+                    if(!initialized_global_object_id_dict)
+                    {
+                        printf("ERROR: Could not intialize JuliaGlobalObjectIdDict \n");
                         return;
                     }
 
@@ -510,6 +553,21 @@ class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGloba
                 return false;
             }
 
+            julia_collider_module = jl_get_module_in_main("JuliaCollider");
+
+            if(!julia_collider_module)
+            {
+                printf("ERROR: Failed in retrieving JuliaCollider \n");
+                return false;
+            }
+
+            jl_value_t* eval_import_julia_def = jl_eval_string("using JuliaCollider.JuliaDef");
+            if(!eval_import_julia_def)
+            {
+                printf("ERROR: Failed in \"using JuliaCollider.JuliaDef\"\n");
+                return false;
+            }
+
             return true;
         }
 
@@ -523,6 +581,8 @@ class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGloba
                 //Run one last GC here?
 
                 JuliaGlobalUtilities::unload_global_utilities();
+                global_def_id_dict.unload_id_dict();
+                global_object_id_dict.unload_id_dict();
 
                 jl_atexit_hook(0); //on linux it freezes here
 
@@ -535,6 +595,21 @@ class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGloba
         bool is_initialized()
         {
             return initialized;
+        }
+
+        JuliaGlobalIdDict &get_global_def_id_dict()
+        {
+            return global_def_id_dict;
+        }
+
+        JuliaGlobalIdDict &get_global_object_id_dict()
+        {
+            return global_object_id_dict;
+        }
+
+        jl_module_t* get_julia_collider_module()
+        {
+            return julia_collider_module;
         }
 
         //In julia.h, #define JL_RTLD_DEFAULT (JL_RTLD_LAZY | JL_RTLD_DEEPBIND) is defined. Could I just redefine the flags there?
@@ -561,6 +636,11 @@ class JuliaState : public JuliaPath, public JuliaGlobalIdDict, public JuliaGloba
 
         //Extra variable to check if also the JuliaGlobalUtilities thing went through, not just Julia initialization.       
         bool initialized = false;
+
+        JuliaGlobalIdDict global_def_id_dict;
+        JuliaGlobalIdDict global_object_id_dict;
+
+        jl_module_t* julia_collider_module;
         
         #ifdef __linux__
             void* dl_handle;
@@ -708,39 +788,49 @@ class JuliaObjectCompiler
 
             jl_module_t* evaluated_module = eval_julia_file(path);
 
-            if(evaluated_module)
+            if(!evaluated_module)
             {
-                //If failed any precompilation stage, nullptr.
-                if(!precompile_julia_object(evaluated_module, julia_object))
-                {
-                    printf("WARNING: Failed in compiling Julia @object \"%s\"\n", jl_symbol_name(evaluated_module->name));
-                    return nullptr;
-                }
-
-                julia_object->evaluated_module = evaluated_module;
+                printf("ERROR: Invalid module\n");
+                return nullptr;
             }
+
+            //If failed any precompilation stage, return nullptr.
+            if(!precompile_julia_object(evaluated_module, julia_object))
+            {
+                printf("ERROR: Failed in compiling Julia @object \"%s\"\n", jl_symbol_name(evaluated_module->name));
+                return nullptr;
+            }
+
+            julia_object->evaluated_module = evaluated_module;
 
             return evaluated_module;
         }
 
-        inline void unload_julia_object(JuliaObject* julia_object)
+        inline bool unload_julia_object(JuliaObject* julia_object)
         {
             if(!julia_object)
             {
                 printf("ERROR: Invalid Julia @object \n");
-                return;
+                return false;
+            }
+
+            if(julia_object->RT_busy)
+            {
+                printf("WARNING: %s @object is still being used in a SynthDef\n", jl_symbol_name(julia_object->evaluated_module->name));
+                return false;
             }
 
             if(julia_object->compiled)
-            {
+            {   
+                /* JL_TRY/CATCH here? */
+                remove_julia_object_from_global_def_id_dict(julia_object);
                 null_julia_object(julia_object);
-
-                //Remove from GlobalIdDict
-                remove_julia_object_from_global_id_dict(julia_object);
             }
 
             //Reset memory pointer for this object
             memset(julia_object, 0, sizeof(JuliaObject));
+
+            return true;
         }
     
     private:
@@ -836,63 +926,34 @@ class JuliaObjectCompiler
             julia_object->destructor_instance = nullptr;
         }
 
-        inline void add_julia_object_to_global_id_dict(JuliaObject* julia_object)
+        inline void add_julia_object_to_global_def_id_dict(JuliaObject* julia_object)
         {
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->evaluated_module);
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->constructor_fun);
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->perform_fun);
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->destructor_fun);
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->constructor_instance);
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->perform_instance);
-            julia_global->add_to_global_id_dict((jl_value_t*)julia_object->destructor_instance);
+            julia_global->get_global_def_id_dict().add_to_id_dict(julia_object->julia_def);
         }
 
-        inline void remove_julia_object_from_global_id_dict(JuliaObject* julia_object)
+        inline void remove_julia_object_from_global_def_id_dict(JuliaObject* julia_object)
         {
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->evaluated_module);
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->constructor_fun);
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->perform_fun);
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->destructor_fun);
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->constructor_instance);
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->perform_instance);
-            julia_global->remove_from_global_id_dict((jl_value_t*)julia_object->destructor_instance);
+            julia_global->get_global_def_id_dict().remove_from_id_dict(julia_object->julia_def);
         }
 
         inline bool precompile_julia_object(jl_module_t* evaluated_module, JuliaObject* julia_object)
         {
             bool precompile_state = precompile_stages(evaluated_module, julia_object);
 
-            //if any stage failed, keep nullptrs.
+            //if any stage failed, keep nullptrs and memset to zero.
             if(!precompile_state)
             {
                 null_julia_object(julia_object);
+                unload_julia_object(julia_object);
                 return false;
             }
 
-            JL_TRY {
-                add_julia_object_to_global_id_dict(julia_object);
-                
-                jl_exception_clear();
-            }
-            JL_CATCH {
-                jl_get_ptls_states()->previous_exception = jl_current_exception();
-
-                jl_value_t* exception = jl_exception_occurred();
-                jl_value_t* sprint_fun = julia_global->get_sprint_fun();
-                jl_value_t* showerror_fun = julia_global->get_showerror_fun();
-
-                if(exception)
-                {
-                    const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
-                    printf("ERROR: %s\n", returned_exception);
-                }
-
-                null_julia_object(julia_object);
-
-                precompile_state = false;
-            }
-
+            /* JL_TRY/CATCH here? */
+            add_julia_object_to_global_def_id_dict(julia_object);
+            
+            /* precompile_state = true */
             julia_object->compiled = precompile_state;
+
             return precompile_state;
         }
 
@@ -1262,9 +1323,8 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
-            unload_julia_object(julia_object);
-
-            decrease_active_entries();
+            if(unload_julia_object(julia_object))
+                decrease_active_entries();
 
             JuliaAtomicBarrier::Unlock();
         }
