@@ -53,14 +53,13 @@ make
 mkdir -p Julia
 mkdir -p Julia/julia
 mkdir -p Julia/julia/startup
-mkdir -p Julia/julia/objects
 
 echo "Copying files over..."
 
 rsync -r --links --update "$JULIA_PATH/lib" ./Julia/julia               #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
 rsync --update "$JULIA_PATH/etc/julia/startup.jl" ./Julia/julia/startup #copy startup.jl
-rsync -r -L --update "$JULIA_PATH/share/julia/stdlib" ./Julia/julia     #copy stdlib. Need to deep copy all the symlinks (-L flag)
-rsync -r --links --update ../src/JuliaDSP ./Julia/julia                 #copy JuliaDSP/.jl stuff to the same julia/ subdirectory of Julia
+rsync -r -L --update "$JULIA_PATH/share/julia/stdlib" ./Julia/julia     #copy /stdlib. Need to deep copy all the symlinks (-L flag)
+rsync -r --links --update ../src/JuliaObjects ./Julia/julia             #copy /JuliaObjects 
 
 if [[ "$OSTYPE" == "darwin"* ]]; then                     
     cp Julia.scx ./Julia                                                #copy compiled Julia.scx
