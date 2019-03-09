@@ -51,15 +51,23 @@ make
 
 #make a Julia dir, inside of ./build, and put all the built stuff and libs in it
 mkdir -p Julia
+mkdir -p Julia/julia
+mkdir -p Julia/julia/startup
+mkdir -p Julia/julia/objects
+
 echo "Copying files over..."
-rsync -r --links --update "$JULIA_PATH/lib" ./Julia/julia #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
-rsync -r --links --update ../src/JuliaDSP ./Julia/julia   #copy JuliaDSP/.jl stuff to the same julia/ subdirectory of Julia
+
+rsync -r --links --update "$JULIA_PATH/lib" ./Julia/julia               #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
+rsync --update "$JULIA_PATH/etc/julia/startup.jl" ./Julia/julia/startup #copy startup.jl
+rsync -r -L --update "$JULIA_PATH/share/julia/stdlib" ./Julia/julia     #copy stdlib. Need to deep copy all the symlinks (-L flag)
+rsync -r --links --update ../src/JuliaDSP ./Julia/julia                 #copy JuliaDSP/.jl stuff to the same julia/ subdirectory of Julia
+
 if [[ "$OSTYPE" == "darwin"* ]]; then                     
-    cp Julia.scx ./Julia                                  #copy compiled Julia.scx
+    cp Julia.scx ./Julia                                                #copy compiled Julia.scx
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then 
-    cp Julia.so ./Julia                                   #copy compiled Julia.so file
+    cp Julia.so ./Julia                                                 #copy compiled Julia.so file
 fi          
-cp ../src/Julia.sc ./Julia                                #copy .sc class
+cp ../src/Julia.sc ./Julia                                              #copy .sc class
 
 #copy stuff over to SC's User Extension directory
 rsync -r --links --update ./Julia "$SC_EXTENSIONS_PATH"

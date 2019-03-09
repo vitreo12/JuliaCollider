@@ -21,6 +21,17 @@
 #pragma once
 
 /***************************************************************************/
+                        /* JULIA VERSION std::string */
+/***************************************************************************/
+std::string julia_version_string = std::string(jl_ver_string());
+const std::string julia_version_maj_min = julia_version_string.substr(0, julia_version_string.size()-2); //Remove last two characters. Result is "1.1"
+
+/***************************************************************************/
+                            /* INTERFACE TABLE */
+/***************************************************************************/
+static InterfaceTable* ft;
+
+/***************************************************************************/
                                 /* STRUCTS */
 /***************************************************************************/
 typedef struct JuliaObject
@@ -47,6 +58,9 @@ typedef struct JuliaObject
 class JuliaAtomicBarrier
 {
     public:
+        JuliaAtomicBarrier(){}
+        ~JuliaAtomicBarrier(){}
+
         /* To be called from NRT thread only. */
         inline void Spinlock()
         {
@@ -80,6 +94,9 @@ class JuliaAtomicBarrier
 class JuliaGCBarrier : public JuliaAtomicBarrier
 {
     public:
+        JuliaGCBarrier(){}
+        ~JuliaGCBarrier(){}
+
         /* SHOULD I BE USING this-> INSTEAD OF JuliaAtomicBarrier:: ????*/
         inline void NRTPerformGC(int full)
         {
@@ -386,11 +403,20 @@ class JuliaPath
 
             pclose(pipe);
 
-            julia_lib_path = julia_folder_path;
-            julia_lib_path.append(julia_folder_structure);
+            julia_sysimg_path = julia_folder_path;
+            julia_sysimg_path.append(julia_path_to_sysimg);
+
+
+            julia_stdlib_path = julia_folder_path;
+            julia_stdlib_path.append(julia_path_to_stdlib);
+
+            julia_startup_path = julia_folder_path;
+            julia_startup_path.append(julia_path_to_startup);
 
             printf("*** JULIA PATH: %s ***\n", julia_folder_path.c_str());
-            printf("*** JULIA LIB PATH: %s ***\n", julia_lib_path.c_str());
+            printf("*** JULIA LIB PATH: %s ***\n", julia_sysimg_path.c_str());
+            printf("*** JULIA STARTUP PATH : %s ***\n", julia_startup_path.c_str());
+            printf("*** JULIA STDLIB PATH : %s ***\n",  julia_stdlib_path.c_str());
         }
 
         const char* get_julia_folder_path()
@@ -398,20 +424,30 @@ class JuliaPath
             return julia_folder_path.c_str();
         }
 
-        const char* get_julia_lib_path()
+        const char* get_julia_sysimg_path()
         {
-            return julia_lib_path.c_str();
+            return julia_sysimg_path.c_str();
         }
 
-        const char* get_julia_folder_structure()
+        const char* get_julia_stdlib_path()
         {
-            return julia_folder_structure.c_str();
+            return julia_stdlib_path.c_str();
+        }
+
+        const char* get_julia_startup_path()
+        {
+            return julia_startup_path.c_str();
         }
 
     private:
         std::string julia_folder_path;
-        std::string julia_lib_path;
-        const std::string julia_folder_structure = "julia/lib/julia";
+        std::string julia_sysimg_path;
+        std::string julia_stdlib_path;
+        std::string julia_startup_path;
+
+        const std::string julia_path_to_sysimg  = "julia/lib/julia";
+        const std::string julia_path_to_stdlib  = std::string("julia/stdlib/v").append(julia_version_maj_min);
+        const std::string julia_path_to_startup = "julia/startup/startup.jl";
 
         #ifdef __APPLE__
             const char* find_julia_diretory_cmd = "i=10; complete_string=$(vmmap -w $scsynthPID | grep -m 1 'Julia.scx'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.scx\"/}\"";
@@ -425,46 +461,81 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
     public:
         //Ignoring constructor, as initialization will happen AFTER object creation. It will happen when an 
         //async command is triggered, which would call into boot_julia.
-        JuliaGlobalState(){}
+        JuliaGlobalState(World* SCWorld_, InterfaceTable* SCInterfaceTable_)
+        {
+            SCWorld = SCWorld_;
+            SCInterfaceTable = SCInterfaceTable_;
+
+            if(!SCWorld || !SCInterfaceTable)
+            {
+                printf("ERROR: Invalid World* or InterfaceTable* \n");
+                return;
+            }
+
+            boot_julia();
+        }
         
-        ~JuliaGlobalState(){}
+        ~JuliaGlobalState()
+        {
+            quit_julia();
+        }
 
         //Called with async command.
-        inline void boot_julia(World* in_world, InterfaceTable* interface_table)
+        inline void boot_julia()
         {
-            if(!initialized)
+            if(!jl_is_initialized() && !initialized)
             {
-                SCWorld = in_world;
-                SCInterfaceTable = interface_table;
-
-                if(!SCWorld || !SCInterfaceTable)
-                {
-                    printf("ERROR: Invalid World* or InterfaceTable* \n");
-                    return;
-                }
-
                 printf("-> Booting Julia...\n");
 
                 #ifdef __linux__
                     load_julia_shared_library();
                 #endif
 
-                const char* path_to_julia_lib = JuliaPath::get_julia_lib_path();
+                const char* path_to_julia_sysimg = JuliaPath::get_julia_sysimg_path();
+                const char* path_to_julia_stdlib  = JuliaPath::get_julia_stdlib_path();
 
-                printf("***\nPath to Julia lib:\n %s\n***", path_to_julia_lib);
+                printf("***\nPath to Julia lib:\n %s\n***", path_to_julia_sysimg);
+
+                //Set env variable for JULIA_LOAD_PATH to set correct path to stdlib. It would be
+                //much better if I can find a way to set the DATAROOTDIR julia variable to do this.
+                setenv("JULIA_LOAD_PATH", path_to_julia_stdlib, 1);
                 
-                if(path_to_julia_lib)
+                if(path_to_julia_sysimg)
                 {
                     #ifdef __APPLE__
-                        jl_init_with_image_SC(path_to_julia_lib, "sys.dylib", SCWorld, SCInterfaceTable);
+                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, SCInterfaceTable);
                     #elif __linux__
-                        jl_init_with_image_SC(path_to_julia_lib, "sys.so", SCWorld, SCInterfaceTable);
+                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, SCInterfaceTable);
                     #endif
                 }
 
                 if(jl_is_initialized())
                 {
+                    //Disable GC.
                     jl_gc_enable(0);
+
+                    /* Since my Sys.BINDIR is directly linked to sys.so, and not to a julia executable, 
+                    both Base.SYSCONFDIR (for startup.jl) and Base.DATAROOTDIR (for /share folder) are wrong, 
+                    as they are defaulted to "../etc" and "../share" respectively. 
+                    I would need them to be "../../etc" and ../../share" */
+                    
+                    printf("BINDIR:\n");
+                    jl_eval_string("println(Sys.BINDIR)");
+
+                    //I would need it to be "../../etc"
+                    printf("SYSCONFDIR: \n");
+                    jl_eval_string("println(Base.SYSCONFDIR)");
+
+                    printf("LOAD_PATH: \n");
+                    jl_eval_string("println(Base.load_path_expand.(LOAD_PATH))");
+
+                    //Manually load the startup file, since I can't set Base.SYSCONFDIR to "../../etc". Workaround:
+                    bool initialized_startup_file = run_startup_file();
+                    if(!initialized_startup_file)
+                    {
+                        printf("ERROR: Could not run startup.jl\n");
+                        return;
+                    }
 
                     bool initialized_julia_collider = initialize_julia_collider_module();
                     if(!initialized_julia_collider)
@@ -517,8 +588,17 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 printf("ERROR: Could not boot Julia \n"); 
         }
 
+        inline bool run_startup_file()
+        {
+            const char* path_to_julia_startup = JuliaPath::get_julia_startup_path();
+            jl_value_t* load_startup = jl_load(jl_main_module, path_to_julia_startup);
+            if(!load_startup)
+                return false;
+            return true;
+        }
+
         inline bool initialize_julia_collider_module()
-        {            
+        {         
             jl_value_t* eval_using_julia_collider = jl_eval_string("using JuliaCollider");
                 
             if(!eval_using_julia_collider)
@@ -1213,7 +1293,7 @@ class JuliaObjectCompiler
 
         inline void create_julia_def(jl_module_t* evaluated_module, JuliaObject* julia_object)
         {
-            jl_function_t* julia_def_fun = julia_state.get_julia_def_fun();
+            jl_function_t* julia_def_fun = julia_global->get_julia_def_fun();
             if(!julia_def_fun)
                 jl_error("Invalid julia_def_fun");
 
@@ -1223,16 +1303,16 @@ class JuliaObjectCompiler
                 jl_error("Could not allocate memory for julia_def_args");
             
             //__JuliaDef__ constructor
-            julia_def_args[0] = (jl_value_t*)evaluated_module;
-            julia_def_args[1] = (jl_value_t*)julia_object->ugen_ref_fun;
-            julia_def_args[2] = (jl_value_t*)julia_object->constructor_fun;
-            julia_def_args[3] = (jl_value_t*)julia_object->perform_fun;
-            julia_def_args[4] = (jl_value_t*)julia_object->destructor_fun;
-            julia_def_args[5] = (jl_value_t*)julia_object->ugen_ref_instance;
-            julia_def_args[6] = (jl_value_t*)julia_object->constructor_instance;
-            julia_def_args[7] = (jl_value_t*)julia_object->perform_instance;
-            julia_def_args[8] = (jl_value_t*)julia_object->destructor_instance;
-            julia_def_args[9] = (jl_value_t*)julia_object->set_index_ugen_ref_instance;
+            julia_def_args[0]  = (jl_value_t*)evaluated_module;
+            julia_def_args[1]  = (jl_value_t*)julia_object->ugen_ref_fun;
+            julia_def_args[2]  = (jl_value_t*)julia_object->constructor_fun;
+            julia_def_args[3]  = (jl_value_t*)julia_object->perform_fun;
+            julia_def_args[4]  = (jl_value_t*)julia_object->destructor_fun;
+            julia_def_args[5]  = (jl_value_t*)julia_object->ugen_ref_instance;
+            julia_def_args[6]  = (jl_value_t*)julia_object->constructor_instance;
+            julia_def_args[7]  = (jl_value_t*)julia_object->perform_instance;
+            julia_def_args[8]  = (jl_value_t*)julia_object->destructor_instance;
+            julia_def_args[9]  = (jl_value_t*)julia_object->set_index_ugen_ref_instance;
             julia_def_args[10] = (jl_value_t*)julia_object->delete_index_ugen_ref_instance;
 
             //Create julia_def
@@ -1440,37 +1520,49 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 /***************************************************************************/
                             /* GLOBAL VARS */
 /***************************************************************************/
-static InterfaceTable* ft;
-JuliaGCBarrier julia_gc_barrier;
-JuliaGlobalState julia_global_state; //uninitialized
+JuliaGlobalState*  julia_global_state;
+JuliaGCBarrier*    julia_gc_barrier;
+JuliaObjectsArray* julia_objects_array;
 
 /****************************************************************************/
                             /* ASYNC COMMANDS */
 /****************************************************************************/
 //On RT Thread for now.
-inline void julia_boot(World* inWorld)
+inline bool julia_boot(World* inWorld, void* cmd)
 {
+    if(!jl_is_initialized())
+    {
+        julia_global_state = new JuliaGlobalState(inWorld, ft);
+        if(julia_global_state->is_initialized())
+            julia_gc_barrier = new JuliaGCBarrier();
+    }
+    else
+        printf("WARNING: Julia already booted \n");
     
+
+    return true;
 }
 
-void julia_boot_cleanup(World* world, void* cmd){}
+void julia_boot_cleanup(World* world, void* cmd) {}
 
 void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     DoAsynchronousCommand(inWorld, replyAddr, "/jl_boot", nullptr, 0, (AsyncStageFn)julia_boot, 0, julia_boot_cleanup, 0, nullptr);
 }
 
-//nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool julia_load(World* world, void* cmd)
 {
-    if(julia_global->is_initialized())
+    if(jl_is_initialized() && julia_global_state->is_initialized())
     {
 
     }
+    else
+        printf("WARNING: Julia hasn't been booted correctly \n");
+
     return true;
 }
 
-void julia_load_cleanup(World* world, void* cmd){}
+void julia_load_cleanup(World* world, void* cmd) {}
 
 void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
@@ -1479,12 +1571,14 @@ void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 
 inline bool julia_perform_gc(World* world, void* cmd)
 {
-    if(julia_global->is_initialized())
-        julia_gc_barrier.NRTPerformGC(1);
+    if(jl_is_initialized() && julia_global_state->is_initialized())
+        julia_gc_barrier->NRTPerformGC(1);
+    else
+        printf("WARNING: Julia hasn't been booted correctly \n");
     
     return true;
 }
-void julia_gc_cleanup(World* world, void* cmd){}
+void julia_gc_cleanup(World* world, void* cmd) {}
 
 void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
