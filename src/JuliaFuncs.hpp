@@ -222,20 +222,23 @@ class JuliaGlobalUtilities
         //This is perhaps useless. It's executed when Julia is booting off anyway.
         inline void unload_global_utilities()
         {
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderModule__"), jl_nothing);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderSCSynthModule__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSCSynth__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalVectorFloat32__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalVectorOfVectorsFloat32__"), jl_nothing);
-            jl_set_global(jl_main_module, jl_symbol("__JuliaDefFun__"), jl_nothing);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefModule__"), jl_nothing);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefFun__"), jl_nothing);
         }
 
         //Requires "using JuliaCollider" to be ran already
         inline bool create_scsynth(World* in_world)
         {
-            jl_module_t* julia_collider_module = jl_get_module_in_main("JuliaCollider");
+            julia_collider_module = jl_get_module_in_main("JuliaCollider");
             if(!julia_collider_module)
                 return false;
 
-            jl_module_t* scsynth_module = jl_get_module(julia_collider_module, "SCSynth");
+            scsynth_module = jl_get_module(julia_collider_module, "SCSynth");
             if(!scsynth_module)
                 return false;
 
@@ -252,8 +255,11 @@ class JuliaGlobalUtilities
             if(!scsynth)
                 return false;
 
-            //set global
-            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSCSynth__"), scsynth);
+            //UNNEEDED?
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderModule__"), (jl_value_t*)julia_collider_module);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderSCSynthModule__"), (jl_value_t*)scsynth_module);
+            //Needed
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSCSynth__"), (jl_value_t*)scsynth);
 
             return true;
         }
@@ -275,16 +281,25 @@ class JuliaGlobalUtilities
             delete_index_fun = jl_get_function(jl_base_module, "delete!");
             if(!delete_index_fun)
                 return false;
-            
+
             //FUNCTIONS ARE ALREADY GLOBAL (in fact, jl_get_function is just a wrapper of jl_get_global)
-            
-            //Gives for granted that "using JuliaCollider.JuliaDef" was succesfully executed at bootup
-            julia_def_fun = jl_get_function(jl_main_module, "__JuliaDef__");
+
+            return true;
+        }
+
+        inline bool create_julia_def()
+        {
+            julia_def_module = jl_get_module(julia_collider_module, "JuliaDef");
+            if(!julia_def_module)
+                return false;
+
+            julia_def_fun = jl_get_function(julia_def_module, "__JuliaDef__");
             if(!julia_def_fun)
                 return false;
             
             //Unneeded?
-            jl_set_global(jl_main_module, jl_symbol("__JuliaDefFun__"), julia_def_fun);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefModule__"), (jl_value_t*)julia_def_module);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefFun__"), (jl_value_t*)julia_def_fun);
 
             return true;
         }
