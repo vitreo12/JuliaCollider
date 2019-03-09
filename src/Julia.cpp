@@ -5,15 +5,15 @@ struct Julia : public SCUnit
 public:
     Julia() 
     {         
-        printf("Object gc_allocation_state BEFORE: %i\n", julia_gc_barrier.get_barrier_value());
+        printf("Object gc_allocation_state BEFORE: %i\n", julia_gc_barrier->get_barrier_value());
         
-        bool gc_state = julia_gc_barrier.RTChecklock();
+        bool gc_state = julia_gc_barrier->RTChecklock();
         
         if(gc_state) 
         {
-            printf("Object gc_allocation_state MIDDLE: %i\n", julia_gc_barrier.get_barrier_value());
+            printf("Object gc_allocation_state MIDDLE: %i\n", julia_gc_barrier->get_barrier_value());
 
-            julia_gc_barrier.RTUnlock();
+            julia_gc_barrier->RTUnlock();
         }
         else
             Print("WARNING: Julia's GC is running. Object was not created.\n");
@@ -46,10 +46,6 @@ private:
 
 PluginLoad(JuliaUGens) 
 {
-    #ifdef __linux__
-        open_julia_shared_library();
-    #endif
-    
     ft = inTable;
     registerUnit<Julia>(ft, "Julia");
 
@@ -60,21 +56,15 @@ PluginLoad(JuliaUGens)
 void julia_destructor(void) __attribute__((destructor));
 void julia_destructor(void)
 {
-    if(jl_is_initialized())
+    if(jl_is_initialized() && !julia_global_state->is_initialized())
     {
-        printf("-> Quitting Julia..\n");
-        delete_global_id_dict();
-        
-        //Since now GC lives inside of SC's allocator, there is no need to run a gc run, as all the memory will be collected anyway.
-        //Not entirely true, as the GC also might collect memory from wrappers around external malloc() calls.
-        //perform_gc(1);
-        
-        jl_atexit_hook(0); //on linux it freezes here
+        jl_atexit_hook(0);
+        return;
     }
     
-    #ifdef __linux__
-        //close handle to libjulia.so. It is probably not needed as Julia.so is unloaded anyway, and with it also the handle to libjulia.so
-        dlclose(handle);
-    #endif
-    
+    if(julia_global_state->is_initialized())
+    {
+        delete julia_global_state;
+        delete julia_gc_barrier;
+    }
 }
