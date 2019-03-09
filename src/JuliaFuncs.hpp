@@ -649,10 +649,17 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 return false;
             }
 
-            jl_value_t* eval_import_julia_def = jl_eval_string("using JuliaCollider.JuliaDef");
-            if(!eval_import_julia_def)
+            jl_value_t* eval_using_julia_def = jl_eval_string("using JuliaCollider.JuliaDef");
+            if(!eval_using_julia_def)
             {
                 printf("ERROR: Failed in \"using JuliaCollider.JuliaDef\"\n");
+                return false;
+            }
+
+            jl_value_t* eval_using_ugen_object_macro = jl_eval_string("using JuliaCollider.UGenObjectMacro");
+            if(!eval_using_ugen_object_macro)
+            {
+                printf("ERROR: Failed in \"using JuliaCollider.UGenObjectMacro\"\n");
                 return false;
             }
 
@@ -787,12 +794,6 @@ class JuliaReply : public RTClassAlloc
             return snprintf(buffer_, size, "%lu\n", value);
         }
 
-        //for id
-        int append_string(char* buffer_, size_t size, unsigned long long value)
-        {
-            return snprintf(buffer_, size, "%llu\n", value);
-        }
-
         //Exit condition. No more VarArgs to consume
         void create_done_command() {return;}
 
@@ -858,13 +859,13 @@ class JuliaEntriesCounter
                 active_entries = 0;
         }
 
-        inline unsigned long long get_active_entries()
+        inline unsigned long get_active_entries()
         {
             return active_entries;
         }
 
     private:
-        unsigned long long active_entries = 0;
+        unsigned long active_entries = 0;
 };
 
 /* eval and compile an individual JuliaObject in NRT thread. Using just one args and changing 
@@ -1403,8 +1404,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* NRT THREAD. Called at JuliaDef.new() */
         inline bool create_julia_object(JuliaReplyWithLoadPath* julia_reply_with_load_path)
         {  
-            bool result;
-            unsigned long long new_id;
+            unsigned long new_id;
             JuliaObject* julia_object;
             
             if(get_active_entries() == num_total_entries)
@@ -1418,55 +1418,46 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             }
 
             //Retrieve a new ID be checking out the first free entry in the julia_objects_array
-            for(unsigned long long i = 0; i < num_total_entries; i++)
+            for(unsigned long i = 0; i < num_total_entries; i++)
             {
                 JuliaObject* this_julia_object = julia_objects_array + i;
-                if(!this_julia_object) //If empty entry, it means I can take ownership
+                if(!this_julia_object->compiled) //If empty entry, it means I can take ownership
                 {
                     julia_object = this_julia_object;
                     new_id = i;
+                    break;
                 }
             }
 
-            printf("ID: %llu\n", new_id);
+            printf("ID: %lu\n", new_id);
 
             //Run precompilation
             jl_module_t* evaluated_module = compile_julia_object(julia_object, julia_reply_with_load_path);
 
-            if(!evaluated_module)
+            if(!evaluated_module || !julia_object->compiled)
+            {
+                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
                 return false;
-
-            //Check if compilation went through. If it did, increase counter of active entries and formulate correct JuliaReply
-            if(julia_object->compiled)
-            {
-                advance_active_entries();
-
-                const char* name = jl_symbol_name(evaluated_module->name);
-                int inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
-                int outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
-
-                //Set unique_id in newly created module aswell. Used to retrieve JuliaDef by module name.
-                jl_function_t* set_unique_id = jl_get_function(evaluated_module, "__set_unique_id__");
-                jl_call1(set_unique_id, jl_box_uint64(new_id));
-
-                //MSG: OSC id, cmd, id, name, inputs, outputs
-                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", new_id, name, inputs, outputs);
-
-                result = true;
-            }
-            else
-            {
-                //Failed. No id, name, inputs, outputs
-                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "__INVALID?_NAME?__", -1, -1);
-                
-                result = false;
             }
 
-            return result;
+            advance_active_entries();
+
+            const char* name = jl_symbol_name(evaluated_module->name);
+            int inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
+            int outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
+
+            //Set unique_id in newly created module aswell. Used to retrieve JuliaDef by module name.
+            jl_function_t* set_unique_id = jl_get_function(evaluated_module, "__set_unique_id__");
+            jl_call1(set_unique_id, jl_box_uint64(new_id));
+
+            //MSG: OSC id, cmd, id, name, inputs, outputs
+            julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", new_id, name, inputs, outputs);
+
+            return true;
         }
 
         /* RT THREAD. Called when a Julia UGen is created on the server */
-        inline bool get_julia_object(unsigned long long unique_id, JuliaObject* julia_object)
+        inline bool get_julia_object(unsigned long unique_id, JuliaObject* julia_object)
         {
             bool barrier_acquired = JuliaAtomicBarrier::Checklock();
 
