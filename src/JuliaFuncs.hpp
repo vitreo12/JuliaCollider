@@ -213,7 +213,7 @@ class JuliaGlobalUtilities
         //Actual constructor, called from child class after Julia initialization
         inline bool initialize_global_utilities(World* in_world)
         {
-            if(!create_scsynth(in_world) || !create_utils_functions() || !create_datatypes())
+            if(!create_scsynth(in_world) || !create_utils_functions() || !create_datatypes() || !create_julia_def_module() || !create_ugen_object_macro_module())
                 return false;
 
             return true;
@@ -229,6 +229,7 @@ class JuliaGlobalUtilities
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalVectorOfVectorsFloat32__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefModule__"), jl_nothing);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefFun__"), jl_nothing);
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderUGenObjectMacroModule__"), jl_nothing);
         }
 
         //Requires "using JuliaCollider" to be ran already
@@ -287,7 +288,7 @@ class JuliaGlobalUtilities
             return true;
         }
 
-        inline bool create_julia_def()
+        inline bool create_julia_def_module()
         {
             julia_def_module = jl_get_module(julia_collider_module, "JuliaDef");
             if(!julia_def_module)
@@ -300,6 +301,18 @@ class JuliaGlobalUtilities
             //Unneeded?
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefModule__"), (jl_value_t*)julia_def_module);
             jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefFun__"), (jl_value_t*)julia_def_fun);
+
+            return true;
+        }
+
+        inline bool create_ugen_object_macro_module()
+        {
+            ugen_object_macro_module = jl_get_module(julia_collider_module, "UGenObjectMacro");
+            if(!ugen_object_macro_module)
+                return false;
+
+            //Unneeded?
+            jl_set_global(jl_main_module, jl_symbol("__JuliaColliderUGenObjectMacroModule__"), (jl_value_t*)ugen_object_macro_module);
 
             return true;
         }
@@ -367,6 +380,7 @@ class JuliaGlobalUtilities
         jl_module_t* julia_collider_module;
         jl_module_t* scsynth_module;
         jl_module_t* julia_def_module;
+        jl_module_t* ugen_object_macro_module;
 
         /* Global objects */
         jl_value_t* scsynth;
