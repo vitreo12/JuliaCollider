@@ -65,6 +65,8 @@ typedef struct JuliaObject
     jl_method_instance_t* constructor_instance;
     jl_method_instance_t* perform_instance;
     jl_method_instance_t* destructor_instance;
+    jl_method_instance_t* set_index_ugen_ref_instance; //set_index and delete index for this __UGenRef__ in the global_object_id_dict()
+    jl_method_instance_t* delete_index_ugen_ref_instance; 
     bool compiled;
     bool RT_busy;
 } JuliaObject;
@@ -924,6 +926,8 @@ class JuliaObjectCompiler
             julia_object->constructor_instance = nullptr;
             julia_object->perform_instance = nullptr;
             julia_object->destructor_instance = nullptr;
+            julia_object->set_index_ugen_ref_instance = nullptr;
+            julia_object->delete_index_ugen_ref_instance = nullptr;
         }
 
         inline void add_julia_object_to_global_def_id_dict(JuliaObject* julia_object)
@@ -968,12 +972,14 @@ class JuliaObjectCompiler
                 jl_value_t* ugen_object;
                 jl_value_t* ins;
                 jl_value_t* outs;
+                jl_value_t* ugen_ref_object;
 
                 /* These functions will throw a jl_error if anything goes wrong. */
                 precompile_constructor(evaluated_module, julia_object);
                 precompile_perform(evaluated_module, ugen_object, ins, outs, julia_object);
                 precompile_destructor(evaluated_module, ugen_object, julia_object);
-                precompile_ugen_ref(evaluated_module, ugen_object, ins, outs, julia_object);
+                precompile_ugen_ref(evaluated_module, ugen_object, ins, outs, ugen_ref_object, julia_object);
+                precompile_set_index_delete_index_julia_def(ugen_ref_object, julia_object);
                 create_julia_def(evaluated_module, julia_object);
                 
                 precompile_state = true;
@@ -1148,7 +1154,7 @@ class JuliaObjectCompiler
             julia_object->destructor_instance = destructor_instance;
         }
 
-        inline void precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t* ugen_object, jl_value_t* ins, jl_value_t* outs, JuliaObject* julia_object)
+        inline void precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t* ugen_object, jl_value_t* ins, jl_value_t* outs, jl_value_t* ugen_ref_object, JuliaObject* julia_object)
         {
             jl_function_t* ugen_ref_fun = jl_get_function(evaluated_module, "__UGenRef__");
             if(!ugen_ref_fun)
@@ -1170,13 +1176,70 @@ class JuliaObjectCompiler
             /* COMPILATION */
             jl_method_instance_t* ugen_ref_instance = jl_lookup_generic_and_compile_SC(ugen_ref_args, nargs);
 
-            RTFree(in_world, ugen_ref_args);
-
             if(!ugen_ref_instance)
+            {
                 jl_error("Could not compile __UGenRef__ function");
+                RTFree(in_world, ugen_ref_args);
+            }
+
+            //Create an actual object with same args to pass it to the precompilation of set_index and delete_index functions.
+            //Maybe I should not use exception here?
+            ugen_ref_object = jl_invoke_exception_SC(ugen_ref_instance, ugen_ref_args, nargs);
+            
+            RTFree(in_world, ugen_ref_args);
+            
+            if(!ugen_ref_object)
+                jl_error("Could not precompile a __UGenRef__ object");
 
             julia_object->ugen_ref_fun = ugen_ref_fun;
             julia_object->ugen_ref_instance = ugen_ref_instance;
+        }
+
+        inline void precompile_set_index_delete_index_julia_def(jl_value_t* ugen_ref_object, JuliaObject* julia_object)
+        {
+            //Precompile set_index and delete_index
+            jl_function_t* set_index_fun = julia_global->get_set_index_fun();
+            jl_function_t* delete_index_fun = julia_global->get_delete_index_fun();
+            if(!set_index_fun || !delete_index_fun)
+                jl_error("Invalid set_index or delete_index");
+
+            jl_value_t* global_object_id_dict = julia_global->get_global_object_id_dict().get_id_dict();
+            if(!global_object_id_dict)
+                jl_error("Invalid global_object_id_dict");
+
+            int32_t set_index_nargs = 4;
+            jl_value_t** set_index_args = (jl_value_t**)RTAlloc(in_world, set_index_nargs * sizeof(jl_value_t*));
+            if(!set_index_args)
+                jl_error("Failed in allocating memory for set_index_args");
+            
+            int32_t delete_index_nargs = 3;
+            jl_value_t** delete_index_args = (jl_value_t**)RTAlloc(in_world, delete_index_nargs * sizeof(jl_value_t*));
+            if(!delete_index_args)
+                jl_error("Failed in allocating memory for delete_index_args");
+
+            //set index
+            set_index_args[0] = set_index_fun;
+            set_index_args[1] = global_object_id_dict;
+            set_index_args[2] = ugen_ref_object;
+            set_index_args[3] = ugen_ref_object;
+
+            //delete index
+            delete_index_args[0] = delete_index_fun;
+            delete_index_args[1] = global_object_id_dict;
+            delete_index_args[2] = ugen_ref_object;
+
+            /* COMPILATION */
+            jl_method_instance_t* set_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(set_index_args, set_index_nargs);
+            jl_method_instance_t* delete_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(delete_index_args, delete_index_nargs);
+
+            RTFree(in_world, set_index_args);
+            RTFree(in_world, delete_index_args);
+
+            if(!set_index_ugen_ref_instance || !delete_index_ugen_ref_instance)
+                jl_error("Could not compile set_index_ugen_ref_instance or delete_index_ugen_ref_instance");
+
+            julia_object->set_index_ugen_ref_instance = set_index_ugen_ref_instance;
+            julia_object->delete_index_ugen_ref_instance = delete_index_ugen_ref_instance;
         }
 
         inline void create_julia_def(jl_module_t* evaluated_module, JuliaObject* julia_object)
@@ -1185,7 +1248,7 @@ class JuliaObjectCompiler
             if(!julia_def_fun)
                 jl_error("Invalid julia_def_fun");
 
-            int32_t nargs = 9;
+            int32_t nargs = 11;
             jl_value_t** julia_def_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
             if(!julia_def_args)
                 jl_error("Could not allocate memory for julia_def_args");
@@ -1200,14 +1263,17 @@ class JuliaObjectCompiler
             julia_def_args[6] = (jl_value_t*)julia_object->constructor_instance;
             julia_def_args[7] = (jl_value_t*)julia_object->perform_instance;
             julia_def_args[8] = (jl_value_t*)julia_object->destructor_instance;
+            julia_def_args[9] = (jl_value_t*)julia_object->set_index_ugen_ref_instance;
+            julia_def_args[10] = (jl_value_t*)julia_object->delete_index_ugen_ref_instance;
 
             //Create julia_def
             jl_value_t* julia_def = jl_call(julia_def_fun, julia_def_args, nargs);
             
+            //SHOULD I RTFREE AFTER USING julia_def???
             RTFree(in_world, julia_def_args);
 
             if(!julia_def)
-                jl_error("Could not create a __JuliaDef__");
+                jl_error("Could not create a __JuliaDef__");            
 
             julia_object->julia_def = julia_def;
         }
