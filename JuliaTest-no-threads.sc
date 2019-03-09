@@ -11,6 +11,12 @@ s.waitForBoot({
 
 s.sendMsg(\cmd, "/julia_GC");
 
+a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+
+100.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
+
+a.query;
+
 x = {Julia.ar(440)}.play;
 
 s.quit;
