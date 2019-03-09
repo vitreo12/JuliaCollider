@@ -363,6 +363,11 @@ class JuliaGlobalUtilities
         }
     
     private:
+        /* JuliaCollider modules */
+        jl_module_t* julia_collider_module;
+        jl_module_t* scsynth_module;
+        jl_module_t* julia_def_module;
+
         /* Global objects */
         jl_value_t* scsynth;
         
@@ -722,13 +727,11 @@ class RTClassAlloc
     public:
         void* operator new(size_t size, World* in_world)
         {
-            //printf("RTALLOC\n");
             return (void*)RTAlloc(in_world, size);
         }
 
         void operator delete(void* p, World* in_world) 
         {
-            //printf("RTFREE\n");
             RTFree(in_world, p);
         }
     private:
@@ -806,6 +809,25 @@ class JuliaReply : public RTClassAlloc
         int OSC_unique_id; //sent from SC. used for OSC parsing
 };
 
+class JuliaReplyWithLoadPath : public JuliaReply
+{
+    public:
+        JuliaReplyWithLoadPath(int OSC_unique_id_, const char* julia_load_path_)
+        : JuliaReply(OSC_unique_id_)
+        {
+            //std::string performs deep copy on char*
+            julia_load_path = julia_load_path_;
+        }
+
+        inline const char* get_julia_load_path()
+        {
+            return julia_load_path.c_str();
+        }
+
+    private:
+        std::string julia_load_path;
+};
+
 /* Number of active entries */
 class JuliaEntriesCounter
 {
@@ -822,13 +844,13 @@ class JuliaEntriesCounter
                 active_entries = 0;
         }
 
-        inline unsigned long get_active_entries()
+        inline unsigned long long get_active_entries()
         {
             return active_entries;
         }
 
     private:
-        unsigned long active_entries = 0;
+        unsigned long long active_entries = 0;
 };
 
 /* eval and compile an individual JuliaObject in NRT thread. Using just one args and changing 
@@ -844,15 +866,19 @@ class JuliaObjectCompiler
 
         ~JuliaObjectCompiler() {}
 
-        inline jl_module_t* compile_julia_object(JuliaObject* julia_object, const char* path, JuliaReply* julia_reply)
+        inline jl_module_t* compile_julia_object(JuliaObject* julia_object, JuliaReplyWithLoadPath* julia_reply_with_load_path)
         {
+            const char* julia_load_path = julia_reply_with_load_path->get_julia_load_path();
+
+            printf("*** LOAD PATH: %s ***\n", julia_load_path);
+
             if(julia_object)
             {
                 printf("ERROR: Already assigned Julia @object \n");
                 return nullptr;
             }
 
-            jl_module_t* evaluated_module = eval_julia_file(path);
+            jl_module_t* evaluated_module = eval_julia_file(julia_load_path);
 
             if(!evaluated_module)
             {
@@ -1361,7 +1387,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         }
 
         /* NRT THREAD. Called at JuliaDef.new() */
-        inline bool create_julia_object(JuliaReply* julia_reply, const char* path)
+        inline bool create_julia_object(JuliaReplyWithLoadPath* julia_reply_with_load_path)
         {  
             bool result;
             unsigned long long new_id;
@@ -1391,7 +1417,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             printf("ID: %llu\n", new_id);
 
             //Run precompilation
-            jl_module_t* evaluated_module = compile_julia_object(julia_object, path, julia_reply);
+            jl_module_t* evaluated_module = compile_julia_object(julia_object, julia_reply_with_load_path);
 
             if(!evaluated_module)
                 return false;
@@ -1410,14 +1436,14 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 jl_call1(set_unique_id, jl_box_uint64(new_id));
 
                 //MSG: OSC id, cmd, id, name, inputs, outputs
-                julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_compile", new_id, name, inputs, outputs);
+                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", new_id, name, inputs, outputs);
 
                 result = true;
             }
             else
             {
                 //Failed. No id, name, inputs, outputs
-                julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_compile", -1, "", -1, -1);
+                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "__INVALID?_NAME?__", -1, -1);
                 
                 result = false;
             }
@@ -1549,7 +1575,10 @@ inline bool julia_boot(World* inWorld, void* cmd)
     {
         julia_global_state = new JuliaGlobalState(inWorld, ft);
         if(julia_global_state->is_initialized())
-            julia_gc_barrier = new JuliaGCBarrier();
+        {
+            julia_gc_barrier    = new JuliaGCBarrier();
+            julia_objects_array = new JuliaObjectsArray(inWorld, julia_global_state);
+        }
     }
     else
         printf("WARNING: Julia already booted \n");
@@ -1577,11 +1606,33 @@ bool julia_load(World* world, void* cmd)
     return true;
 }
 
-void julia_load_cleanup(World* world, void* cmd) {}
+void julia_load_cleanup(World* world, void* cmd) 
+{
+    JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
+
+    //JuliaReplyWithLoadPath has no destructor, actually...
+    julia_reply_with_load_path->~JuliaReplyWithLoadPath();
+
+    if(julia_reply_with_load_path)
+        JuliaReplyWithLoadPath::operator delete(julia_reply_with_load_path, world); //Needs to be called excplicitly
+}
 
 void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_load", nullptr, (AsyncStageFn)julia_load, 0, 0, julia_load_cleanup, 0, nullptr);
+    int osc_unique_id = args->geti();
+    const char* julia_load_path = args->gets(); //this const char* will be deep copied in constructor.
+
+    //Alloc with overloaded new operator
+	JuliaReplyWithLoadPath* julia_reply_with_load_path = new(inWorld) JuliaReplyWithLoadPath(osc_unique_id, julia_load_path);
+    
+    if(!julia_reply_with_load_path)
+    {
+        printf("Could not allocate Julia Reply\n");
+        return;
+    }
+
+    //julia_reply_with_load_path->get_buffer() is the return message that will be sent at "/done" of this async command.
+    DoAsynchronousCommand(inWorld, replyAddr, julia_reply_with_load_path->get_buffer(), julia_reply_with_load_path, (AsyncStageFn)julia_load, 0, 0, julia_load_cleanup, 0, nullptr);
 }
 
 inline bool julia_perform_gc(World* world, void* cmd)
