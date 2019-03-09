@@ -1,7 +1,7 @@
 JuliaDef {
 	var srvr;
 	/* Only define getters to be accessed at UGen instantiation */
-	var <name = "__INVALID?_NAME?__";
+	var <name = "@No_Name";
 	var <inputs = -1;
 	var <input_names;
 	var <outputs = -1;
@@ -63,7 +63,7 @@ JuliaDef {
 		Routine.run {
 			//Tell the server to send an OSC message. Its "/done" msg will be received by the OSCFunc.
 			//Send the UniqueID number aswell to be then re-sent back and parsed in OSCFunc.
-			server.sendMsg(\cmd, "/julia_load", osc_unique_id);
+			server.sendMsg(\cmd, "/julia_load", osc_unique_id, path);
 
 			//Wait for positive response from the OSCFunc
 			condition.hang;
@@ -83,11 +83,11 @@ JuliaDef {
 	}
 
 	query {
-		("Server: " ++ srvr).postln;
-		("Julia @object: " ++ name).postln;
-		("ID: " ++ server_id).postln;
-		("Inputs: " ++ inputs).postln;
-		("Outputs: " ++ outputs).postln;
+		("-> Julia @object: " ++ name).postln;
+		("-> Server: " ++ srvr).postln;
+		("-> ID: " ++ server_id).postln;
+		("-> Inputs: " ++ inputs).postln;
+		("-> Outputs: " ++ outputs).postln;
 	}
 
 	/* Add method to retrieve a JuliaDef from the server by name
