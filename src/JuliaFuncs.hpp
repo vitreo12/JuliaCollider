@@ -53,6 +53,7 @@ typedef struct JuliaObject
     jl_method_instance_t* destructor_instance;
     jl_method_instance_t* set_index_ugen_ref_instance;
     jl_method_instance_t* delete_index_ugen_ref_instance; 
+    jl_method_instance_t* set_index_audio_vector_instance; //Used in ins/outs
     /***********************************/
 
     bool compiled;
@@ -184,7 +185,16 @@ class JuliaGlobalIdDict
         /* Will throw exception if things go wrong */
         inline void add_to_id_dict(jl_value_t* var)
         {
-            jl_value_t* result = jl_call3(set_index_fun, id_dict, var, var);
+            size_t nargs = 4;
+            jl_value_t* args[nargs];
+            
+            args[0] = set_index_fun;
+            args[1] = id_dict;
+            args[2] = var;
+            args[3] = var;
+
+            jl_value_t* result = jl_lookup_generic_and_compile_return_value_SC(args, nargs);
+            
             if(!result)
                 jl_errorf("Could not add element to %s", global_var_name);
         }
@@ -192,7 +202,15 @@ class JuliaGlobalIdDict
         /* Will throw exception if things go wrong */
         inline void remove_from_id_dict(jl_value_t* var)
         {
-            jl_value_t* result = jl_call2(delete_index_fun, id_dict, var);
+            size_t nargs = 3;
+            jl_value_t* args[nargs];
+            
+            args[0] = delete_index_fun;
+            args[1] = id_dict;
+            args[2] = var;
+
+            jl_value_t* result = jl_lookup_generic_and_compile_return_value_SC(args, nargs);
+
             if(!result)
                 jl_errorf("Could not remove element from %s", global_var_name);
         }
@@ -261,6 +279,10 @@ class JuliaGlobalUtilities
 
             scsynth = jl_call2(scsynth_constructor, sample_rate, buf_size);
             if(!scsynth)
+                return false;
+
+            set_index_audio_vector_fun = jl_get_function(scsynth_module, "set_index_audio_vector");
+            if(!set_index_audio_vector_fun)
                 return false;
 
             //UNNEEDED?
@@ -348,6 +370,16 @@ class JuliaGlobalUtilities
             return scsynth;
         }
 
+        inline jl_function_t* get_set_index_audio_vector_fun()
+        {
+            return set_index_audio_vector_fun;
+        }
+
+        inline jl_module_t* get_scsynth_module()
+        {
+            return scsynth_module;
+        }
+
         inline jl_function_t* get_sprint_fun()
         {
             return sprint_fun;
@@ -393,6 +425,7 @@ class JuliaGlobalUtilities
         jl_value_t* scsynth;
         
         /* Utilities functions */
+        jl_function_t* set_index_audio_vector_fun;
         jl_function_t* sprint_fun;
         jl_function_t* showerror_fun;
         jl_function_t* set_index_fun;
@@ -784,22 +817,23 @@ class JuliaReply : public RTClassAlloc
             return snprintf(buffer_, size, "%s\n", string);
         }
         
+        //for id
         int append_string(char* buffer_, size_t size, int value)
         {
             return snprintf(buffer_, size, "%i\n", value);
         }
 
-        //for jl_unbox_int64
+        /* //for jl_unbox_int64
         int append_string(char* buffer_, size_t size, long value)
         {
             return snprintf(buffer_, size, "%ld\n", value);
         }
 
         //for id
-        int append_string(char* buffer_, size_t size, unsigned long value)
+        int append_string(char* buffer_, size_t size, int value)
         {
             return snprintf(buffer_, size, "%lu\n", value);
-        }
+        } */
 
         //Exit condition. No more VarArgs to consume
         void create_done_command() {return;}
@@ -866,17 +900,16 @@ class JuliaEntriesCounter
                 active_entries = 0;
         }
 
-        inline unsigned long get_active_entries()
+        inline int get_active_entries()
         {
             return active_entries;
         }
 
     private:
-        unsigned long active_entries = 0;
+        int active_entries = 0;
 };
 
-/* eval and compile an individual JuliaObject in NRT thread. Using just one args and changing 
-args[0] for each function call, as only one thread (the NRT one) at a time will call into this*/
+/* PERHAPS I CAN ALLOCATE MEMORY WITH STANDARD MALLOC HERE; SAVE RT MEMORY FOR JULIA */
 class JuliaObjectCompiler
 {
     public:
@@ -940,8 +973,12 @@ class JuliaObjectCompiler
             if(julia_object->compiled)
             {   
                 /* JL_TRY/CATCH here? */
-                remove_julia_object_from_global_def_id_dict(julia_object);
-                null_julia_object(julia_object);
+                /* LOOK INTO Base.delete_method to delete method instances directly right now */
+                if(delete_methods_from_table(julia_object))
+                {
+                    remove_julia_object_from_global_def_id_dict(julia_object);
+                    null_julia_object(julia_object);
+                }
             }
 
             //Reset memory pointer for this object
@@ -962,10 +999,11 @@ class JuliaObjectCompiler
             
             JL_TRY {
                 //DO I NEED TO ADVANCE AGE HERE???? Perhaps, I do.
-                jl_get_ptls_states()->world_age = jl_get_world_counter();
+                //jl_get_ptls_states()->world_age = jl_get_world_counter();
                 
                 //The file MUST ONLY contain an @object definition (which loads a module)
                 evaluated_module = (jl_module_t*)jl_load(jl_main_module, path);
+                jl_exception_clear();
 
                 if(!evaluated_module)
                     jl_error("Invalid julia file");
@@ -985,14 +1023,13 @@ class JuliaObjectCompiler
                 if(!jl_get_global_SC(evaluated_module, "__constructor__"))
                     jl_error("Undefined @constructor");
                 
-                /* HOW CAN I ADD A CHECK FOR @sample??? */
                 if(!jl_get_global_SC(evaluated_module, "__perform__"))
                     jl_error("Undefined @perform");
 
                 if(!jl_get_global_SC(evaluated_module, "__destructor__"))
-                    jl_error("Undefined @destructor");
+                    jl_error("Undefined @destructor"); 
 
-                jl_exception_clear();
+                //jl_exception_clear();
             }
             JL_CATCH {
                 jl_get_ptls_states()->previous_exception = jl_current_exception();
@@ -1011,22 +1048,10 @@ class JuliaObjectCompiler
             }
 
             //Advance age after each include?? THIS IS PROBABLY UNNEEDED
-            jl_get_ptls_states()->world_age = jl_get_world_counter();
+            //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
             return evaluated_module;
         };
-
-        /* PRECOMPILATION */
-        inline jl_value_t** get_perform_args(size_t nargs)
-        {
-            jl_value_t** perform_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
-            return perform_args;
-        }
-
-        inline void free_perform_args(jl_value_t** perform_args)
-        {
-            RTFree(in_world, perform_args);
-        }
 
         inline void null_julia_object(JuliaObject* julia_object)
         {
@@ -1045,6 +1070,7 @@ class JuliaObjectCompiler
             julia_object->destructor_instance = nullptr;
             julia_object->set_index_ugen_ref_instance = nullptr;
             julia_object->delete_index_ugen_ref_instance = nullptr;
+            julia_object->set_index_audio_vector_instance = nullptr;
         }
 
         inline void add_julia_object_to_global_def_id_dict(JuliaObject* julia_object)
@@ -1071,9 +1097,11 @@ class JuliaObjectCompiler
                 return false;
             }
 
-            /* JL_TRY/CATCH here? */
+            /* REMOVE jl_call() from here--- */
             add_julia_object_to_global_def_id_dict(julia_object);
             
+            printf("AFTER ID DICT\n");
+
             /* precompile_state = true */
             julia_object->compiled = precompile_state;
 
@@ -1094,31 +1122,41 @@ class JuliaObjectCompiler
 
             printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
             /* These functions will throw a jl_error if anything goes wrong. */
             if(precompile_constructor(evaluated_module, julia_object))
             {
+                //jl_get_ptls_states()->world_age = jl_get_world_counter();
                 printf("CONSTRUCTOR DONE\n");
                 if(precompile_perform(evaluated_module, &ugen_object, &ins, &outs, julia_object))
                 {
+                    //jl_get_ptls_states()->world_age = jl_get_world_counter();
                     printf("PERFORM DONE\n");
-                    jl_call1(jl_get_function(jl_base_module, "println"), ugen_object);
+                    //jl_call1(jl_get_function(jl_base_module, "println"), ugen_object);
                     if(precompile_destructor(evaluated_module, &ugen_object, julia_object))
                     {
+                        //jl_get_ptls_states()->world_age = jl_get_world_counter();
                         printf("DESTRUCTOR DONE\n");
                         if(precompile_ugen_ref(evaluated_module, &ugen_object, &ins, &outs, &ugen_ref_object, julia_object))
                         {
+                            //jl_get_ptls_states()->world_age = jl_get_world_counter();
                             printf("UGEN REF DONE\n");
                             if(precompile_set_index_delete_index_julia_def(evaluated_module, &ugen_ref_object, julia_object))
                             {
+                                //jl_get_ptls_states()->world_age = jl_get_world_counter();
                                 printf("SET INDEX DONE\n");
                                 if(create_julia_def(evaluated_module, julia_object))
+                                {
+                                    //jl_get_ptls_states()->world_age = jl_get_world_counter();
                                     precompile_state = true;
+                                }
                             }
                         }
                     }
                 }
             }
             
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
             printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
             return precompile_state;
@@ -1151,19 +1189,13 @@ class JuliaObjectCompiler
         inline bool precompile_perform(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, jl_value_t** outs, JuliaObject* julia_object)
         {
             /* ARRAY CONSTRUCTION */
-            size_t nargs = 6;
-            jl_value_t** perform_args = get_perform_args(nargs);
-            if(!perform_args)
-            {
-                printf("ERROR: Could not allocate memory for perform_args\n");
-                return false;
-            }
+            size_t perform_nargs = 6;
+            jl_value_t* perform_args[perform_nargs];
 
             /* FUNCTION = perform_args[0] */
             jl_function_t* perform_fun = jl_get_function(evaluated_module, "__perform__");
             if(!perform_fun)
             {
-                free_perform_args(perform_args);
                 printf("ERROR: Invalid __perform__ function\n");
                 return false;
             }
@@ -1172,7 +1204,6 @@ class JuliaObjectCompiler
             jl_function_t* ugen_constructor = jl_get_function(evaluated_module, "__constructor__");
             if(!ugen_constructor)
             {
-                free_perform_args(perform_args);
                 printf("ERROR: Invalid __constructor__ function\n");
                 return false;
             }
@@ -1180,50 +1211,125 @@ class JuliaObjectCompiler
             jl_value_t* ugen_object_temp = jl_call0(ugen_constructor);
             if(!ugen_object_temp)
             {
-                free_perform_args(perform_args);
                 printf("ERROR: Invalid __constructor__ function\n");
                 return false;
             }
 
+            /* SET INDEX AUDIO VECTOR */
+            size_t nargs_set_index_audio_vector = 4;
+            jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
+            jl_method_instance_t* set_index_audio_vector_instance;
+
             /* INS / OUTS = perform_args[2]/[3] */
-            int inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
-            int outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
+            int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
+            int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
             int buffer_size = 1;
             
             //ins::Vector{Vector{Float32}}
-            jl_value_t* ins_temp =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), inputs);
-            
-            //1D Array for each input buffer
-            jl_value_t** ins_1d = (jl_value_t**)RTAlloc(in_world, sizeof(jl_value_t*) * inputs);
+            jl_value_t* ins_temp =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_inputs);
+            if(!ins_temp)
+            {
+                printf("ERROR: Could not allocate memory for inputs \n");
+                return false;
+            }
 
-            float** dummy_ins = (float**)RTAlloc(in_world, inputs * sizeof(float*));
+            //Multiple 1D Arrays for each output buffer
+            jl_value_t* ins_1d[num_inputs];
 
-            for(int i = 0; i < inputs; i++)
+            //Dummy float** in()
+            float* dummy_ins[num_inputs];
+
+            for(int i = 0; i < num_inputs; i++)
             {
                 dummy_ins[i] = (float*)RTAlloc(in_world, buffer_size * sizeof(float));
+                if(!dummy_ins[i])
+                {
+                    printf("ERROR: Could not allocate memory for inputs \n");
+                    return false;
+                }
+
                 for(int y = 0; y < buffer_size; y++)
                     dummy_ins[i][y] = 0.0f;
                 
                 ins_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_ins[i], buffer_size, 0);
-                jl_call3(julia_global->get_set_index_fun(), ins_temp, ins_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+                if(!ins_1d[i])
+                {
+                    printf("ERROR: Could not create 1d vectors (inputs)\n");
+                    return false;
+                }
+
+                /* Replace values each loop. No need to allocate more */
+                args_set_index_audio_vector[0] = julia_global->get_set_index_audio_vector_fun();
+                args_set_index_audio_vector[1] = ins_temp;
+                args_set_index_audio_vector[2] = ins_1d[i];
+                args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
+
+                //compile the audio vector set_index function at first iteration
+                if(i == 0)
+                {
+                    set_index_audio_vector_instance = jl_lookup_generic_and_compile_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
+                    if(!set_index_audio_vector_instance)
+                    {
+                        printf("ERROR: Could not compile set_index_audio_vector function\n");
+                        return false;
+                    }
+                }
+                
+                //Use it to set the actual stuff inside the array
+                jl_value_t* set_index_success = jl_lookup_generic_and_compile_return_value_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
+                if(!set_index_success)
+                {
+                    printf("ERROR: Could not instantiate set_index_audio_vector function (inputs)\n");
+                    return false;
+                }
             }
 
             //outs::Vector{Vector{Float32}}
-            jl_value_t* outs_temp = (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), outputs);
+            jl_value_t* outs_temp = (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_outputs);
+            if(!outs_temp)
+            {
+                printf("ERROR: Could not allocate memory for outputs \n");
+                return false;
+            }
 
-            //1D Array for each output buffer
-            jl_value_t** outs_1d = (jl_value_t**)RTAlloc(in_world, sizeof(jl_value_t*) * outputs);
+            //Multiple 1D Arrays for each output buffer
+            jl_value_t* outs_1d[num_outputs];
 
-            float** dummy_outs = (float**)RTAlloc(in_world, outputs * sizeof(float*));
+            //Dummy float** out()
+            float* dummy_outs[num_outputs];
 
-            for(int i = 0; i < outputs; i++)
+            for(int i = 0; i < num_outputs; i++)
             {
                 dummy_outs[i] = (float*)RTAlloc(in_world, buffer_size * sizeof(float));
+                if(!dummy_outs[i])
+                {
+                    printf("ERROR: Could not allocate memory for outs \n");
+                    return false;
+                }
+
                 for(int y = 0; y < buffer_size; y++)
-                    dummy_outs[i][y] = 0.0f;
+                    dummy_outs[i][y] = 0.0f;   
                 
                 outs_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_outs[i], buffer_size, 0);
-                jl_call3(julia_global->get_set_index_fun(), outs_temp, outs_1d[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+                if(!outs_1d[i])
+                {
+                    printf("ERROR: Could not create 1d vectors (outputs)\n");
+                    return false;
+                }
+
+                /* Replace values each loop. No need to allocate more */
+                args_set_index_audio_vector[0] = julia_global->get_set_index_audio_vector_fun();
+                args_set_index_audio_vector[1] = outs_temp;
+                args_set_index_audio_vector[2] = outs_1d[i];
+                args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
+
+                //Use it
+                jl_value_t* set_index_success = jl_lookup_generic_and_compile_return_value_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
+                if(!set_index_success)
+                {
+                    printf("ERROR: Could not instantiate set_index_audio_vector function (outputs)\n");
+                    return false;
+                }
             }
 
             /* ASSIGN TO ARRAY */
@@ -1235,20 +1341,13 @@ class JuliaObjectCompiler
             perform_args[5] = julia_global->get_scsynth(); //__SCSynth__
 
             /* COMPILATION. Should it be with precompile() instead? */
-            jl_method_instance_t* perform_instance = jl_lookup_generic_and_compile_SC(perform_args, nargs);
+            jl_method_instance_t* perform_instance = jl_lookup_generic_and_compile_SC(perform_args, perform_nargs);
 
-            /* FREE MEMORY */
-            free_perform_args(perform_args);
-
-            for(int i = 0; i < inputs; i++)
+            for(int i = 0; i < num_inputs; i++)
                 RTFree(in_world, dummy_ins[i]);
-            RTFree(in_world, dummy_ins);
-            RTFree(in_world, ins_1d);
 
-            for(int i = 0; i < outputs; i++)
+            for(int i = 0; i < num_outputs; i++)
                 RTFree(in_world, dummy_outs[i]);
-            RTFree(in_world, dummy_outs);
-            RTFree(in_world, outs_1d);
 
             /* JULIA OBJECT ASSIGN */
             if(!perform_instance)
@@ -1264,6 +1363,7 @@ class JuliaObjectCompiler
             //successful compilation...
             julia_object->perform_fun = perform_fun;
             julia_object->perform_instance = perform_instance;
+            julia_object->set_index_audio_vector_instance = set_index_audio_vector_instance;
 
             return true;
         }
@@ -1279,13 +1379,8 @@ class JuliaObjectCompiler
 
             printf("DESTRUCTOR FUN DONE\n");
 
-            int32_t nargs = 2;
-            jl_value_t** destructor_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
-            if(!destructor_args)
-            {
-                printf("ERROR: Could not allocate memory for destructor_args\n");
-                return false;
-            }
+            int32_t destructor_nargs = 2;
+            jl_value_t* destructor_args[destructor_nargs];
 
             printf("DESTRUCTOR ALLOC DONE\n");
 
@@ -1299,11 +1394,9 @@ class JuliaObjectCompiler
             }
             
             /* COMPILATION */
-            jl_method_instance_t* destructor_instance = jl_lookup_generic_and_compile_SC(destructor_args, nargs);
+            jl_method_instance_t* destructor_instance = jl_lookup_generic_and_compile_SC(destructor_args, destructor_nargs);
 
             printf("DESTRUCTOR METHOD DONE\n");
-
-            RTFree(in_world, destructor_args);
 
             if(!destructor_instance)
             {
@@ -1328,13 +1421,8 @@ class JuliaObjectCompiler
 
             //Ins and outs are pointing to junk data, but I don't care. I just need to precompile the Ref to it.
 
-            int32_t nargs = 4;
-            jl_value_t** ugen_ref_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
-            if(!ugen_ref_args)
-            {
-                printf("ERROR: Could not allocate memory for ugen_ref_args\n");
-                return false;
-            }
+            int32_t ugen_ref_nargs = 4;
+            jl_value_t* ugen_ref_args[ugen_ref_nargs];
             
             //__UGenRef__ constructor
             ugen_ref_args[0] = ugen_ref_fun;
@@ -1343,27 +1431,25 @@ class JuliaObjectCompiler
             ugen_ref_args[3] = outs[0];
 
             /* COMPILATION */
-            jl_method_instance_t* ugen_ref_instance = jl_lookup_generic_and_compile_SC(ugen_ref_args, nargs);
+            jl_method_instance_t* ugen_ref_instance = jl_lookup_generic_and_compile_SC(ugen_ref_args, ugen_ref_nargs);
 
             if(!ugen_ref_instance)
             {
-                RTFree(in_world, ugen_ref_args);
                 printf("ERROR: Could not compile __UGenRef__ function\n");
                 return false;
             }
 
             //Create an actual object with same args to pass it to the precompilation of set_index and delete_index functions.
             //Maybe I should not use exception here?
-            jl_value_t* ugen_ref_object_temp = jl_invoke_exception_SC(ugen_ref_instance, ugen_ref_args, nargs);
-            
-            RTFree(in_world, ugen_ref_args);
+            jl_value_t* ugen_ref_object_temp = jl_lookup_generic_and_compile_return_value_SC(ugen_ref_args, ugen_ref_nargs);
             
             if(!ugen_ref_object)
             {
-                jl_error("Could not precompile a __UGenRef__ object");
+                printf("ERROR: Could not precompile a __UGenRef__ object\n");
                 return false;
             }
 
+            //ASSIGN OBJECT TO POINTER
             ugen_ref_object[0] = ugen_ref_object_temp;
 
             julia_object->ugen_ref_fun = ugen_ref_fun;
@@ -1392,20 +1478,10 @@ class JuliaObjectCompiler
             }
 
             int32_t set_index_nargs = 3;
-            jl_value_t** set_index_args = (jl_value_t**)RTAlloc(in_world, set_index_nargs * sizeof(jl_value_t*));
-            if(!set_index_args)
-            {
-                printf("ERROR: Failed in allocating memory for set_index_args\n");
-                return false;
-            }
+            jl_value_t* set_index_args[set_index_nargs];
             
             int32_t delete_index_nargs = 3;
-            jl_value_t** delete_index_args = (jl_value_t**)RTAlloc(in_world, delete_index_nargs * sizeof(jl_value_t*));
-            if(!delete_index_args)
-            {
-                printf("ERROR: Failed in allocating memory for delete_index_args\n");
-                return false;
-            }
+            jl_value_t* delete_index_args[delete_index_nargs];
 
             //set index
             set_index_args[0] = set_index_ugen_ref_fun;
@@ -1420,9 +1496,6 @@ class JuliaObjectCompiler
             /* COMPILATION */
             jl_method_instance_t* set_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(set_index_args, set_index_nargs);
             jl_method_instance_t* delete_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(delete_index_args, delete_index_nargs);
-
-            RTFree(in_world, set_index_args);
-            RTFree(in_world, delete_index_args);
 
             if(!set_index_ugen_ref_instance || !delete_index_ugen_ref_instance)
             {
@@ -1447,34 +1520,31 @@ class JuliaObjectCompiler
                 return false;
             }
 
-            int32_t nargs = 7;
-            jl_value_t** julia_def_args = (jl_value_t**)RTAlloc(in_world, nargs * sizeof(jl_value_t*));
-            if(!julia_def_args)
-            {
-                printf("ERROR: Could not allocate memory for julia_def_args\n");
-                return false;
-            }
-            
+            //Stack allocation...
+            int julia_def_function_nargs = 8;
+            int32_t nargs = julia_def_function_nargs + 1;
+            jl_value_t* julia_def_args[nargs];
+
             //__JuliaDef__ constructor
             /* Only setting the module and the method_instance_t*.
             No need to add the function too, as they are kept alive as long as the module.*/
-            julia_def_args[0] = (jl_value_t*)evaluated_module;
-            julia_def_args[1] = (jl_value_t*)julia_object->ugen_ref_instance;
-            julia_def_args[2] = (jl_value_t*)julia_object->constructor_instance;
-            julia_def_args[3] = (jl_value_t*)julia_object->perform_instance;
-            julia_def_args[4] = (jl_value_t*)julia_object->destructor_instance;
-            julia_def_args[5] = (jl_value_t*)julia_object->set_index_ugen_ref_instance;
-            julia_def_args[6] = (jl_value_t*)julia_object->delete_index_ugen_ref_instance;
+            julia_def_args[0] = (jl_value_t*)julia_def_fun;
+            julia_def_args[1] = (jl_value_t*)evaluated_module;
+            julia_def_args[2] = (jl_value_t*)julia_object->ugen_ref_instance;
+            julia_def_args[3] = (jl_value_t*)julia_object->constructor_instance;
+            julia_def_args[4] = (jl_value_t*)julia_object->perform_instance;
+            julia_def_args[5] = (jl_value_t*)julia_object->destructor_instance;
+            julia_def_args[6] = (jl_value_t*)julia_object->set_index_ugen_ref_instance;
+            julia_def_args[7] = (jl_value_t*)julia_object->delete_index_ugen_ref_instance;
+            julia_def_args[8] = (jl_value_t*)julia_object->set_index_audio_vector_instance;
 
-            jl_call1(jl_get_function(jl_base_module, "println"), julia_def_fun);
+            //jl_call1(jl_get_function(jl_base_module, "println"), julia_def_fun);
 
             printf("JULIA_DEF BEFORE CALL\n");
             
-            jl_value_t* julia_def = jl_call(julia_def_fun, julia_def_args, nargs);
+            jl_value_t* julia_def = jl_lookup_generic_and_compile_return_value_SC(julia_def_args, nargs);
 
-            jl_call1(jl_get_function(jl_base_module, "println"), julia_def);
-
-            RTFree(in_world, julia_def_args);
+            //jl_call1(jl_get_function(jl_base_module, "println"), julia_def);
 
             if(!julia_def)
             {
@@ -1484,6 +1554,75 @@ class JuliaObjectCompiler
 
             julia_object->julia_def = julia_def;
 
+            return true;
+        }
+
+        /* ALL THESE SHOULD NOT jl_call(), but INVOKE */
+        inline bool delete_methods_from_table(JuliaObject* julia_object)
+        {
+            jl_function_t* delete_method_fun = jl_get_function(jl_base_module, "delete_method");
+            if(!delete_method_fun)
+            {
+                printf("ERROR: Could not retrieve \"delete method\" function \n");
+                return false;
+            }
+
+            jl_method_t* ugen_ref_method = (julia_object->ugen_ref_instance)->def.method;
+            jl_value_t* ugen_ref_method_call = jl_call2(delete_method_fun, (jl_value_t*)ugen_ref_method, (julia_object->ugen_ref_instance)->specTypes); //IS specTypes a Tuple???
+            if(!ugen_ref_method || !ugen_ref_method_call)
+            {
+                printf("ERROR: Could not retrieve method for ugen_ref_instance\n");
+                return false;
+            }
+
+            jl_method_t* constructor_method = (julia_object->constructor_instance)->def.method;
+            jl_value_t* constructor_method_call = jl_call2(delete_method_fun, (jl_value_t*)constructor_method, (julia_object->constructor_instance)->specTypes); //IS specTypes a Tuple???
+            if(!constructor_method || constructor_method_call)
+            {
+                printf("ERROR: Could not retrieve method for constructor_instance\n");
+                return false;
+            }
+
+            jl_method_t* perform_method = (julia_object->perform_instance)->def.method;
+            jl_value_t* perform_method_call = jl_call2(delete_method_fun, (jl_value_t*)perform_method, (julia_object->perform_instance)->specTypes); //IS specTypes a Tuple???
+            if(!perform_method || !perform_method_call)
+            {
+                printf("ERROR: Could not retrieve method for perform_instance\n");
+                return false;
+            }
+
+            jl_method_t* destructor_method = (julia_object->destructor_instance)->def.method;
+            jl_value_t* destructor_method_call = jl_call2(delete_method_fun, (jl_value_t*)destructor_method, (julia_object->destructor_instance)->specTypes); //IS specTypes a Tuple???
+            if(!destructor_method || !destructor_method_call)
+            {
+                printf("ERROR: Could not retrieve method for destructor_instance\n");
+                return false;
+            }
+
+            jl_method_t* set_index_ugen_ref_method = (julia_object->set_index_ugen_ref_instance)->def.method;
+            jl_value_t* set_index_ugen_ref_method_call = jl_call2(delete_method_fun, (jl_value_t*)set_index_ugen_ref_method, (julia_object->set_index_ugen_ref_instance)->specTypes); //IS specTypes a Tuple???
+            if(!set_index_ugen_ref_method || !set_index_ugen_ref_method_call)
+            {
+                printf("ERROR: Could not retrieve method for set_index_ugen_ref_instance\n");
+                return false;
+            }
+
+            jl_method_t* delete_index_ugen_ref_method = (julia_object->delete_index_ugen_ref_instance)->def.method;
+            jl_value_t* delete_index_ugen_ref_method_call = jl_call2(delete_method_fun, (jl_value_t*)delete_index_ugen_ref_method, (julia_object->delete_index_ugen_ref_instance)->specTypes); //IS specTypes a Tuple???
+            if(!delete_index_ugen_ref_method || !delete_index_ugen_ref_method_call)
+            {
+                printf("ERROR: Could not retrieve method for delete_index_ugen_ref_instance\n");
+                return false;
+            }
+
+            jl_method_t* set_index_audio_vector_method = (julia_object->set_index_audio_vector_instance)->def.method;
+            jl_value_t* set_index_audio_vector_method_call = jl_call2(delete_method_fun, (jl_value_t*)set_index_audio_vector_method, (julia_object->set_index_audio_vector_instance)->specTypes); //IS specTypes a Tuple???
+            if(!set_index_audio_vector_method || !set_index_audio_vector_method_call)
+            {
+                printf("ERROR: Could not retrieve method for set_index_audio_vector_instance\n");
+                return false;
+            }
+            
             return true;
         }
 };
@@ -1508,9 +1647,17 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* NRT THREAD. Called at JuliaDef.new() */
         inline bool create_julia_object(JuliaReplyWithLoadPath* julia_reply_with_load_path)
         {  
-            unsigned long new_id;
+            int new_id;
             JuliaObject* julia_object;
             
+            /*
+            IGNORE RESIZING FOR NOW:
+            This won't work, as if the memory location is moved with the new calloc call, the RT thread's JuliaObject* pointers
+            will be pointing at junk memory. What I can have is a tagged approach, where every 100 entries I allocate new memory 
+            without reallocating the previous one, and just tag the last pointer of previous 100 entries to be the first one of the
+            new entries, so it won't be a contiguous block of memory, but it will not change the pointers of previously allocated objects.
+            */
+            /*
             if(get_active_entries() == num_total_entries)
             {
                 //Lock the access to the array only when resizing.
@@ -1520,9 +1667,10 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 
                 JuliaAtomicBarrier::Unlock();
             }
+            */
 
             //Retrieve a new ID be checking out the first free entry in the julia_objects_array
-            for(unsigned long i = 0; i < num_total_entries; i++)
+            for(int i = 0; i < num_total_entries; i++)
             {
                 JuliaObject* this_julia_object = julia_objects_array + i;
                 if(!this_julia_object->compiled) //If empty entry, it means I can take ownership
@@ -1533,7 +1681,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 }
             }
 
-            printf("ID: %lu\n", new_id);
+            printf("ID: %d\n", new_id);
 
             //Run precompilation
             jl_module_t* evaluated_module = compile_julia_object(julia_object, julia_reply_with_load_path);
@@ -1544,24 +1692,39 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 return false;
             }
 
-            advance_active_entries();
-
             const char* name = jl_symbol_name(evaluated_module->name);
-            int inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
-            int outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
+            int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
+            int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
+
+            printf("AFTER COMPILATION \n");
 
             //Set unique_id in newly created module aswell. Used to retrieve JuliaDef by module name.
-            jl_function_t* set_unique_id = jl_get_function(evaluated_module, "__set_unique_id__");
-            jl_call1(set_unique_id, jl_box_uint64(new_id));
+            jl_function_t* set_unique_id_fun = jl_get_function(evaluated_module, "__set_unique_id__");
+
+            int32_t nargs_set_unique_id = 2;
+            jl_value_t* args_set_unique_id[nargs_set_unique_id];
+            
+            args_set_unique_id[0] = set_unique_id_fun;
+            args_set_unique_id[1] = jl_box_int32(num_inputs);
+
+            jl_value_t* succesful_set_unique_id = jl_lookup_generic_and_compile_return_value_SC(args_set_unique_id, nargs_set_unique_id);
+            if(!succesful_set_unique_id)
+            {
+                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
+                return false;
+            }
+            
 
             //MSG: OSC id, cmd, id, name, inputs, outputs
-            julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", new_id, name, inputs, outputs);
+            julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", new_id, name, num_inputs, num_outputs);
+
+            advance_active_entries();
 
             return true;
         }
 
         /* RT THREAD. Called when a Julia UGen is created on the server */
-        inline bool get_julia_object(unsigned long unique_id, JuliaObject* julia_object)
+        inline bool get_julia_object(int unique_id, JuliaObject** julia_object)
         {
             bool barrier_acquired = JuliaAtomicBarrier::Checklock();
 
@@ -1569,8 +1732,8 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             {
                 JuliaObject* this_julia_object = julia_objects_array + unique_id;
 
-                if(this_julia_object)
-                    julia_object = this_julia_object;
+                if(this_julia_object->compiled)
+                    julia_object[0] = this_julia_object;
                 else
                     printf("WARNING: Invalid @object\n");
 
@@ -1582,14 +1745,15 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         }
 
         /* NRT THREAD. Called at JuliaDef.free() */
-        inline void delete_julia_object(unsigned long unique_id, JuliaObject* julia_object)
+        inline void delete_julia_object(int unique_id, JuliaObject* julia_object)
         {
             JuliaAtomicBarrier::Spinlock();
 
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
-            if(unload_julia_object(julia_object))
-                decrease_active_entries();
+            unload_julia_object(julia_object);
+            //if(unload_julia_object(julia_object))
+            //    decrease_active_entries();
 
             JuliaAtomicBarrier::Unlock();
         }
@@ -1599,7 +1763,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         JuliaObject* julia_objects_array = nullptr;
 
         //incremental size
-        unsigned long num_total_entries = JULIA_OBJECTS_ARRAY_INCREMENT;
+        int num_total_entries = JULIA_OBJECTS_ARRAY_INCREMENT;
 
         //Constructor
         inline void init_julia_objects_array()
@@ -1625,7 +1789,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         //Called when id > num_entries.
         inline void resize_julia_objects_array()
         {
-            unsigned long previous_num_total_entries = num_total_entries;
+            /* int previous_num_total_entries = num_total_entries;
 
             //Add more entries
             advance_num_total_entries();
@@ -1651,7 +1815,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             julia_objects_array = res;
 
             //free previous array.
-            free(previous_julia_objects_array);
+            free(previous_julia_objects_array); */
         }
 
         inline void advance_num_total_entries()
@@ -1687,6 +1851,8 @@ inline bool julia_boot(World* inWorld, void* cmd)
         {
             julia_gc_barrier    = new JuliaGCBarrier();
             julia_objects_array = new JuliaObjectsArray(inWorld, julia_global_state);
+
+            julia_gc_barrier->NRTPerformGC(1);
         }
     }
     else
@@ -1705,14 +1871,15 @@ void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 
 bool julia_load(World* world, void* cmd)
 {
-    if(jl_is_initialized() && julia_global_state->is_initialized())
-    {
-        JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
-        
+    JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
+
+    if(julia_global_state->is_initialized())
         julia_objects_array->create_julia_object(julia_reply_with_load_path);
-    }
     else
+    {
+        julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
         printf("WARNING: Julia hasn't been booted correctly \n");
+    }
 
     return true;
 }
@@ -1748,7 +1915,7 @@ void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 
 inline bool julia_perform_gc(World* world, void* cmd)
 {
-    if(jl_is_initialized() && julia_global_state->is_initialized())
+    if(julia_global_state->is_initialized())
         julia_gc_barrier->NRTPerformGC(1);
     else
         printf("WARNING: Julia hasn't been booted correctly \n");
@@ -1762,9 +1929,25 @@ void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *r
     DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
+inline bool julia_test_load(World* world, void* cmd)
+{
+    if(julia_global_state->is_initialized())
+    {
+        jl_load(jl_main_module, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+    }
+    
+    return true;
+}
+
+void JuliaTestLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "/jl_test_load", nullptr, (AsyncStageFn)julia_test_load, 0, 0, julia_gc_cleanup, 0, nullptr);
+}
+
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("/julia_load", (PlugInCmdFunc)JuliaLoad, nullptr);
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
+    DefinePlugInCmd("/julia_test_load",   (PlugInCmdFunc)JuliaTestLoad, nullptr);
 }

@@ -45,7 +45,7 @@ JuliaDef {
 					//Test against correct command.
 					if(msg_unpacked[1] == "/jl_load", {
 						//Unpack message
-						srvr_id = msg_unpacked[2];
+						srvr_id = msg_unpacked[2].asInteger;
 						obj_name = msg_unpacked[3];
 						ins = msg_unpacked[4].asInteger;
 						outs = msg_unpacked[5].asInteger;
@@ -105,7 +105,7 @@ JuliaDef {
 //Executed in SynthDef...
 Julia : MultiOutUGen {
 	*ar { |... args|
-		var juliaDef, new_args, name, inputs, outputs, zero_output;
+		var juliaDef, new_args, name, server_id, inputs, outputs, zero_output;
 
 		if((args.size == 0), {
 			Error("Julia: no arguments provided.").throw;
@@ -119,11 +119,12 @@ Julia : MultiOutUGen {
 
 		//Unpack JuliaDef
 		name = args[0].name;
+		server_id = args[0].server_id;
 		inputs = args[0].inputs;
 		outputs = args[0].outputs;
 
 		//Check validity of JuliaDef
-		if(((name == "") || (inputs < 0) || (outputs < 0)), {
+		if(((name == "@No_Name") || (inputs < 0) || (outputs < 0) || (server_id < 0)), {
 			Error("Julia: invalid JuliaDef.").throw
 		});
 
@@ -143,20 +144,24 @@ Julia : MultiOutUGen {
 			Error("Julia '%': wrong number of inputs: %. Expected %".format(name.asString, (args.size).asString, inputs.asString)).throw;
 		});
 
-		//New array. Make up space for 'audio' and number of outputs (first two entries)
-		new_args = Array.newClear(args.size + 2);
+		//New array. Make up space for 'audio', number of outputs and server_id (first three entries)
+		new_args = Array.newClear(args.size + 3);
 
 		//Copy elements over to new_args
 		args.do({
 			arg item, i;
-			//Shift UGen args by two. It will leave first two entries free
-			new_args[i + 2] = item;
+			//Shift UGen args by three. It will leave first two entries free
+			new_args[i + 3] = item;
 		});
 
 		//Add 'audio' as first entry to new_args array
 		new_args[0] = 'audio';
 		//Add output number as second entry to new_args array.
 		new_args[1] = outputs;
+		//Add server_id as third entry to new_args array
+		new_args[2] = server_id;
+
+		new_args.postln;
 
 		//Pass array args for initialization.
 		^this.multiNewList(new_args);
@@ -171,7 +176,8 @@ Julia : MultiOutUGen {
 		Retrieve it, and remove it from the array. */
 		outputs = theInputs[0];
 		theInputs.removeAt(0);
-		//Assign input array to be theInputs, when "output" is removed, theInputs will just have UGens.
+		/*Assign input array to be theInputs, when "output" is removed, theInputs
+		will have the server_id as first input, then UGens. */
 		inputs = theInputs;
 		^this.initOutputs(outputs, rate)
 	}

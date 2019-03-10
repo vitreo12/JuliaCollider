@@ -4,7 +4,7 @@
 
     #Declaration of structs (possibly, include() calls aswell)
     mutable struct Phasor
-        p::Float64
+        p::Float32
         function Phasor()
             return new(0.0)
         end
@@ -13,10 +13,14 @@
     #initialization of variables
     @constructor begin
         phasor::Phasor = Phasor()
-        counter::Float64 = 1.0
+        counter::Float32 = 1.0
 
         #Must always be last.
         @new(phasor, counter)
+    end
+
+    function calc_cos(sample::Float32)
+        return cos(sample)
     end
 
     @perform begin
@@ -25,7 +29,7 @@
         frequency_kr::Float32 = @in0(1)
 
         @sample begin
-            phase::Float64 = @unit(phasor.p) #equivalent to __unit__.phasor.p
+            phase::Float32 = @unit(phasor.p) #equivalent to __unit__.phasor.p
             
             frequency::Float32 = @in(1)
             
@@ -33,7 +37,7 @@
                 phase = 0.0
             end
             
-            out_value::Float32 = cos(phase * 2pi)
+            out_value::Float32 = calc_cos(Float32(phase * 2pi))
             
             @out(1) = out_value
             
