@@ -78,7 +78,8 @@ jl_value_t* global_id_dict = nullptr;
 jl_function_t* set_index = nullptr;
 jl_function_t* delete_index = nullptr;
 
-jl_method_instance_t* give_me_nois_instance = nullptr;
+jl_function_t* give_me_noise_fun = nullptr;
+jl_method_instance_t* give_me_noise_instance = nullptr;
 
 bool julia_initialized = false; 
 std::string julia_dir;
@@ -273,6 +274,16 @@ bool include2(World* world, void* cmd)
     jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
     //JL_GC_POP();  
 
+    size_t nargs = 2;
+    jl_value_t* args[nargs];
+
+    give_me_noise_fun = jl_get_function(jl_get_module("Sine_DSP"), "give_me_noise");
+    args[0] = give_me_noise_fun;
+    args[1] = jl_box_float64((double)0.84754);
+
+    give_me_noise_instance = jl_lookup_generic_and_compile_SC(args, nargs);
+
+    jl_call1(jl_get_function(jl_main_module, "println"), (jl_value_t*)give_me_noise_instance);
     
     jl_get_ptls_states()->world_age = jl_get_world_counter();
     precompile_object(world);
