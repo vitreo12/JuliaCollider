@@ -1,5 +1,4 @@
 module Sine_DSP
-    __precompile__(true)
     
     mutable struct Phase_Increment
         phase::Float64
@@ -16,8 +15,8 @@ module Sine_DSP
         end
     end
 
-    @inline function give_me_noise(scale_value::Float64)
-        return rand(Float64) * 0.5 * (scale_value * 2)
+    function give_me_noise(scale_value::Float64)
+        return rand(Float64) * rand(Float64) * rand(Float64) * 0.5 * (scale_value * 2)
     end
 
     function perform(unit::Sine, sample_rate::Float64, vector_size::Int32, output_vector::Vector{Float32}, frequency::Float64)

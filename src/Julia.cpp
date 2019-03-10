@@ -1,7 +1,5 @@
 #include "JuliaFuncs.hpp"
 
-static int allocating;
-
 struct Julia : public SCUnit 
 {
 public:
@@ -78,47 +76,66 @@ private:
     jl_value_t** noise_args;
     
     bool execute = false;
+    
+    bool just_reallocated = false;
 
     inline void next(int inNumSamples) 
+    {
+        if(execute)
+        {            
+            if(julia_barrier.Checklock())
+            {
+                //If function changed, allocate it new object
+                if(args[0] != perform_fun)
+                {
+                    args[0] = perform_fun;
+
+                    sine = jl_call_no_gc(&sine_fun, 1); //create sine obj
+                    args[1] = sine;
+                    jl_call3(set_index, object_id_dict, sine, sine);
+
+                    just_reallocated = true;
+                }
+
+                //If not new object, run, otherwise wait for next cycle
+                if(!just_reallocated)
+                {
+                    julia_perform_fun(inNumSamples);
+                    julia_barrier.Unlock();
+                    return;
+                }
+            
+                silence_fun(inNumSamples);
+                just_reallocated = false;
+                julia_barrier.Unlock();
+                return;
+            }
+
+            silence_fun(inNumSamples);
+        }
+    }
+
+    inline void julia_perform_fun(int inNumSamples)
     {
         double input = (double)(in0(0));
         float* output = out(0);
 
-        if(execute)
+        *(int*)jl_data_ptr(args[3]) = inNumSamples;
+        //point julia buffer to correct audio buffer.
+        ((jl_array_t*)(args[4]))->data = output;
+        //set frequency
+        *(double*)jl_data_ptr(args[5]) = input;
+
+        //jl_get_ptls_states()->world_age = jl_get_world_counter();
+        jl_call_no_gc(args, 6);
+    }
+        
+    inline void silence_fun(int inNumSamples)
+    {
+        for(int i = 0; i < numOutputs(); i++)
         {
-            /* *(int*)jl_data_ptr(args[3]) = inNumSamples;
-                //point julia buffer to correct audio buffer.
-            ((jl_array_t*)(args[4]))->data = output;
-                //set frequency
-            *(double*)jl_data_ptr(args[5]) = input;
-
-            jl_call_no_gc(args, 6)); */
-            
-            if(julia_barrier.Checklock())
-            {
-                *(int*)jl_data_ptr(args[3]) = inNumSamples;
-                //point julia buffer to correct audio buffer.
-                ((jl_array_t*)(args[4]))->data = output;
-                //set frequency
-                *(double*)jl_data_ptr(args[5]) = input;
-
-                //jl_get_ptls_states()->world_age = jl_get_world_counter();
-                jl_call_no_gc(args, 6);
-
-                julia_barrier.Unlock();
-
-                return;
-            }
-
-            for (int i = 0; i < inNumSamples; i++) 
-                output[i] = 0.0f;
-        }
-        else
-        {
-            for (int i = 0; i < inNumSamples; i++) 
-            {
-                output[i] = 0.0f;
-            }
+            for (int y = 0; y < inNumSamples; y++) 
+                out(i)[y] = 0.0f;
         }
     }
 };
