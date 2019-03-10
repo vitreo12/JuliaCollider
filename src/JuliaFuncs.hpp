@@ -35,6 +35,39 @@ BREAKDOWN:
     #define JULIA_DIRECTORY_PATH "i=4; ID=$(pgrep scsynth); complete_string=$(pmap -p $ID | grep -m 1 'Julia.so'); file_string=$(awk -v var=\"$i\" '{print $var}' <<< \"$complete_string\"); extra_string=${complete_string%$file_string*}; final_string=${complete_string#\"$extra_string\"}; printf \"%s\" \"${final_string//\"Julia.so\"/}\""
 #endif
 
+class JuliaAtomicBarrier
+{
+    public:
+        /* To be called from NRT thread only. */
+        inline void Spinlock()
+        {
+            bool expected_val = false;
+            //Spinlock. Wait ad-infinitum until the RT thread has set barrier to false.
+            while(!barrier.compare_exchange_weak(expected_val, true))
+                expected_val = false; //reset expected_val to false as it's been changed in compare_exchange_weak to true
+        }
+
+        /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
+        inline bool Checklock()
+        {
+            bool expected_val = false;
+            return barrier.compare_exchange_strong(expected_val, true);
+        }
+
+        inline void Unlock()
+        {
+            barrier.store(false);
+        }
+
+        inline bool get_barrier_value()
+        {
+            return barrier.load();
+        }
+
+    private:
+        std::atomic<bool> barrier{false};
+};
+
 //WARNING: THIS METHOD DOESN'T SEEM TO WORK WITH MULTIPLE SERVERS ON MACOS. ON LINUX IT WORKS JUST FINE...
 std::string get_julia_dir() 
 {
@@ -81,6 +114,8 @@ jl_function_t* delete_index = nullptr;
 jl_function_t* give_me_noise_fun = nullptr;
 jl_method_instance_t* give_me_noise_instance = nullptr;
 
+JuliaAtomicBarrier julia_barrier;
+
 bool julia_initialized = false; 
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
@@ -102,6 +137,7 @@ inline void test_include()
 {
     if(julia_initialized)
     {
+
         std::string sine_jl_path = julia_dir;
         sine_jl_path.append(JuliaDSP_folder);
         sine_jl_path.append("Sine_DSP.jl");
@@ -178,7 +214,7 @@ inline void boot_julia(World* inWorld)
             //i should precompile all the prints i need.
             jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
 
-            jl_get_ptls_states()->world_age = jl_get_world_counter(); 
+            //jl_get_ptls_states()->world_age = jl_get_world_counter(); 
 
             printf("**************************\n");
             printf("**************************\n");
@@ -262,7 +298,9 @@ void precompile_object(World* world)
 //nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool include2(World* world, void* cmd)
 {
-    jl_get_ptls_states()->world_age = jl_get_world_counter();
+    julia_barrier.Spinlock();
+    
+    //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
     test_include();
 
@@ -274,21 +312,26 @@ bool include2(World* world, void* cmd)
     jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
     //JL_GC_POP();  
 
-    size_t nargs = 2;
-    jl_value_t* args[nargs];
+    //give_me_noise_fun = jl_get_function(jl_get_module("Sine_DSP"), "give_me_noise");
+    //jl_call3(set_index, global_id_dict, (jl_value_t*)give_me_noise_fun, (jl_value_t*)give_me_noise_fun);
 
-    give_me_noise_fun = jl_get_function(jl_get_module("Sine_DSP"), "give_me_noise");
-    args[0] = give_me_noise_fun;
-    args[1] = jl_box_float64((double)0.84754);
+    jl_value_t** noise_args = (jl_value_t**)RTAlloc(world, 2 * sizeof(jl_value_t*));
+    //noise_args[0] = give_me_noise_fun;
+    //noise_args[1] = jl_box_float64((double)0.84754);
 
-    give_me_noise_instance = jl_lookup_generic_and_compile_SC(args, nargs);
+    //give_me_noise_instance = jl_lookup_generic_and_compile_SC(noise_args, 2);
+    //jl_call3(set_index, global_id_dict, (jl_value_t*)give_me_noise_instance, (jl_value_t*)give_me_noise_instance);
 
-    jl_call1(jl_get_function(jl_main_module, "println"), (jl_value_t*)give_me_noise_instance);
+    //jl_call1(jl_get_function(jl_main_module, "println"), (jl_value_t*)give_me_noise_instance);
     
-    jl_get_ptls_states()->world_age = jl_get_world_counter();
+    //jl_get_ptls_states()->world_age = jl_get_world_counter();
     precompile_object(world);
 
+    julia_barrier.Unlock();
+
     printf("-> Include completed\n");
+
+    RTFree(world, noise_args);
 
     return true;
 }

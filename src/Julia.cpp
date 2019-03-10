@@ -21,7 +21,7 @@ public:
                 //maybe avoid this and simply use the global id dict?
                 object_id_dict = create_object_id_dict(global_id_dict, id_dict_function, set_index);
 
-                args = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * 6);
+                args = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * 5);
 
                 args[0] = perform_fun; //already in id dict
                 
@@ -42,6 +42,10 @@ public:
                 args[5] = jl_box_float64((double)440.0);
                 jl_call3(set_index, object_id_dict, args[5], args[5]);
 
+                noise_args = (jl_value_t**)RTAlloc(mWorld, 2 * sizeof(jl_value_t*));
+                noise_args[0] = give_me_noise_fun;
+                noise_args[1] = jl_box_float64((double)0.8574); 
+    
                 execute = true;
             }
             else
@@ -61,6 +65,7 @@ public:
         {
             delete_object_id_dict(global_id_dict, object_id_dict, delete_index);
             RTFree(mWorld, args);
+            RTFree(mWorld, noise_args);
             //JuliaGC(mWorld, nullptr, nullptr, nullptr);
         }
     }
@@ -69,6 +74,9 @@ private:
     jl_value_t* sine;
     jl_value_t** args;
     jl_value_t* object_id_dict;
+
+    jl_value_t** noise_args;
+    
     bool execute = false;
 
     inline void next(int inNumSamples) 
@@ -78,14 +86,32 @@ private:
 
         if(execute)
         {
-            *(int*)jl_data_ptr(args[3]) = inNumSamples;
-            //point julia buffer to correct audio buffer.
+            /* *(int*)jl_data_ptr(args[3]) = inNumSamples;
+                //point julia buffer to correct audio buffer.
             ((jl_array_t*)(args[4]))->data = output;
-            //set frequency
+                //set frequency
             *(double*)jl_data_ptr(args[5]) = input;
 
-            jl_get_ptls_states()->world_age = jl_get_world_counter();
-            jl_call_no_gc(args, 6);
+            jl_call_no_gc(args, 6)); */
+            
+            if(julia_barrier.Checklock())
+            {
+                *(int*)jl_data_ptr(args[3]) = inNumSamples;
+                //point julia buffer to correct audio buffer.
+                ((jl_array_t*)(args[4]))->data = output;
+                //set frequency
+                *(double*)jl_data_ptr(args[5]) = input;
+
+                //jl_get_ptls_states()->world_age = jl_get_world_counter();
+                jl_call_no_gc(args, 6);
+
+                julia_barrier.Unlock();
+
+                return;
+            }
+
+            for (int i = 0; i < inNumSamples; i++) 
+                output[i] = 0.0f;
         }
         else
         {

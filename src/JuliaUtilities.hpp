@@ -34,12 +34,12 @@
 jl_value_t* jl_call_no_gc(jl_value_t** args, uint32_t nargs)
 {
     jl_value_t* v;
-    //size_t last_age = jl_get_ptls_states()->world_age;
-    //jl_get_ptls_states()->world_age = jl_get_world_counter();
+    size_t last_age = jl_get_ptls_states()->world_age;
+    jl_get_ptls_states()->world_age = jl_get_world_counter();
     
     v = jl_apply(args, nargs);
     
-    //jl_get_ptls_states()->world_age = last_age;
+    jl_get_ptls_states()->world_age = last_age;
     //jl_exception_clear();
     
     return v;
