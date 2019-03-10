@@ -1,0 +1,3 @@
+Include crashes are caused by the fact that the functions that have been precompiled (jl_method_instance_t*)
+are not entirely inlined: they do not include the relative function calls they are making. This causes those function
+calls to be happening at a different world age is the NRT has changed it with a new include() call or precompile()
