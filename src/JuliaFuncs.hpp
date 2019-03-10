@@ -103,10 +103,8 @@ inline void test_include()
         sine_jl_path.append(JuliaDSP_folder);
         sine_jl_path.append("Sine_DSP.jl");
 
-        jl_function_t* include_function = jl_get_function(jl_base_module, "include");
-        //JL_GC_PUSH1(&include_function);
-        jl_call2(include_function, (jl_value_t*)jl_main_module, jl_cstr_to_string(sine_jl_path.c_str()));
-        //JL_GC_POP();
+        printf("JL LOAD\n");
+        jl_load(jl_main_module, sine_jl_path.c_str());
     }
 }
 
@@ -176,6 +174,8 @@ inline void boot_julia(World* inWorld)
             //precompile println fun for id dicts.
             //i should precompile all the prints i need.
             jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+
+            //jl_get_ptls_states()->world_age = jl_get_world_counter(); 
 
             printf("**************************\n");
             printf("**************************\n");
@@ -262,7 +262,11 @@ bool include2(World* world, void* cmd)
     //preallocates memory for objects creation.. Use Instruments -> Allocations to check on scsynth
     //jl_gc_allocobj(100000000);
 
+    //jl_get_ptls_states()->world_age = jl_get_world_counter();
+
     test_include();
+
+    //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
     sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
     perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
@@ -271,6 +275,10 @@ bool include2(World* world, void* cmd)
     jl_call3(set_index, global_id_dict, (jl_value_t*)sine_fun, (jl_value_t*)sine_fun);
     jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
     //JL_GC_POP();  
+
+    precompile_object(world);
+
+    printf("-> Include completed\n");
 
     return true;
 }
@@ -284,13 +292,11 @@ bool include3(World* world, void* cmd)
 //nrt thread
 bool include4(World* world, void* cmd)
 {
-    precompile_object(world);
 
-    jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
+    //jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
     //call on the GC after each include to cleanup stuff
-    perform_gc(1);
+    //perform_gc(1);
 
-    printf("-> Include completed\n");
     
     return true;
 }
