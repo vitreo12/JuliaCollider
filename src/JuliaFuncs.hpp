@@ -78,6 +78,8 @@ jl_value_t* global_id_dict = nullptr;
 jl_function_t* set_index = nullptr;
 jl_function_t* delete_index = nullptr;
 
+jl_method_instance_t* give_me_nois_instance = nullptr;
+
 bool julia_initialized = false; 
 std::string julia_dir;
 std::string julia_folder_structure = "julia/lib/julia";
@@ -175,7 +177,7 @@ inline void boot_julia(World* inWorld)
             //i should precompile all the prints i need.
             jl_call1(jl_get_function(jl_main_module, "println"), global_id_dict);
 
-            //jl_get_ptls_states()->world_age = jl_get_world_counter(); 
+            jl_get_ptls_states()->world_age = jl_get_world_counter(); 
 
             printf("**************************\n");
             printf("**************************\n");
@@ -259,14 +261,9 @@ void precompile_object(World* world)
 //nrt thread. DO THE INCLUDES HERE!!!!!!!!!!!!!
 bool include2(World* world, void* cmd)
 {
-    //preallocates memory for objects creation.. Use Instruments -> Allocations to check on scsynth
-    //jl_gc_allocobj(100000000);
-
-    //jl_get_ptls_states()->world_age = jl_get_world_counter();
+    jl_get_ptls_states()->world_age = jl_get_world_counter();
 
     test_include();
-
-    //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
     sine_fun = jl_get_function(jl_get_module("Sine_DSP"), "Sine");
     perform_fun = jl_get_function(jl_get_module("Sine_DSP"), "perform");
@@ -276,6 +273,8 @@ bool include2(World* world, void* cmd)
     jl_call3(set_index, global_id_dict, (jl_value_t*)perform_fun, (jl_value_t*)perform_fun);
     //JL_GC_POP();  
 
+    
+    jl_get_ptls_states()->world_age = jl_get_world_counter();
     precompile_object(world);
 
     printf("-> Include completed\n");

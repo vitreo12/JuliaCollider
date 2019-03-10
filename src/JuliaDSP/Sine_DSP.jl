@@ -15,6 +15,10 @@ module Sine_DSP
         end
     end
 
+    function give_me_noise(scale_value::Float64)
+        return (rand(Float64) - 0.5) * (scale_value * 2)
+    end
+
     function perform(unit::Sine, sample_rate::Float64, vector_size::Int32, output_vector::Vector{Float32}, frequency::Float64)
         @inbounds for i::Int64 = 1 : vector_size
             phase::Float64 = unit.p.phase

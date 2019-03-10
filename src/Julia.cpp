@@ -84,6 +84,7 @@ private:
             //set frequency
             *(double*)jl_data_ptr(args[5]) = input;
 
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
             jl_call_no_gc(args, 6);
         }
         else
