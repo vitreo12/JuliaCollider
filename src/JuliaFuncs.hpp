@@ -120,10 +120,10 @@ class JuliaAtomicBarrier : public AtomicBarrier
             return AtomicBarrier::Checklock();
         }
 
-        inline void Unlock()
+        /* inline void Unlock()
         {
             AtomicBarrier::Unlock();
-        }
+        } */
 };
 
 /* IdDict() wrapper.

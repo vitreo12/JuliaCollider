@@ -1,7 +1,7 @@
 @object Sine begin
     @inputs 1 ("frequency")
     @outputs 1
-
+    
     #Declaration of structs (possibly, include() calls aswell)
     mutable struct Phasor
         p::Float32
@@ -24,9 +24,9 @@
     end
 
     @perform begin
-        sampleRate::Float64 = @sampleRate()
+        sampleRate::Float32 = Float32(@sampleRate())
 
-        frequency_kr::Float32 = @in0(1)
+        #frequency_kr::Float32 = @in0(1)
 
         @sample begin
             phase::Float32 = @unit(phasor.p) #equivalent to __unit__.phasor.p
@@ -41,7 +41,11 @@
             
             @out(1) = out_value
             
-            phase += frequency / (sampleRate - 1)
+            #(phase * 2) - 1
+
+            phase += abs(frequency) / (sampleRate - 1)
+
+            #println(phase)
             
             @unit(phasor.p) = phase
         end

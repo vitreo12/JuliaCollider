@@ -4,12 +4,12 @@ struct Julia : public SCUnit
 {
 public:
     Julia() 
-    {         
+    {    
         if(!julia_global_state->is_initialized())
         {
             Print("WARNING: Julia hasn't been booted correctly \n");
             set_calc_function<Julia, &Julia::output_silence>();
-            invalid = true;
+            valid = false;
             return;
         }
 
@@ -18,7 +18,7 @@ public:
         if(unique_id < 0)
         {
             Print("WARNING: Invalid unique id \n");
-            invalid = true;
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
         }
         
@@ -28,7 +28,7 @@ public:
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
             printf("WARNING: Invalid unique id \n");
-            invalid = true;
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
@@ -82,7 +82,7 @@ public:
                 julia_object->RT_busy = false;
         } */
 
-        if(!invalid)
+        if(valid)
         {
             remove_ugen_ref_from_global_object_id_dict();
 
@@ -99,7 +99,9 @@ private:
     int unique_id = -1;
 
     //If unique_id = -1 or if sending a JuliaDef that's not valid on server side.
-    bool invalid = false;
+    bool valid = true;
+
+    bool just_reallocated = false;
 
     jl_value_t* ugen_object;
     int32_t nargs = 6;
@@ -117,7 +119,6 @@ private:
     inline JuliaObjectsArrayState retrieve_julia_object()
     {
         JuliaObjectsArrayState julia_objects_array_state = julia_objects_array->get_julia_object(unique_id, &julia_object);
-        
         return julia_objects_array_state;
     }
 
@@ -137,6 +138,7 @@ private:
         RTFree(mWorld, outs);
     }
 
+    /* JUST ONCE */
     inline bool allocate_julia_args()
     {      
         /* Create __UGen__ for this julia_object */
@@ -254,7 +256,6 @@ private:
         return true;
     }
 
-    /* TO BE IMPLEMENTED */
     inline bool add_ugen_ref_to_global_object_id_dict()
     {  
         //First, create UGenRef object...
@@ -315,18 +316,15 @@ private:
 
     inline void next_NRT_busy(int inNumSamples)
     {
-        /* SILENCE */
+        /* Output silence */
         output_silence(inNumSamples);
-        
-        //int julia_object_unique_id = (int)in0(0);
-        //Print("UNIQUE ID: %i\n", julia_object_unique_id);
 
         /* if(!array_state), next_NRT_busy will run again at next audio buffer */
         JuliaObjectsArrayState array_state = retrieve_julia_object();
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
             printf("WARNING: Invalid unique id \n");
-            invalid = true;
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
@@ -373,6 +371,104 @@ private:
     }
 
     inline void next_julia_code(int inNumSamples) 
+    {
+        if(julia_compiler_barrier->RTChecklock())
+        {
+            //If function changed, allocate it new object on this cycle
+            if(args[0] != julia_object->perform_fun)
+            {
+                if(!julia_object->compiled)
+                {
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+
+                //Reaquire GC lock to allocate all objects later...
+                bool gc_state = julia_gc_barrier->RTChecklock();
+                if(!gc_state)
+                {
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+
+                just_reallocated = true;
+
+                remove_ugen_ref_from_global_object_id_dict();
+
+                //Recompile...
+                perform_instance = julia_object->perform_instance;
+                if(!perform_instance)
+                {
+                    //Print("ERROR: Invalid __perform__ method instance \n");
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    julia_gc_barrier->Unlock();
+                    return;
+                }
+
+                args[0] = julia_object->perform_fun;
+
+                jl_function_t* ugen_constructor_fun = julia_object->constructor_fun;
+                if(!ugen_constructor_fun)
+                {
+                    //Print("ERROR: Invalid __constructor__ function \n");
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    julia_gc_barrier->Unlock();
+                    return;
+                }
+
+                jl_method_instance_t* ugen_constructor_instance = julia_object->constructor_instance;
+                if(!ugen_constructor_instance)
+                {
+                    //Print("ERROR: Invalid __constructor__ instance \n");
+                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+                
+                ugen_object = jl_invoke_already_compiled_SC(ugen_constructor_instance, &ugen_constructor_fun, 1);
+                if(!ugen_object)
+                {
+                    //Print("ERROR: Invalid __UGen__ object \n");
+                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+
+                args[1] = ugen_object;
+
+                add_ugen_ref_to_global_object_id_dict();
+
+                julia_gc_barrier->Unlock();
+            }
+
+            //Next cycle (after recreation of object)
+            if(!just_reallocated)
+            {
+                julia_instance(inNumSamples);
+                julia_compiler_barrier->Unlock();
+                return;
+            }
+
+            if(julia_object->compiled)
+            {
+                output_silence(inNumSamples);
+                just_reallocated = false;
+                julia_compiler_barrier->Unlock();
+                return;
+            }
+        }
+
+        //If compiler is on, output silence...
+        output_silence(inNumSamples);
+    }
+
+    inline void julia_instance(int inNumSamples)
     {
         /* SETUP inNumSamples (Needed for the first sample to be calculated when assigning function)*/
         *(int*)jl_data_ptr(args[4]) = inNumSamples;

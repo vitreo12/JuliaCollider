@@ -16,20 +16,36 @@ s.sendMsg(\cmd, "/julia_query_id_dicts");
 
 a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
 
+10.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
+
 s.sendMsg(\cmd, "/julia_test_load");
 
-x = {Julia.ar(a, DC.ar(240))}.play;
+//1
+{Julia.ar(a, DC.ar(440))}.play;
+
+{SinOsc.ar(DC.ar(440))}.play;
+
+//2
+{Julia.ar(a, Julia.ar(a, DC.ar(1)) * 440) * Julia.ar(a, DC.ar(220))}.play;
+
+{SinOsc.ar(SinOsc.ar(DC.ar(1)) * 440) * SinOsc.ar(DC.ar(220))}.play;
+
+{LFSaw.ar(LFSaw.ar(DC.ar(1)) * 440) * LFSaw.ar(DC.ar(220))}.play;
+
+//3
+{Julia.ar(a, Julia.ar(a, DC.ar(1)) * 440)}.play;
+
+{LFSaw.ar(LFSaw.ar(1) * 440)}.play;
 
 (
 s.bind({
+	{Julia.ar(a, DC.ar(440))}.play;
 	s.sendMsg(\cmd, "/julia_GC");
-	{Julia.ar(a, DC.ar(240))}.play;
 });
 )
 
 
-100.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
-
 a.query;
 
+s.scope;
 s.quit;
