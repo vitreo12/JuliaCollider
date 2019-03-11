@@ -63,6 +63,9 @@ typedef struct JuliaObject
 /***************************************************************************/
                                 /* CLASSES */
 /***************************************************************************/
+
+/* SHOULD I RE-IMPLEMENT THIS BARRIER WITH std::atomic_flag INSTEAD OF std::atomic<bool>??? 
+IT MIGHT BE FASTER!!!!!!!!! */
 class JuliaAtomicBarrier
 {
     public:
