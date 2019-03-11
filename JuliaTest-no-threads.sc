@@ -12,6 +12,8 @@ s.waitForBoot({
 
 s.sendMsg(\cmd, "/julia_GC");
 
+s.sendMsg(\cmd, "/julia_query_id_dicts");
+
 a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
 
 s.sendMsg(\cmd, "/julia_test_load");

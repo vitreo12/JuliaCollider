@@ -1998,10 +1998,31 @@ void JuliaTestLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, v
     DoAsynchronousCommand(inWorld, replyAddr, "/jl_test_load", nullptr, (AsyncStageFn)julia_test_load, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
+inline bool julia_query_id_dicts(World* world, void* cmd)
+{
+    if(julia_global_state->is_initialized())
+    {
+        julia_compiler_barrier->NRTSpinlock();
+
+        jl_call1(jl_get_function(jl_base_module, "println"), julia_global_state->get_global_def_id_dict().get_id_dict());
+        jl_call1(jl_get_function(jl_base_module, "println"), julia_global_state->get_global_object_id_dict().get_id_dict());
+        
+        julia_compiler_barrier->Unlock();
+    }
+
+    return true;
+}
+
+void JuliaQueryIdDicts(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "/jl_query_id_dicts", nullptr, (AsyncStageFn)julia_query_id_dicts, 0, 0, julia_gc_cleanup, 0, nullptr);
+}
+
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("/julia_load", (PlugInCmdFunc)JuliaLoad, nullptr);
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("/julia_test_load",   (PlugInCmdFunc)JuliaTestLoad, nullptr);
+    DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
 }

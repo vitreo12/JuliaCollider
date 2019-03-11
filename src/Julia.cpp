@@ -64,6 +64,8 @@ public:
                 julia_object->RT_busy = false;
         } */
 
+        remove_ugen_ref_from_global_object_id_dict();
+
         if(args)
             free_args();
 
@@ -73,12 +75,18 @@ public:
 
 private:
     JuliaObject* julia_object = nullptr;
+    jl_value_t* ugen_object;
     int32_t nargs = 6;
     jl_value_t** args;
+    jl_value_t* ins_vector;
+    jl_value_t* outs_vector;
     jl_value_t** ins;
     jl_value_t** outs;
+    
     jl_function_t* perform_fun;
     jl_method_instance_t* perform_instance;
+
+    jl_value_t* ugen_ref_object;
 
     int count = 0;
 
@@ -130,7 +138,7 @@ private:
             return false;
         }
         
-        jl_value_t* ugen_object = jl_invoke_already_compiled_SC(ugen_constructor_instance, &ugen_constructor_fun, 1);
+        ugen_object = jl_invoke_already_compiled_SC(ugen_constructor_instance, &ugen_constructor_fun, 1);
         if(!ugen_object)
         {
             Print("ERROR: Invalid __UGen__ object \n");
@@ -170,7 +178,7 @@ private:
         /* Excluding first input, as it is the id number */
         size_t ugen_num_of_inputs = numInputs() - 1;
 
-        jl_value_t* ins_vector = (jl_value_t*)jl_alloc_array_1d(julia_global_state->get_vector_of_vectors_float32(), ugen_num_of_inputs);
+        ins_vector = (jl_value_t*)jl_alloc_array_1d(julia_global_state->get_vector_of_vectors_float32(), ugen_num_of_inputs);
         ins = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * ugen_num_of_inputs);
         if(!ins_vector || !ins)
         {
@@ -196,7 +204,7 @@ private:
             jl_invoke_already_compiled_SC(julia_object->set_index_audio_vector_instance, args_set_index_audio_vector, nargs_set_index_audio_vector);
         }
 
-        jl_value_t* outs_vector = (jl_value_t*)jl_alloc_array_1d(julia_global_state->get_vector_of_vectors_float32(), numOutputs());
+        outs_vector = (jl_value_t*)jl_alloc_array_1d(julia_global_state->get_vector_of_vectors_float32(), numOutputs());
         outs = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * numOutputs());
         if(!outs || !outs_vector)
         {
@@ -232,8 +240,61 @@ private:
 
     /* TO BE IMPLEMENTED */
     inline bool add_ugen_ref_to_global_object_id_dict()
-    {
+    {  
+        //First, create UGenRef object...
+        int32_t ugen_ref_nargs = 4;
+        jl_value_t* ugen_ref_args[ugen_ref_nargs];
+        
+        //__UGenRef__ constructor
+        ugen_ref_args[0] = julia_object->ugen_ref_fun;
+        ugen_ref_args[1] = ugen_object;
+        ugen_ref_args[2] = ins_vector;
+        ugen_ref_args[3] = outs_vector;
+
+        //Create __UGenRef__ for this object
+        ugen_ref_object = jl_invoke_already_compiled_SC(julia_object->ugen_ref_instance, ugen_ref_args, ugen_ref_nargs);
+        if(!ugen_ref_object)
+        {
+            Print("ERROR: Could not create __UGenRef__ object\n");
+            return false;
+        }
+
+        //SHould it be RTAlloc()???
+        int32_t set_index_nargs = 3;
+        jl_value_t* set_index_args[set_index_nargs];
+
+        //set index
+        set_index_args[0] = julia_object->set_index_ugen_ref_fun;
+        set_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
+        set_index_args[2] = ugen_ref_object;
+
+        jl_value_t* set_index_successful = jl_invoke_already_compiled_SC(julia_object->set_index_ugen_ref_instance, set_index_args, set_index_nargs);
+        if(!set_index_successful)
+        {
+            Print("ERROR: Could not assign __UGenRef__ object to global object id dict\n");
+            return false;
+        }
+
         return true;
+    }
+
+    inline void remove_ugen_ref_from_global_object_id_dict()
+    {
+        if(!ugen_ref_object)
+        {
+            Print("Invalid __UGenRef__ to be freed \n");
+            return;
+        }
+
+        int32_t delete_index_nargs = 3;
+        jl_value_t* delete_index_args[delete_index_nargs];
+
+        //delete index
+        delete_index_args[0] = julia_object->delete_index_ugen_ref_fun;
+        delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
+        delete_index_args[2] = ugen_ref_object;
+
+        jl_invoke_already_compiled_SC(julia_object->delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
     }
 
     inline void next_NRT_busy(int inNumSamples)
