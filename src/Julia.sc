@@ -1,6 +1,7 @@
 JuliaDef {
+	/* Only define getters  for variables to be accessed at Julia UGen instantiation */
 	var srvr;
-	/* Only define getters to be accessed at UGen instantiation */
+	var file_path = "";
 	var <name = "@No_Name";
 	var <inputs = -1;
 	var <input_names;
@@ -9,16 +10,17 @@ JuliaDef {
 	var <server_id = -1;
 	var <compiled = false;
 
-	/* CHECK STRUCTURE OF THINGS INSIDE Buffer.sc */
-
-	/* ADD INPUT NAMES FOR PARAMETERS */
-
 	*new {
 		arg server, path;
 		^super.new.init(server, path);
 	}
 
 	init {
+		arg server, path;
+		^this.newJuliaDef(server, path);
+	}
+
+	newJuliaDef {
 		arg server, path;
 		var obj_name, ins, outs, srvr_id, condition, osc_unique_id, osc_func;
 
@@ -49,8 +51,10 @@ JuliaDef {
 						obj_name = msg_unpacked[3];
 						ins = msg_unpacked[4].asInteger;
 						outs = msg_unpacked[5].asInteger;
+
 						//Unhang condition
 						condition.unhang;
+
 						//Free the OSCFunc. It's not possible to use .oneShot, as,
 						//if it doesn't pick correct ID, it would still be deleted.
 						osc_func.free;
@@ -68,11 +72,14 @@ JuliaDef {
 			//Wait for positive response from the OSCFunc
 			condition.hang;
 
-			//Assign variables to JuliaDef.
+			//Assign variables to JuliaDef after unhanging.
 			server_id = srvr_id;
 			name = obj_name;
 			inputs = ins;
 			outputs = outs;
+
+			//Add file_path only on positive response of server (inputs > -1)
+			if(inputs > -1, {file_path = path;});
 
 			//Sync server right after variables assignment
 			server.sync;
@@ -88,24 +95,55 @@ JuliaDef {
 		("-> ID: " ++ server_id).postln;
 		("-> Inputs: " ++ inputs).postln;
 		("-> Outputs: " ++ outputs).postln;
+		("-> File Path: " ++ file_path).postln;
 	}
 
-	/* Add method to retrieve a JuliaDef from the server by name
-	   It must have been evaluated first. So there could be a
-	   Julia function where it includes without assigning.
-	   The name retrieved is the name of the @object, so that
-	   it is possible to retrieve the module from Julia quite easily, without
-	   having a IdDict() with custom names, saving allocation space.*/
+	/* Trigger recompilation of file_path */
+	recompile {
 
-	/* Add free() method */
+	}
 
+	/* Replaces file_path , frees the previous one and recompiles the new one */
+	replace {
+
+	}
+
+	/* Retrieve a JuliaDef from server by name */
+	retrieve {
+
+	}
+
+	/* Free a JuliaDef */
+	free {
+
+	}
+
+	/* List of all compiled JuliaDefs on the server */
+	getCompiledJuliaDefs {
+
+	}
+
+	/* Precompile a JuliaDef in the Julia sysimg. At next boot, it will be loaded. */
+	precompile {
+
+	}
 }
 
+JuliaDefProxy {
+	*new {
+		arg server, num_inputs, num_outputs;
+		^super.new.init(server, num_inputs, num_outputs);
+	}
+
+	init {
+		arg server, num_inputs, num_outputs;
+	}
+}
 
 //Executed in SynthDef...
 Julia : MultiOutUGen {
 	*ar { |... args|
-		var juliaDef, new_args, name, server_id, inputs, outputs, zero_output;
+		var new_args, name, server_id, inputs, outputs, zero_output;
 
 		if((args.size == 0), {
 			Error("Julia: no arguments provided.").throw;
