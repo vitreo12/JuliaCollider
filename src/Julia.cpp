@@ -1,19 +1,5 @@
 #include "JuliaFuncs.hpp"
 
-jl_value_t* jl_call_no_gc(jl_value_t** args, uint32_t nargs)
-{
-    jl_value_t* v;
-    //size_t last_age = jl_get_ptls_states()->world_age;
-    //jl_get_ptls_states()->world_age = jl_get_world_counter();
-    
-    v = jl_apply(args, nargs);
-    
-    //jl_get_ptls_states()->world_age = last_age;
-    jl_exception_clear();
-    
-    return v;
-}
-
 struct Julia : public SCUnit 
 {
 public:
@@ -27,7 +13,7 @@ public:
         }
 
         int julia_object_unique_id = (int)in0(0);
-        Print("UNIQUE ID: %i\n", julia_object_unique_id);
+        //Print("UNIQUE ID: %i\n", julia_object_unique_id);
 
         bool array_state = retrieve_julia_object(julia_object_unique_id);
         if(!array_state)
@@ -50,7 +36,7 @@ public:
         {
             Print("ERROR: Could not allocate UGen \n");
             set_calc_function<Julia, &Julia::output_silence>();
-            julia_gc_barrier->RTUnlock();
+            julia_gc_barrier->Unlock();
             return;
         }
 
@@ -59,12 +45,12 @@ public:
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
             set_calc_function<Julia, &Julia::output_silence>();
-            julia_gc_barrier->RTUnlock();
+            julia_gc_barrier->Unlock();
             return;
         }
 
         //Unlock the gc barrier
-        julia_gc_barrier->RTUnlock();
+        julia_gc_barrier->Unlock();
         
         //set_calc_function already does one sample of audio.
         set_calc_function<Julia, &Julia::next_julia_code>();
@@ -72,11 +58,11 @@ public:
 
     ~Julia() 
     {
-        if(julia_object)
+        /* if(julia_object)
         {
             if(julia_object->compiled)
                 julia_object->RT_busy = false;
-        }
+        } */
 
         if(args)
             free_args();
@@ -91,6 +77,8 @@ private:
     jl_value_t** args;
     jl_value_t** ins;
     jl_value_t** outs;
+    jl_function_t* perform_fun;
+    jl_method_instance_t* perform_instance;
 
     int count = 0;
 
@@ -104,7 +92,7 @@ private:
             return false;
 
         //Set it to be busy from RT thread. Should it be atomic? 
-        julia_object->RT_busy = true;
+        //julia_object->RT_busy = true;
 
         return true;
     }
@@ -149,10 +137,10 @@ private:
             return false;
         }
 
-        jl_function_t* ugen_perform_fun = julia_object->perform_fun;
-        if(!ugen_perform_fun)
+        perform_fun = julia_object->perform_fun;
+        if(!perform_fun)
         {
-            Print("ERROR: Invalid __constructor__ function \n");
+            Print("ERROR: Invalid __perform__ function \n");
             return false;
         }
 
@@ -160,6 +148,13 @@ private:
         if(!buf_size)
         {
             Print("ERROR: Invalid __buf_size__ argument \n");
+            return false;
+        }
+
+        perform_instance = julia_object->perform_instance;
+        if(!perform_instance)
+        {
+            Print("ERROR: Invalid __perform__ method instance \n");
             return false;
         }
 
@@ -184,13 +179,21 @@ private:
             return false;
         }
 
+        //Should all memory here be allocated on stack like this??
+        size_t nargs_set_index_audio_vector = 4;
+        jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
+
         for(int i = 0; i < ugen_num_of_inputs; i++)
         {
             //Using nullptrs here. Real pointers will be set at each buffer cycle to SC ins[channel] buffer.
             ins[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global_state->get_vector_float32(), nullptr, bufferSize(), 0);
 
-            /* I should have a method outstance for this set index call aswell. It's not compiled here */
-            jl_call3(julia_global_state->get_set_index_fun(), ins_vector, ins[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+            args_set_index_audio_vector[0] = julia_global_state->get_set_index_audio_vector_fun();
+            args_set_index_audio_vector[1] = ins_vector;
+            args_set_index_audio_vector[2] = ins[i];
+            args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
+
+            jl_invoke_already_compiled_SC(julia_object->set_index_audio_vector_instance, args_set_index_audio_vector, nargs_set_index_audio_vector);
         }
 
         jl_value_t* outs_vector = (jl_value_t*)jl_alloc_array_1d(julia_global_state->get_vector_of_vectors_float32(), numOutputs());
@@ -208,12 +211,16 @@ private:
             //Using nullptrs here. Real pointers will be set at each buffer cycle to SC outs[channel] buffer.
             outs[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global_state->get_vector_float32(), nullptr, bufferSize(), 0);
 
-            /* I should have a method outstance for this set index call aswell. It's not compiled here */
-            jl_call3(julia_global_state->get_set_index_fun(), outs_vector, outs[i], jl_box_int32(i + 1)); //Julia index from 1 onwards
+            args_set_index_audio_vector[0] = julia_global_state->get_set_index_audio_vector_fun();
+            args_set_index_audio_vector[1] = outs_vector;
+            args_set_index_audio_vector[2] = outs[i];
+            args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
+
+            jl_invoke_already_compiled_SC(julia_object->set_index_audio_vector_instance, args_set_index_audio_vector, nargs_set_index_audio_vector);
         }
 
         /* ASSIGN TO ARRAY */
-        args[0] = (jl_value_t*)ugen_perform_fun; //__perform__ function
+        args[0] = (jl_value_t*)perform_fun; //__perform__ function
         args[1] = ugen_object; //__ugen__::__UGen__
         args[2] = ins_vector;  //__ins__::Vector{Vector{Float32}}
         args[3] = outs_vector; //__outs__::Vector{Vector{Float32}}
@@ -223,6 +230,7 @@ private:
         return true;
     }
 
+    /* TO BE IMPLEMENTED */
     inline bool add_ugen_ref_to_global_object_id_dict()
     {
         return true;
@@ -234,7 +242,7 @@ private:
         output_silence(inNumSamples);
         
         int julia_object_unique_id = (int)in0(0);
-        Print("UNIQUE ID: %i\n", julia_object_unique_id);
+        //Print("UNIQUE ID: %i\n", julia_object_unique_id);
 
         /* if(!array_state), next_NRT_busy will run again at next audio buffer */
         bool array_state = retrieve_julia_object(julia_object_unique_id);
@@ -260,7 +268,7 @@ private:
         {
             Print("ERROR: Could not allocate UGen \n");
             set_calc_function<Julia, &Julia::output_silence>();
-            julia_gc_barrier->RTUnlock();
+            julia_gc_barrier->Unlock();
             return;
         }
 
@@ -269,11 +277,11 @@ private:
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
             set_calc_function<Julia, &Julia::output_silence>();
-            julia_gc_barrier->RTUnlock();
+            julia_gc_barrier->Unlock();
             return;
         }
 
-        julia_gc_barrier->RTUnlock();
+        julia_gc_barrier->Unlock();
 
         //Assign directly, without first sample ????
         mCalcFunc = make_calc_function<Julia, &Julia::next_julia_code>();
@@ -287,47 +295,12 @@ private:
         /* SETUP INS/OUTS */
         /* CHange buffer they are pointing at. At setup, it was nullptr */
         for(int i = 0; i < (numInputs() - 1); i++) //One less input , as in(0) is unique_id
-            ((jl_array_t*)(ins[i]))->data = (float*)in(i + 1); //i + 1 = correct SC buffer
+            ((jl_array_t*)(ins[i]))->data = (float*)in(i + 1); //i + 1 = correct SC buffer (excluding unique_id)
 
         for(int i = 0; i < numOutputs(); i++)
-            ((jl_array_t*)(outs[i]))->data = (float*)out(i);
+            ((jl_array_t*)(outs[i]))->data = (float*)out(i);    
 
-        /* RETRIEVE METHOD INSTANCE. (It could be done beforehand...) */
-        jl_method_instance_t* perform_instance = julia_object->perform_instance;
-
-        if(!perform_instance)
-        {
-            Print("INVALID PERFORM INSTANCE\n");
-            output_silence(inNumSamples);
-            return;
-        }
-
-        if(jl_get_ptls_states()->world_age < 20000)
-        {
-            Print("ERROR: WORLD AGE %d\n", jl_get_ptls_states()->world_age);
-            jl_get_ptls_states()->world_age = jl_get_world_counter();
-        }
-
-        for(int i = 0; i < nargs; i++)
-        {
-            if(!args[i])
-            {
-                Print("ERROR: INVALID ARG \n");
-                output_silence(inNumSamples);
-                return;
-            }
-        }
-
-        jl_call_no_gc(args, nargs);
-        
-        
-
-        //jl_get_ptls_states()->world_age = jl_get_world_counter();
-        /* RUN COMPILED FUNCTION */
-        /* RT CRASHES HAPPEN BECAUSE, IF I RUN A jl_call() IN NRT THREAD, jl_call() wraps
-        JL_TRY AND CATCH, and that exception handling crashes the whole thing. CHECK IF MY JL_TRY/CATCH
-        for jl_load() works. OTHERWISE, just have a simple if(!) check, and print out result in case */
-        //jl_invoke_already_compiled_SC(perform_instance, args, nargs);
+        jl_invoke_already_compiled_SC(perform_instance, args, nargs);
     }
 
     inline void output_silence(int inNumSamples)
@@ -363,5 +336,7 @@ void julia_destructor(void)
     {
         delete julia_global_state;
         delete julia_gc_barrier;
+        delete julia_compiler_barrier;
+        delete julia_objects_array;
     }
 }

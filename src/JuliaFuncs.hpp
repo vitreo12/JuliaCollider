@@ -2,13 +2,12 @@
 #include <atomic>
 #include <stdlib.h>
 #include <unistd.h>
-#include <time.h>
+#include <string.h>
 
 #include "julia.h"
 #include "JuliaUtilities.hpp"
 
 #include "SC_PlugIn.hpp"
-#include "SC_Node.h"
 
 //MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
 //LINUX: ./build_install_native.sh ~/Sources/JuliaCollider/vitreo12-julia/julia-native ~/Sources/SuperCollider-3.10.0 ~/.local/share/SuperCollider/Extensions
@@ -21,15 +20,15 @@
 #pragma once
 
 /***************************************************************************/
+                            /* INTERFACE TABLE */
+/***************************************************************************/
+static InterfaceTable* ft;
+
+/***************************************************************************/
                         /* JULIA VERSION std::string */
 /***************************************************************************/
 std::string julia_version_string = std::string(jl_ver_string());
 const std::string julia_version_maj_min = julia_version_string.substr(0, julia_version_string.size()-2); //Remove last two characters. Result is "1.1"
-
-/***************************************************************************/
-                            /* INTERFACE TABLE */
-/***************************************************************************/
-static InterfaceTable* ft;
 
 /***************************************************************************/
                                 /* STRUCTS */
@@ -45,6 +44,7 @@ typedef struct JuliaObject
     jl_function_t* destructor_fun;
     jl_function_t* set_index_ugen_ref_fun; 
     jl_function_t* delete_index_ugen_ref_fun; 
+    
     /***********************************/
     /* Mirror to __JuliaDef__ in Julia */
     jl_method_instance_t* ugen_ref_instance;
@@ -57,7 +57,9 @@ typedef struct JuliaObject
     /***********************************/
 
     bool compiled;
-    bool RT_busy;
+    //bool RT_busy;
+    bool being_replaced;
+
 } JuliaObject;
 
 /***************************************************************************/
@@ -66,11 +68,11 @@ typedef struct JuliaObject
 
 /* SHOULD I RE-IMPLEMENT THIS BARRIER WITH std::atomic_flag INSTEAD OF std::atomic<bool>??? 
 IT MIGHT BE FASTER!!!!!!!!! */
-class JuliaAtomicBarrier
+class AtomicBarrier
 {
     public:
-        JuliaAtomicBarrier(){}
-        ~JuliaAtomicBarrier(){}
+        AtomicBarrier(){}
+        ~AtomicBarrier(){}
 
         /* To be called from NRT thread only. */
         inline void Spinlock()
@@ -102,44 +104,25 @@ class JuliaAtomicBarrier
         std::atomic<bool> barrier{false};
 };
 
-class JuliaGCBarrier : public JuliaAtomicBarrier
+class JuliaAtomicBarrier : public AtomicBarrier
 {
     public:
-        JuliaGCBarrier(){}
-        ~JuliaGCBarrier(){}
+        JuliaAtomicBarrier(){}
+        ~JuliaAtomicBarrier(){}
 
-        /* SHOULD I BE USING this-> INSTEAD OF JuliaAtomicBarrier:: ????*/
-        inline void NRTPerformGC(int full)
+        inline void NRTSpinlock()
         {
-            JuliaAtomicBarrier::Spinlock();
-
-            if(!jl_gc_is_enabled())
-            {
-                printf("-> Enabling GC...\n");
-                jl_gc_enable(1);
-            }
-            
-            jl_gc_collect(full);
-            
-            printf("-> Completed GC\n");
-            
-            if(jl_gc_is_enabled())
-            {
-                printf("-> Disabling GC...\n");
-                jl_gc_enable(0);
-            }
-
-            JuliaAtomicBarrier::Unlock();
+            AtomicBarrier::Spinlock();
         }
 
         inline bool RTChecklock()
         {
-            return JuliaAtomicBarrier::Checklock();
+            return AtomicBarrier::Checklock();
         }
 
-        inline void RTUnlock()
+        inline void Unlock()
         {
-            JuliaAtomicBarrier::Unlock();
+            AtomicBarrier::Unlock();
         }
 };
 
@@ -199,7 +182,7 @@ class JuliaGlobalIdDict
             jl_value_t* result = jl_lookup_generic_and_compile_return_value_SC(args, nargs);
             
             if(!result)
-                jl_errorf("Could not add element to %s", global_var_name);
+                printf("ERROR: Could not add element to %s\n", global_var_name);
         }
 
         /* Will throw exception if things go wrong */
@@ -215,7 +198,7 @@ class JuliaGlobalIdDict
             jl_value_t* result = jl_lookup_generic_and_compile_return_value_SC(args, nargs);
 
             if(!result)
-                jl_errorf("Could not remove element from %s", global_var_name);
+                printf("ERROR: Could not add element to %s\n", global_var_name);
         }
 
         inline jl_value_t* get_id_dict()
@@ -642,8 +625,6 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                         return;
                     }
 
-                    //perform_gc(1);
-
                     //Get world_counter right away, otherwise last_age, in include sections, would be
                     //still age 1. This update here allows me to only advance age on the NRT thread, while 
                     //on the RT thread I only invoke methods that are been already compiled and would work 
@@ -924,18 +905,12 @@ class JuliaObjectCompiler
 
         ~JuliaObjectCompiler() {}
 
-        inline jl_module_t* compile_julia_object(JuliaObject* julia_object, JuliaReplyWithLoadPath* julia_reply_with_load_path)
+        inline jl_module_t* eval_julia_object(JuliaReplyWithLoadPath* julia_reply_with_load_path)
         {
             const char* julia_load_path = julia_reply_with_load_path->get_julia_load_path();
 
             printf("*** OSC_UNIQUE_ID %d ***\n", julia_reply_with_load_path->get_OSC_unique_id());
             printf("*** LOAD PATH: %s ***\n", julia_load_path);
-
-            /* if(julia_object)
-            {
-                printf("ERROR: Already assigned Julia @object \n");
-                return nullptr;
-            } */
 
             jl_module_t* evaluated_module = eval_julia_file(julia_load_path);
 
@@ -945,18 +920,24 @@ class JuliaObjectCompiler
                 return nullptr;
             }
 
+            return evaluated_module;
+        }
+
+        inline bool compile_julia_object(JuliaObject* julia_object, jl_module_t* evaluated_module)
+        {
             printf("*** MODULE NAME: %s *** \n", jl_symbol_name(evaluated_module->name));
 
-            //If failed any precompilation stage, return nullptr.
+            //If failed any precompilation stage, return false.
             if(!precompile_julia_object(evaluated_module, julia_object))
             {
                 printf("ERROR: Failed in compiling Julia @object \"%s\"\n", jl_symbol_name(evaluated_module->name));
-                return nullptr;
+                return false;
             }
 
+            //Set this object module to the evaluated one.
             julia_object->evaluated_module = evaluated_module;
 
-            return evaluated_module;
+            return true;
         }
 
         inline bool unload_julia_object(JuliaObject* julia_object)
@@ -967,11 +948,11 @@ class JuliaObjectCompiler
                 return false;
             }
 
-            if(julia_object->RT_busy)
+            /* if(julia_object->RT_busy)
             {
                 printf("WARNING: %s @object is still being used in a SynthDef\n", jl_symbol_name(julia_object->evaluated_module->name));
                 return false;
-            }
+            } */
 
             if(julia_object->compiled)
             {   
@@ -1002,12 +983,11 @@ class JuliaObjectCompiler
             
             JL_TRY {
                 //DO I NEED TO ADVANCE AGE HERE???? Perhaps, I do.
-                //jl_get_ptls_states()->world_age = jl_get_world_counter();
+                jl_get_ptls_states()->world_age = jl_get_world_counter();
                 
                 //The file MUST ONLY contain an @object definition (which loads a module)
                 evaluated_module = (jl_module_t*)jl_load(jl_main_module, path);
-                jl_exception_clear();
-
+                
                 if(!evaluated_module)
                     jl_error("Invalid julia file");
 
@@ -1032,7 +1012,7 @@ class JuliaObjectCompiler
                 if(!jl_get_global_SC(evaluated_module, "__destructor__"))
                     jl_error("Undefined @destructor"); 
 
-                //jl_exception_clear();
+                jl_exception_clear();
             }
             JL_CATCH {
                 jl_get_ptls_states()->previous_exception = jl_current_exception();
@@ -1051,15 +1031,16 @@ class JuliaObjectCompiler
             }
 
             //Advance age after each include?? THIS IS PROBABLY UNNEEDED
-            //jl_get_ptls_states()->world_age = jl_get_world_counter();
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
 
             return evaluated_module;
         };
 
         inline void null_julia_object(JuliaObject* julia_object)
         {
+            julia_object->being_replaced = false;
             julia_object->compiled = false;
-            julia_object->RT_busy = false;
+            //julia_object->RT_busy = false;
             julia_object->evaluated_module = nullptr;
             julia_object->ugen_ref_fun = nullptr;
             julia_object->constructor_fun = nullptr;
@@ -1125,8 +1106,8 @@ class JuliaObjectCompiler
 
             printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
-            jl_get_ptls_states()->world_age = jl_get_world_counter();
-            /* These functions will throw a jl_error if anything goes wrong. */
+            //jl_get_ptls_states()->world_age = jl_get_world_counter();
+            /* These functions will return false if anything goes wrong. */
             if(precompile_constructor(evaluated_module, julia_object))
             {
                 //jl_get_ptls_states()->world_age = jl_get_world_counter();
@@ -1159,7 +1140,7 @@ class JuliaObjectCompiler
                 }
             }
             
-            jl_get_ptls_states()->world_age = jl_get_world_counter();
+            //jl_get_ptls_states()->world_age = jl_get_world_counter();
             printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
             return precompile_state;
@@ -1563,6 +1544,7 @@ class JuliaObjectCompiler
         /* ALL THESE SHOULD NOT jl_call(), but INVOKE */
         inline bool delete_methods_from_table(JuliaObject* julia_object)
         {
+            /*
             jl_function_t* delete_method_fun = jl_get_function(jl_base_module, "delete_method");
             if(!delete_method_fun)
             {
@@ -1625,6 +1607,7 @@ class JuliaObjectCompiler
                 printf("ERROR: Could not retrieve method for set_index_audio_vector_instance\n");
                 return false;
             }
+            */
             
             return true;
         }
@@ -1672,28 +1655,46 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             }
             */
 
-            //Retrieve a new ID be checking out the first free entry in the julia_objects_array
-            for(int i = 0; i < num_total_entries; i++)
-            {
-                JuliaObject* this_julia_object = julia_objects_array + i;
-                if(!this_julia_object->compiled) //If empty entry, it means I can take ownership
-                {
-                    julia_object = this_julia_object;
-                    new_id = i;
-                    break;
-                }
-            }
-
-            printf("ID: %d\n", new_id);
-
-            //Run precompilation
-            jl_module_t* evaluated_module = compile_julia_object(julia_object, julia_reply_with_load_path);
-
-            if(!evaluated_module || !julia_object->compiled)
+            //Run code evaluation and module compilation
+            jl_module_t* evaluated_module = eval_julia_object(julia_reply_with_load_path);
+            if(!evaluated_module)
             {
                 julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
                 return false;
             }
+            
+            //If an @object already exist, just replace the content at that ID and set its "being_replaced" flag to true.
+            new_id = check_existing_module(evaluated_module);
+            if(new_id >= 0)
+                julia_object = julia_objects_array + new_id; //the julia_object being replaced
+            else if(new_id < 0)
+            {
+                //Retrieve a new ID be checking out the first free entry in the julia_objects_array
+                for(int i = 0; i < num_total_entries; i++)
+                {
+                    JuliaObject* this_julia_object = julia_objects_array + i;
+                    if(!this_julia_object->compiled) //If empty entry, it means I can take ownership
+                    {
+                        julia_object = this_julia_object;
+                        new_id = i;
+                        break;
+                    }
+                }
+            }
+
+            //Unload previous object from same id if it's being replaced by same @object. It assumes NRT thread has lock.
+            if(julia_object->being_replaced)
+                delete_julia_object(new_id, julia_object);
+
+            //Run object's compilation.
+            bool succesful_compilation = compile_julia_object(julia_object, evaluated_module);
+            if(!succesful_compilation)
+            {
+                julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
+                return false;
+            }
+
+            printf("ID: %d\n", new_id);
 
             const char* name = jl_symbol_name(evaluated_module->name);
             int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
@@ -1717,7 +1718,6 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 return false;
             }
             
-
             //MSG: OSC id, cmd, id, name, inputs, outputs
             julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", new_id, name, num_inputs, num_outputs);
 
@@ -1726,10 +1726,30 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             return true;
         }
 
+        inline int check_existing_module(jl_module_t* evaluated_module)
+        {
+            for(int i = 0; i < get_active_entries(); i++)
+            {
+                JuliaObject* this_julia_object = julia_objects_array + i;
+                char* eval_module_name = jl_symbol_name(evaluated_module->name);
+                char* this_julia_object_module_name = jl_symbol_name((this_julia_object->evaluated_module)->name);
+                //Compare string content
+                if(strcmp(eval_module_name, this_julia_object_module_name) == 0)
+                {
+                    printf("WARNING: Replacing @object: %s\n", eval_module_name);
+                    this_julia_object->being_replaced = true;
+                    return i;
+                }
+            }
+
+            //No other module with same name
+            return -1;
+        }
+
         /* RT THREAD. Called when a Julia UGen is created on the server */
         inline bool get_julia_object(int unique_id, JuliaObject** julia_object)
         {
-            bool barrier_acquired = JuliaAtomicBarrier::Checklock();
+            bool barrier_acquired = JuliaAtomicBarrier::RTChecklock();
 
             if(barrier_acquired)
             {
@@ -1750,15 +1770,15 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* NRT THREAD. Called at JuliaDef.free() */
         inline void delete_julia_object(int unique_id, JuliaObject* julia_object)
         {
-            JuliaAtomicBarrier::Spinlock();
+            //JuliaAtomicBarrier::NRTSpinlock();
 
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
             unload_julia_object(julia_object);
-            //if(unload_julia_object(julia_object))
-            //    decrease_active_entries();
+            if(unload_julia_object(julia_object))
+                decrease_active_entries();
 
-            JuliaAtomicBarrier::Unlock();
+            //JuliaAtomicBarrier::Unlock();
         }
 
     private:
@@ -1837,13 +1857,37 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 /***************************************************************************/
                             /* GLOBAL VARS */
 /***************************************************************************/
-JuliaGlobalState*  julia_global_state;
-JuliaGCBarrier*    julia_gc_barrier;
-JuliaObjectsArray* julia_objects_array;
+JuliaGlobalState*   julia_global_state;
+JuliaAtomicBarrier* julia_gc_barrier;
+JuliaAtomicBarrier* julia_compiler_barrier;
+JuliaObjectsArray*  julia_objects_array;
 
 /****************************************************************************/
                             /* ASYNC COMMANDS */
 /****************************************************************************/
+inline void perform_gc(int full)
+{
+    julia_gc_barrier->NRTSpinlock();
+
+    if(!jl_gc_is_enabled())
+    {
+        printf("-> Enabling GC...\n");
+        jl_gc_enable(1);
+    }
+    
+    jl_gc_collect(full);
+    
+    printf("-> Completed GC\n");
+    
+    if(jl_gc_is_enabled())
+    {
+        printf("-> Disabling GC...\n");
+        jl_gc_enable(0);
+    }
+
+    julia_gc_barrier->Unlock();
+}
+
 //On RT Thread for now.
 inline bool julia_boot(World* inWorld, void* cmd)
 {
@@ -1852,16 +1896,16 @@ inline bool julia_boot(World* inWorld, void* cmd)
         julia_global_state = new JuliaGlobalState(inWorld, ft);
         if(julia_global_state->is_initialized())
         {
-            julia_gc_barrier    = new JuliaGCBarrier();
-            julia_objects_array = new JuliaObjectsArray(inWorld, julia_global_state);
+            julia_gc_barrier       = new JuliaAtomicBarrier();
+            julia_compiler_barrier = new JuliaAtomicBarrier();
+            julia_objects_array    = new JuliaObjectsArray(inWorld, julia_global_state);
 
-            julia_gc_barrier->NRTPerformGC(1);
+            perform_gc(1);
         }
     }
     else
         printf("WARNING: Julia already booted \n");
     
-
     return true;
 }
 
@@ -1877,7 +1921,13 @@ bool julia_load(World* world, void* cmd)
     JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
 
     if(julia_global_state->is_initialized())
+    {
+        julia_compiler_barrier->NRTSpinlock();
+        
         julia_objects_array->create_julia_object(julia_reply_with_load_path);
+        
+        julia_compiler_barrier->Unlock();
+    }
     else
     {
         julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
@@ -1890,9 +1940,6 @@ bool julia_load(World* world, void* cmd)
 void julia_load_cleanup(World* world, void* cmd) 
 {
     JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
-
-    //JuliaReplyWithLoadPath has no destructor, actually...
-    julia_reply_with_load_path->~JuliaReplyWithLoadPath();
 
     if(julia_reply_with_load_path)
         JuliaReplyWithLoadPath::operator delete(julia_reply_with_load_path, world); //Needs to be called excplicitly
@@ -1919,7 +1966,7 @@ void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 inline bool julia_perform_gc(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
-        julia_gc_barrier->NRTPerformGC(1);
+        perform_gc(1);
     else
         printf("WARNING: Julia hasn't been booted correctly \n");
     
@@ -1936,9 +1983,13 @@ inline bool julia_test_load(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
     {
+        julia_compiler_barrier->NRTSpinlock();
+
         jl_load(jl_main_module, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+
+        julia_compiler_barrier->Unlock();
     }
-    
+
     return true;
 }
 
