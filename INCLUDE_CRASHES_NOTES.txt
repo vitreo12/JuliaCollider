@@ -1,3 +1,9 @@
 Include crashes are caused by the fact that the functions that have been precompiled (jl_method_instance_t*)
 are not entirely inlined: they do not include the relative function calls they are making. This causes those function
-calls to be happening at a different world age is the NRT has changed it with a new include() call or precompile()
+calls to be happening at a different world age is the NRT has changed it with new include() or precompile() calls.
+Solutions are:
+
+1) Change the scope: Julia UGens outputs silence while recompiling:
+    PROS: All Julia functions are possible to be safely called.
+
+2) Force the inling of everything. How???
