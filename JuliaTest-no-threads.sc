@@ -20,6 +20,14 @@ s.sendMsg(\cmd, "/julia_test_load");
 
 x = {Julia.ar(a, DC.ar(240))}.play;
 
+(
+s.bind({
+	s.sendMsg(\cmd, "/julia_GC");
+	{Julia.ar(a, DC.ar(240))}.play;
+});
+)
+
+
 100.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
 
 a.query;

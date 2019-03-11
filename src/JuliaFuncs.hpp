@@ -1615,6 +1615,9 @@ class JuliaObjectCompiler
 
 #define JULIA_OBJECTS_ARRAY_INCREMENT 100
 
+//For retrieval on RT thread
+enum class JuliaObjectsArrayState {Busy, Free, Invalid};
+
 /* Allocate it with a unique_ptr? Or just a normal new/delete? */
 class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier, public JuliaEntriesCounter
 {
@@ -1747,7 +1750,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         }
 
         /* RT THREAD. Called when a Julia UGen is created on the server */
-        inline bool get_julia_object(int unique_id, JuliaObject** julia_object)
+        inline JuliaObjectsArrayState get_julia_object(int unique_id, JuliaObject** julia_object)
         {
             bool barrier_acquired = JuliaAtomicBarrier::RTChecklock();
 
@@ -1758,13 +1761,18 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 if(this_julia_object->compiled)
                     julia_object[0] = this_julia_object;
                 else
-                    printf("WARNING: Invalid @object\n");
+                {
+                    printf("WARNING: Invalid @object. Perhaps JuliaDef is not valid on server \n");
+                    JuliaAtomicBarrier::Unlock();
+                    return JuliaObjectsArrayState::Invalid;
+                }
 
                 JuliaAtomicBarrier::Unlock();
+                return JuliaObjectsArrayState::Free;
             }
 
-            //Return if barrier was acquired. If not, it means the code must be run again at next audio buffer.
-            return barrier_acquired;
+            
+            return JuliaObjectsArrayState::Busy;
         }
 
         /* NRT THREAD. Called at JuliaDef.free() */

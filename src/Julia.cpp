@@ -9,14 +9,31 @@ public:
         {
             Print("WARNING: Julia hasn't been booted correctly \n");
             set_calc_function<Julia, &Julia::output_silence>();
+            invalid = true;
             return;
         }
 
-        int julia_object_unique_id = (int)in0(0);
+        unique_id = (int)in0(0);
+
+        if(unique_id < 0)
+        {
+            Print("WARNING: Invalid unique id \n");
+            invalid = true;
+            set_calc_function<Julia, &Julia::output_silence>();
+        }
+        
         //Print("UNIQUE ID: %i\n", julia_object_unique_id);
 
-        bool array_state = retrieve_julia_object(julia_object_unique_id);
-        if(!array_state)
+        JuliaObjectsArrayState array_state = retrieve_julia_object();
+        if(array_state == JuliaObjectsArrayState::Invalid)
+        {
+            printf("WARNING: Invalid unique id \n");
+            invalid = true;
+            set_calc_function<Julia, &Julia::output_silence>();
+            return;
+        }
+
+        if(array_state == JuliaObjectsArrayState::Busy)
         {
             Print("WARNING: JuliaObjectArray is resizing. Object creation deferred.\n");
             set_calc_function<Julia, &Julia::next_NRT_busy>();  
@@ -24,6 +41,7 @@ public:
         }
 
         bool gc_state = julia_gc_barrier->RTChecklock();
+        printf("GC_STATE: %d\n", gc_state);
         if(!gc_state) 
         {
             Print("WARNING: Julia's GC is running. Object creation deferred.\n");
@@ -64,17 +82,25 @@ public:
                 julia_object->RT_busy = false;
         } */
 
-        remove_ugen_ref_from_global_object_id_dict();
+        if(!invalid)
+        {
+            remove_ugen_ref_from_global_object_id_dict();
 
-        if(args)
-            free_args();
+            if(args)
+                free_args();
 
-        if(ins && outs)
-            free_ins_outs();
+            if(ins && outs)
+                free_ins_outs();
+        }
     }
 
 private:
     JuliaObject* julia_object = nullptr;
+    int unique_id = -1;
+
+    //If unique_id = -1 or if sending a JuliaDef that's not valid on server side.
+    bool invalid = false;
+
     jl_value_t* ugen_object;
     int32_t nargs = 6;
     jl_value_t** args;
@@ -88,21 +114,11 @@ private:
 
     jl_value_t* ugen_ref_object;
 
-    int count = 0;
-
-    inline bool retrieve_julia_object(int id)
+    inline JuliaObjectsArrayState retrieve_julia_object()
     {
-        bool successful_retrieval = julia_objects_array->get_julia_object(id, &julia_object);
-        if(!successful_retrieval)
-            return false;
+        JuliaObjectsArrayState julia_objects_array_state = julia_objects_array->get_julia_object(unique_id, &julia_object);
         
-        if(!julia_object->compiled)
-            return false;
-
-        //Set it to be busy from RT thread. Should it be atomic? 
-        //julia_object->RT_busy = true;
-
-        return true;
+        return julia_objects_array_state;
     }
 
     inline void alloc_args()
@@ -302,12 +318,20 @@ private:
         /* SILENCE */
         output_silence(inNumSamples);
         
-        int julia_object_unique_id = (int)in0(0);
+        //int julia_object_unique_id = (int)in0(0);
         //Print("UNIQUE ID: %i\n", julia_object_unique_id);
 
         /* if(!array_state), next_NRT_busy will run again at next audio buffer */
-        bool array_state = retrieve_julia_object(julia_object_unique_id);
-        if(!array_state)
+        JuliaObjectsArrayState array_state = retrieve_julia_object();
+        if(array_state == JuliaObjectsArrayState::Invalid)
+        {
+            printf("WARNING: Invalid unique id \n");
+            invalid = true;
+            set_calc_function<Julia, &Julia::output_silence>();
+            return;
+        }
+        
+        if(array_state == JuliaObjectsArrayState::Busy)
         {
             Print("WARNING: JuliaObjectArray is resizing. Object creation deferred.\n");
             return;
