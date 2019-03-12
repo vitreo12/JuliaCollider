@@ -220,3 +220,30 @@ Julia : MultiOutUGen {
 		^this.initOutputs(outputs, rate)
 	}
 }
+
++ Server {
+	bootJulia {
+		if(this.options.memSize < 65536, {
+			("ERROR: Could not boot Julia: Minimum server.options.memSize must be of at least 65536.").postln;
+		}, {
+			Routine.run {
+				this.sendMsg(\cmd, "/julia_boot");
+				this.sync;
+			}
+		});
+	}
+
+	bootWithJulia {
+		this.waitForBoot({
+			this.bootJulia;
+		});
+	}
+
+	quitWithJulia {
+		Routine.run {
+			this.sendMsg(\cmd, "/julia_quit");
+			this.sync;
+			this.quit;
+		};
+	}
+}
