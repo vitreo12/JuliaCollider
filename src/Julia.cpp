@@ -506,18 +506,9 @@ PluginLoad(JuliaUGens)
 void julia_destructor(void) __attribute__((destructor));
 void julia_destructor(void)
 {
-    //If julia has been initialized but global_state failed from whatever reason
-    if(jl_is_initialized() && !julia_global_state->is_initialized())
-    {
-        jl_atexit_hook(0);
-        return;
-    }
-    
-    if(julia_global_state->is_initialized())
-    {
-        delete julia_global_state;
-        delete julia_gc_barrier;
-        delete julia_compiler_barrier;
-        delete julia_objects_array;
-    }
+    //Could not run any thread join here, as threads already got dealt with. Just delete the objects
+    /* delete julia_objects_array;
+    delete julia_gc_barrier;
+    delete julia_compiler_barrier;
+    delete julia_global_state; */
 }

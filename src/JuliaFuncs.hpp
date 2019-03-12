@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <thread>
+#include <chrono>
 
 #include "julia.h"
 #include "JuliaUtilities.hpp"
@@ -695,15 +697,15 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
         {
             if(initialized)
             {
-                printf("-> Quitting Julia..\n");
-
-                //Run one last GC here?
+                printf("-> Quitting Julia...\n");
 
                 JuliaGlobalUtilities::unload_global_utilities();
                 global_def_id_dict.unload_id_dict();
                 global_object_id_dict.unload_id_dict();
 
-                jl_atexit_hook(0); //on linux it freezes here
+                jl_atexit_hook(0); 
+                
+                printf("-> Quitted Julia \n");
 
                 #ifdef __linux__
                     close_julia_shared_library();
@@ -1869,6 +1871,8 @@ JuliaGlobalState*   julia_global_state;
 JuliaAtomicBarrier* julia_gc_barrier;
 JuliaAtomicBarrier* julia_compiler_barrier;
 JuliaObjectsArray*  julia_objects_array;
+std::thread perform_gc_thread;
+std::atomic<bool> perform_gc_thread_run;
 
 /****************************************************************************/
                             /* ASYNC COMMANDS */
@@ -1896,6 +1900,41 @@ inline void perform_gc(int full)
     julia_gc_barrier->Unlock();
 }
 
+inline bool julia_perform_gc(World* world, void* cmd)
+{
+    printf("*** GC (NRT) Thread ID: %d ***\n", std::this_thread::get_id());
+    
+    if(julia_global_state->is_initialized())
+        perform_gc(1);
+    else
+        printf("WARNING: Julia hasn't been booted correctly \n");
+    
+    return true;
+}
+
+void julia_gc_cleanup(World* world, void* cmd) {}
+
+void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
+}
+
+inline void perform_gc_on_NRT_thread(World* inWorld)
+{
+    while(perform_gc_thread_run)
+    {
+        //Run the command directly so that it will be called on NRT thread scheduling
+        JuliaGC(inWorld, nullptr, nullptr, nullptr);
+
+        printf("*** My Thread ID: %d ***\n", std::this_thread::get_id());
+
+        //Run every 10 seconds
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+    }
+
+    printf("*** MY THREAD DONE ***\n");
+}
+
 //On RT Thread for now.
 inline bool julia_boot(World* inWorld, void* cmd)
 {
@@ -1909,6 +1948,10 @@ inline bool julia_boot(World* inWorld, void* cmd)
             julia_objects_array    = new JuliaObjectsArray(inWorld, julia_global_state);
 
             perform_gc(1);
+
+            //Setup thread for GC collection every 10 seconds. This thread will call into the NRT thread async mechanism
+            perform_gc_thread_run.store(true);
+            perform_gc_thread = std::thread(perform_gc_on_NRT_thread, inWorld);
         }
     }
     else
@@ -1926,6 +1969,8 @@ void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 
 bool julia_load(World* world, void* cmd)
 {
+    printf("*** JL_LOAD (NRT) Thread ID: %d ***\n", std::this_thread::get_id());
+
     JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
 
     if(julia_global_state->is_initialized())
@@ -1971,39 +2016,41 @@ void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     DoAsynchronousCommand(inWorld, replyAddr, julia_reply_with_load_path->get_buffer(), julia_reply_with_load_path, (AsyncStageFn)julia_load, 0, 0, julia_load_cleanup, 0, nullptr);
 }
 
-inline bool julia_perform_gc(World* world, void* cmd)
+inline bool julia_quit(World* world, void* cmd)
 {
-    if(julia_global_state->is_initialized())
-        perform_gc(1);
-    else
-        printf("WARNING: Julia hasn't been booted correctly \n");
-    
-    return true;
-}
-void julia_gc_cleanup(World* world, void* cmd) {}
-
-void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
-{
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
-}
-
-inline bool julia_test_load(World* world, void* cmd)
-{
-    if(julia_global_state->is_initialized())
+    //If julia has been initialized but global_state failed from whatever reason
+    if(jl_is_initialized() && !julia_global_state->is_initialized())
     {
-        julia_compiler_barrier->NRTSpinlock();
+        jl_atexit_hook(0);
+        return true;
+    }
+    
+    if(julia_global_state->is_initialized())
+    {        
+        perform_gc_thread_run.store(false);
+        perform_gc_thread.join();
 
-        jl_load(jl_main_module, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+        //julia_objects_array->~JuliaObjectsArray();
+        delete julia_objects_array;
+        
+        //julia_gc_barrier->~JuliaAtomicBarrier();
+        delete julia_gc_barrier;
 
-        julia_compiler_barrier->Unlock();
+        //julia_compiler_barrier->~JuliaAtomicBarrier();
+        delete julia_compiler_barrier;
+
+        //julia_global_state->~JuliaGlobalState();
+        delete julia_global_state;
     }
 
     return true;
 }
 
-void JuliaTestLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+void julia_quit_cleanup(World* world, void* cmd) {}
+
+void JuliaQuit(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_test_load", nullptr, (AsyncStageFn)julia_test_load, 0, 0, julia_gc_cleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "/jl_quit", nullptr, (AsyncStageFn)julia_quit, 0, 0, julia_quit_cleanup, 0, nullptr);
 }
 
 inline bool julia_query_id_dicts(World* world, void* cmd)
@@ -2031,6 +2078,6 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("/julia_load", (PlugInCmdFunc)JuliaLoad, nullptr);
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
-    DefinePlugInCmd("/julia_test_load",   (PlugInCmdFunc)JuliaTestLoad, nullptr);
+    DefinePlugInCmd("/julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
 }
