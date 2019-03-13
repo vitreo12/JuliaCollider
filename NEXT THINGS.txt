@@ -1,0 +1,18 @@
+1) Have a class for GC calls on a third thread
+
+2) Add inputs/outputs check after recompilation. Prompt to user if anything wrong.
+
+3) Add Buffer allocation inside JuliaCollider.jl
+
+4) Add Buffer pointer as argument (and relative error checking)
+
+5) Finish JuliaDef SC interface (recompile, autowatch, etc...)
+
+6) Check better the code for JuliaObjectsArray. It might be having a ** instead of a *, allocating memory from different positions,
+   giving a maximum of 10 pools (1000 objects). New pools will be allocated when ID > total_entries.
+
+7) Use stack allocation for everything possible (jl_value_t* args[nargs], args[i]...)
+
+8) Implement JuliaDefProxy
+
+9) DOCUMENTATION AND EXAMPLES
