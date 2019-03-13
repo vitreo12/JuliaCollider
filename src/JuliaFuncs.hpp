@@ -37,9 +37,21 @@ const std::string julia_version_maj_min = julia_version_string.substr(0, julia_v
 /***************************************************************************/
 typedef struct JuliaObject
 {
+    /* STATE */
+    bool compiled;
+    //bool RT_busy;
+    bool being_replaced;
+    
+    /* JULIADEF */
     jl_value_t* julia_def; 
 
+    /* MODULE */
     jl_module_t* evaluated_module;
+    const char* name;
+    int num_inputs;
+    int num_outputs;
+    
+    /* FUNCTIONS */
     jl_function_t* ugen_ref_fun;
     jl_function_t* constructor_fun;
     jl_function_t* perform_fun;
@@ -47,7 +59,7 @@ typedef struct JuliaObject
     jl_function_t* set_index_ugen_ref_fun; 
     jl_function_t* delete_index_ugen_ref_fun; 
     
-    /***********************************/
+    /* METHOD INSTANCES */
     /* Mirror to __JuliaDef__ in Julia */
     jl_method_instance_t* ugen_ref_instance;
     jl_method_instance_t* constructor_instance;
@@ -56,12 +68,6 @@ typedef struct JuliaObject
     jl_method_instance_t* set_index_ugen_ref_instance;
     jl_method_instance_t* delete_index_ugen_ref_instance; 
     jl_method_instance_t* set_index_audio_vector_instance; //Used in ins/outs
-    /***********************************/
-
-    bool compiled;
-    //bool RT_busy;
-    bool being_replaced;
-
 } JuliaObject;
 
 /***************************************************************************/
@@ -1040,16 +1046,26 @@ class JuliaObjectCompiler
 
         inline void null_julia_object(JuliaObject* julia_object)
         {
+            /* STATE */
             julia_object->being_replaced = false;
             julia_object->compiled = false;
             //julia_object->RT_busy = false;
+            
+            /* MODULE */
             julia_object->evaluated_module = nullptr;
+            julia_object->name = nullptr;
+            julia_object->num_inputs = -1;
+            julia_object->num_outputs = -1;
+
+            /* FUNCTIONS */
             julia_object->ugen_ref_fun = nullptr;
             julia_object->constructor_fun = nullptr;
             julia_object->perform_fun = nullptr;
             julia_object->destructor_fun = nullptr;
             julia_object->set_index_ugen_ref_fun = nullptr;
             julia_object->delete_index_ugen_ref_fun = nullptr;
+
+            /* METHOD INSTANCES */
             julia_object->ugen_ref_instance = nullptr;
             julia_object->constructor_instance = nullptr;
             julia_object->perform_instance = nullptr;
@@ -1704,6 +1720,11 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             const char* name = jl_symbol_name(evaluated_module->name);
             int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
             int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
+
+            //SHOULD BE SET BEFORE AT OBJECT COMPILATION. NOT NOW.
+            julia_object->name = name;
+            julia_object->num_inputs = num_inputs;
+            julia_object->num_outputs = num_outputs;
 
             printf("AFTER COMPILATION \n");
 
