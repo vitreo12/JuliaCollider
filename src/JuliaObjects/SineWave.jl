@@ -13,10 +13,11 @@
     #initialization of variables
     @constructor begin
         phasor::Phasor = Phasor()
-        counter::Float32 = 1.0
+
+        buffer::__Data__{Float32} = __Data__(Float32, Int32(100))
 
         #Must always be last.
-        @new(phasor, counter)
+        @new(phasor, buffer)
     end
 
     function calc_cos(sample::Float32)
@@ -25,6 +26,8 @@
 
     @perform begin
         sampleRate::Float32 = Float32(@sampleRate())
+
+        buf_length::Int32 = Int32(length(@unit(buffer)))
 
         #frequency_kr::Float32 = @in0(1)
 
@@ -44,8 +47,13 @@
             #(phase * 2) - 1
 
             phase += abs(frequency) / (sampleRate - 1)
+            
+            buffer_index::Int32 = mod(@sample_index, buf_length)
+            if(buffer_index == 0)
+                buffer_index = 1
+            end
 
-            #println(phase)
+            @unit(buffer)[buffer_index] = out_value
             
             @unit(phasor.p) = phase
         end

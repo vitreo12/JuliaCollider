@@ -1,5 +1,3 @@
-//server would crash with small memory. I need to wrap RTAlloc calls
-//into checking if it actually has allocated...
 s.options.memSize = 131072;
 
 s.bootWithJulia;
@@ -31,6 +29,15 @@ a.query;
 
 {LFSaw.ar(LFSaw.ar(1) * 440)}.play;
 
+//Multiple ins/outs
+(
+SynthDef(\JuliaSine, {
+	Out.ar(0, Julia.ar(a, DC.ar(440), DC.ar(0.5)));
+}).add;
+)
+
+Synth(\JuliaSine)
+
 (
 s.bind({
 	{Julia.ar(a, DC.ar(440))}.play;
@@ -38,9 +45,9 @@ s.bind({
 });
 )
 
-
-
-/* SECOND SERVER */
+/***********************************************************/
+                   /* SECOND SERVER */
+/***********************************************************/
 t = Server.new(\server2, NetAddr("127.0.0.1", 57111));
 
 t.options.memSize = 131072;
