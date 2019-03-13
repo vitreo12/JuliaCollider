@@ -445,6 +445,8 @@ private:
                 add_ugen_ref_to_global_object_id_dict();
 
                 julia_gc_barrier->Unlock();
+
+                //julia_compiler_barrier->Unlock(); //SHOULD IT BE HERE TOO???
             }
 
             //Next cycle (after recreation of object)

@@ -1919,6 +1919,10 @@ void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *r
     DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
+/* There is no need to wrap every other NRT call into Julia into a check with the GC call, as all the calls (including GC) happen
+on the NRT thread anyway, and so they are sequentially executed. There is no parallelism at any time, because the third thread I am using
+for scheduling the GC calls, simply calls the function that will post the GC perform functio into the NRT thread FIFO. It's not actually executing
+that function. */
 inline void perform_gc_on_NRT_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
