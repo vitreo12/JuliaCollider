@@ -15,6 +15,9 @@ public:
 
         unique_id = (int)in0(0);
 
+        //Actual inputs of Julia code, excluding ID as first input
+        real_num_inputs = numInputs() - 1;
+
         if(unique_id < 0)
         {
             Print("WARNING: Invalid unique id \n");
@@ -97,6 +100,11 @@ public:
 private:
     JuliaObject* julia_object = nullptr;
     int unique_id = -1;
+
+    int real_num_inputs = 0;
+
+    bool print_once_inputs = false;
+    bool print_once_outputs = false;
 
     //If unique_id = -1 or if sending a JuliaDef that's not valid on server side.
     bool valid = true;
@@ -194,7 +202,7 @@ private:
         
         /* INPUTS / OUTPUTS */
         /* Excluding first input, as it is the id number */
-        size_t ugen_num_of_inputs = numInputs() - 1;
+        size_t ugen_num_of_inputs = real_num_inputs;
 
         ins_vector = (jl_value_t*)jl_alloc_array_1d(julia_global_state->get_vector_of_vectors_float32(), ugen_num_of_inputs);
         ins = (jl_value_t**)RTAlloc(mWorld, sizeof(jl_value_t*) * ugen_num_of_inputs);
@@ -306,11 +314,11 @@ private:
         int32_t delete_index_nargs = 3;
         jl_value_t* delete_index_args[delete_index_nargs];
 
-        //delete index
         delete_index_args[0] = julia_object->delete_index_ugen_ref_fun;
         delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
         delete_index_args[2] = ugen_ref_object;
 
+        //Now the GC can pick up this object (and relative allocated __Data__ objects, finalizing them)
         jl_invoke_already_compiled_SC(julia_object->delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
     }
 
@@ -397,6 +405,39 @@ private:
 
                 remove_ugen_ref_from_global_object_id_dict();
 
+                //Check I/O mismatch and print to user.
+                if(julia_object->num_inputs > real_num_inputs)
+                {
+                    if(!print_once_inputs)
+                    {
+                        printf("WARNING: Julia @object \"%s\" inputs mismatch. Expected: %d. Have: %d\n", julia_object->name, julia_object->num_inputs, real_num_inputs);
+                        print_once_inputs = true;
+                    }
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    julia_gc_barrier->Unlock();
+                    return;
+                }
+
+                if(julia_object->num_inputs < real_num_inputs)
+                    printf("WARNING: Julia @object \"%s\" inputs mismatch. Expected: %d. Have: %d. Using only first %d inputs.\n", julia_object->name, julia_object->num_inputs, real_num_inputs, julia_object->num_inputs);
+
+                if(numOutputs() > julia_object->num_outputs)
+                {
+                    if(!print_once_outputs)
+                    {
+                        printf("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d\n", julia_object->name, julia_object->num_outputs, numOutputs());
+                        print_once_outputs = true;
+                    }
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    julia_gc_barrier->Unlock();
+                    return;
+                }
+
+                if(julia_object->num_outputs < numOutputs())
+                    printf("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d. Using only first %d outputs.\n", julia_object->name, julia_object->num_outputs, numOutputs(), julia_object->num_outputs);
+
                 //Recompile...
                 perform_instance = julia_object->perform_instance;
                 if(!perform_instance)
@@ -446,10 +487,15 @@ private:
 
                 julia_gc_barrier->Unlock();
 
+                print_once_inputs = false;
+                print_once_outputs = false;
+
                 //julia_compiler_barrier->Unlock(); //SHOULD IT BE HERE TOO???
             }
 
-            //Next cycle (after recreation of object)
+            /* ACTUAL DSP CALCULATIONS */
+            //If object's not been reallocated on this buffer cycle, execute it.
+            //Otherwise, wait next buffer cycle to spread calculations
             if(!just_reallocated)
             {
                 julia_instance(inNumSamples);
@@ -466,7 +512,7 @@ private:
             }
         }
 
-        //If compiler is on, output silence...
+        //If compiler is busy, output silence
         output_silence(inNumSamples);
     }
 
@@ -476,9 +522,9 @@ private:
         *(int*)jl_data_ptr(args[4]) = inNumSamples;
 
         /* SETUP INS/OUTS */
-        /* CHange buffer they are pointing at. At setup, it was nullptr */
-        for(int i = 0; i < (numInputs() - 1); i++) //One less input , as in(0) is unique_id
-            ((jl_array_t*)(ins[i]))->data = (float*)in(i + 1); //i + 1 = correct SC buffer (excluding unique_id)
+        /* Change (void*)data they are pointing at. At setup, it was nullptr */
+        for(int i = 0; i < (real_num_inputs); i++) //in(0) is unique_id
+            ((jl_array_t*)(ins[i]))->data = (float*)in(i + 1); //i + 1 = correct SC buffer (excluding unique_id at in(0))
 
         for(int i = 0; i < numOutputs(); i++)
             ((jl_array_t*)(outs[i]))->data = (float*)out(i);    
