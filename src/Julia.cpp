@@ -1,5 +1,147 @@
 #include "JuliaFuncs.hpp"
 
+//Functions declared in julia.h and defined here...
+extern "C" 
+{
+    void jl_get_buf_shared_SC(jl_value_t* buffer_object, float fbufnum)
+    {
+        if (fbufnum < 0.f)
+            fbufnum = 0.f;
+        
+        size_t size_of_null_ptr = sizeof(NULL);
+
+        //__Buffer__.bufnum is the third entry in __Buffer__ struct. First two entry are two Ptr{Cvoid}, so, two NULL. By shifting position by two sizeof(NULL), the resulting position is the bufnum::Float32 value
+        float object_bufnum = *(float*)jl_data_ptr(((jl_value_t*)((char*)buffer_object + (size_of_null_ptr * 2))));
+
+        if(fbufnum != object_bufnum) 
+        { 
+            //__Buffer__.SCWorld is the first entry in __Buffer__ struct. No need of shifting.
+            World* SCWorld = *(World**)jl_data_ptr(buffer_object);
+
+            uint32 bufnum = (int)fbufnum; 
+            
+            //If bufnum is not more that maximum number of buffers in World* it means bufnum doesn't point to a LocalBuf
+            if(!(bufnum >= SCWorld->mNumSndBufs))
+            {
+                SndBuf *buf = SCWorld->mSndBufs + bufnum; 
+                
+                /* Assign bufnum in __Buffer__ to fbufnum */
+                *(float*)jl_data_ptr(((jl_value_t*)((char*)buffer_object + (size_of_null_ptr * 2)))) = fbufnum;
+
+                if(!buf->data)
+                {
+                    printf("WARNING: Julia: Invalid buffer \n");
+                    
+                    //Set SndBuf to NULL 
+                    *(void**)jl_data_ptr(((jl_value_t*)((char*)buffer_object + size_of_null_ptr))) = NULL;
+
+                    return;
+                }
+
+                LOCK_SNDBUF_SHARED(buf); 
+
+                /* ASSIGN buf to __Buffer__.snd_buf */
+                //Second entry(snd_buf::Ptr{Cvoid}) (just shift by a sizeof(NULL), which is the size of the World Ptr{Cvoid})
+                *(void**)jl_data_ptr(((jl_value_t*)((char*)buffer_object + size_of_null_ptr))) = (void*)buf;
+            }
+            else
+            {
+                printf("WARNING: Julia: local buffers are not yet supported \n");
+                
+                //Set SndBuf to NULL 
+                *(void**)jl_data_ptr(((jl_value_t*)((char*)buffer_object + size_of_null_ptr))) = NULL;
+            
+                /* int localBufNum = bufnum - SCWorld->mNumSndBufs; 
+                
+                Graph *parent = unit->mParent; 
+                
+                if(localBufNum <= parent->localBufNum)
+                    unit->m_buf = parent->mLocalSndBufs + localBufNum; 
+                else 
+                { 
+                    bufnum = 0; 
+                    unit->m_buf = SCWorld->mSndBufs + bufnum; 
+                }  */
+            }
+        }  
+    }
+
+    float jl_get_float_value_buf_SC(void* buf, size_t index, size_t channel)
+    {
+        //printf("INDEX: %d\n", index);
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+            
+            size_t c_index = index - 1; //Julia counts from 1, that's why index - 1
+            
+            size_t actual_index = (c_index * snd_buf->channels) + channel; //Interleaved data
+            
+            if(index && (actual_index < snd_buf->samples))
+                return snd_buf->data[actual_index];
+        }
+
+        //printf("ERROR: Invalid access at index %d, channel %d\n", index, channel);
+        
+        return 0.f;
+    }
+
+    void jl_set_float_value_buf_SC(void* buf, float value, size_t index, size_t channel)
+    {
+        //printf("INDEX: %d\n", index);
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+
+            size_t c_index = index - 1; //Julia counts from 1, that's why index - 1
+            
+            size_t actual_index = (c_index * snd_buf->channels) + channel; //Interleaved data
+            
+            if(index && (actual_index < snd_buf->samples))
+            {
+                snd_buf->data[actual_index] = value;
+                return;
+            }
+        }
+    }
+
+    //Length of each channel
+    int jl_get_frames_buf_SC(void* buf)
+    {
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+            return snd_buf->frames;
+        }
+            
+        return 0;
+    }
+
+    //Total allocated length
+    int jl_get_samples_buf_SC(void* buf)
+    {
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+            return snd_buf->samples;
+        }
+
+        return 0;
+    }
+
+    //Number of channels
+    int jl_get_channels_buf_SC(void* buf)
+    {
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+            return snd_buf->channels;
+        }
+            
+        return 0;
+    }
+}
+
 struct Julia : public SCUnit 
 {
 public:

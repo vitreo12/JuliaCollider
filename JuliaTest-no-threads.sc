@@ -2,18 +2,27 @@ s.options.memSize = 131072;
 
 s.bootWithJulia;
 
+p = Platform.resourceDir +/+ "sounds/a11wlk01.wav";
+b = Buffer.read(s, p);
+
 s.quitWithJulia;
 
 s.sendMsg(\cmd, "/julia_query_id_dicts");
 
 a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
 
+b = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
+
 a.query;
+
+b.query;
 
 10.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
 
 //1
-{Julia.ar(a, DC.ar(440))}.play;
+{Julia.ar(a, DC.ar(0.5))}.play;
+
+{Julia.ar(b, DC.ar(10))}.play;
 
 {SinOsc.ar(DC.ar(440))}.play;
 
@@ -43,6 +52,13 @@ s.bind({
 	{Julia.ar(a, DC.ar(440))}.play;
 	s.sendMsg(\cmd, "/julia_GC");
 });
+)
+
+(
+s.bind({
+	b = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
+	s.sendMsg(\cmd, "/julia_GC");
+})
 )
 
 /***********************************************************/
