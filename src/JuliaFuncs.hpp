@@ -87,6 +87,7 @@ class AtomicBarrier
         {
             bool expected_val = false;
             //Spinlock. Wait ad-infinitum until the RT thread has set barrier to false.
+            //SHOULD IT BE compare_exchange_strong for extra sureness???
             while(!barrier.compare_exchange_weak(expected_val, true))
                 expected_val = false; //reset expected_val to false as it's been changed in compare_exchange_weak to true
         }
@@ -1225,7 +1226,7 @@ class JuliaObjectCompiler
             /* INS / OUTS = perform_args[2]/[3] */
             int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
             int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
-            int buffer_size = 1;
+            int buffer_size = 16; //Try compiling with a 16 samples period.
             
             //ins::Vector{Vector{Float32}}
             jl_value_t* ins_temp =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_inputs);
@@ -1241,6 +1242,9 @@ class JuliaObjectCompiler
             //Dummy float** in()
             float* dummy_ins[num_inputs];
 
+            //Initialize seed for random num generation in dummy_ins
+            srand(time(NULL));
+
             for(int i = 0; i < num_inputs; i++)
             {
                 dummy_ins[i] = (float*)RTAlloc(in_world, buffer_size * sizeof(float));
@@ -1250,8 +1254,9 @@ class JuliaObjectCompiler
                     return false;
                 }
 
+                //Emulate some sort of (-1 / 1) random float data as Input 
                 for(int y = 0; y < buffer_size; y++)
-                    dummy_ins[i][y] = 0.0f;
+                    dummy_ins[i][y] = (float)((((float)(rand() / RAND_MAX)) * 2.0) - 1.0);
                 
                 ins_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_ins[i], buffer_size, 0);
                 if(!ins_1d[i])
@@ -1898,9 +1903,24 @@ std::atomic<bool> perform_gc_thread_run;
 /****************************************************************************/
                             /* ASYNC COMMANDS */
 /****************************************************************************/
+
+/* IT ONCE CRASHED HERE WHILE PERFORMING GC AND SYNTH RUNNING.
+ I DON'T KNOW IF IT WAS FOR SOME BADLY ALLOCATED OBJECT OR FOR finalization on some __Data__?? 
+In any case, check better the concurrency of events in NRT thread to ALWAYS be sure GC is never performed while any other action should be
+performed. Probably the mistake was that, in RT thread, I should get lock to the GC in more sections, and, mistakenly, RT thread accessed
+allocation while GC was performing. OR: I released a UGenRef while the object was still using. Check the code back again. */
 inline void perform_gc(int full)
 {
     julia_gc_barrier->NRTSpinlock();
+
+    /* First, delete all objects of the IdDict() that picks up UGens that were deleted
+    while a GC collection was happening from the global_object_id_dict */
+    
+    /* Must use a jl_invoke_already_compiled_SC call, as this call can happen concurrently 
+    to RT thread */
+    //////
+    //:://
+    //////
 
     if(!jl_gc_is_enabled())
     {
@@ -1953,7 +1973,8 @@ inline void perform_gc_on_NRT_thread(World* inWorld)
 
         printf("*** My Thread ID: %d ***\n", std::this_thread::get_id());
 
-        //Run every 10 seconds
+        //Run every 10 seconds. Should probably set it to something higher for a full sweep (like once a minute), 
+        //And a perform_gc(0) every 30 seconds
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
 
