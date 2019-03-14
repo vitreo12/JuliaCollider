@@ -79,21 +79,35 @@ public:
 
     ~Julia() 
     {
-        /* if(julia_object)
-        {
-            if(julia_object->compiled)
-                julia_object->RT_busy = false;
-        } */
-
         if(valid)
         {
-            remove_ugen_ref_from_global_object_id_dict();
-
             if(args)
                 free_args();
 
             if(ins && outs)
                 free_ins_outs();
+
+            /* Any Julia code here (destructor functon included) is WRONG, as I have no way of 
+            making sure that the GC won't run as this object, and with it, and these last Julia calls 
+            are running. What I can do is check if the GC is performing. If it is, have another IdDict in the GC class
+            where I can push these Julia object and that will run these destructor calls at the before next GC collection */
+            bool gc_state = julia_gc_barrier->RTChecklock();
+            bool compiler_state = julia_compiler_barrier->RTChecklock();
+            //If failed in acquiring access, add this __UGenRef__ to the GC IdDict()
+            if(!gc_state || !compiler_state)
+            {
+                /* POST THE __UGenRef__ for this object into the GC IdDict() */
+                return;
+            }
+
+            //LOCK ACQUIRED HERE. Delete __UGenRef__ directly
+
+            /* Perhaps, remove destructor function entirely? With finalizers, it's not needed at all */
+
+            remove_ugen_ref_from_global_object_id_dict();
+
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
         }
     }
 
