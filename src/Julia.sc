@@ -140,6 +140,11 @@ JuliaDefProxy {
 	}
 }
 
+//Turn on/off GC timed collections
+JuliaGC {
+
+}
+
 //Executed in SynthDef...
 Julia : MultiOutUGen {
 	*ar { |... args|
