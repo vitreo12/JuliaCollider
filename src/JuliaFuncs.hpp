@@ -93,7 +93,7 @@ class AtomicBarrier
         }
 
         /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
-        inline bool Checklock()
+        inline bool Trylock()
         {
             bool expected_val = false;
             return barrier.compare_exchange_strong(expected_val, true);
@@ -124,9 +124,9 @@ class JuliaAtomicBarrier : public AtomicBarrier
             AtomicBarrier::Spinlock();
         }
 
-        inline bool RTChecklock()
+        inline bool RTTrylock()
         {
-            return AtomicBarrier::Checklock();
+            return AtomicBarrier::Trylock();
         }
 
         /* inline void Unlock()
@@ -157,6 +157,10 @@ class JuliaGlobalIdDict
             if(!delete_index_fun)
                 return false;
 
+            /* empty_fun = jl_get_function(jl_base_module, "empty!");
+            if(!empty_fun)
+                return false; */
+
             jl_function_t* id_dict_function = jl_get_function(jl_base_module, "IdDict");
             if(!id_dict_function)
                 return false;
@@ -164,6 +168,15 @@ class JuliaGlobalIdDict
             id_dict = jl_call0(id_dict_function);
             if(!id_dict)
                 return false;
+
+            /* size_t nargs = 2;
+            jl_value_t* args[nargs];
+            args[0] = empty_fun;
+            args[1] = id_dict;
+
+            empty_instance = jl_lookup_generic_and_compile_SC(args, nargs);
+            if(!empty_instance)
+                return false; */
 
             //Set it to global in main
             jl_set_global(jl_main_module, jl_symbol(global_var_name), id_dict);
@@ -207,8 +220,21 @@ class JuliaGlobalIdDict
             jl_value_t* result = jl_lookup_generic_and_compile_return_value_SC(args, nargs);
 
             if(!result)
-                printf("ERROR: Could not add element to %s\n", global_var_name);
+                printf("ERROR: Could not remove element from %s\n", global_var_name);
         }
+
+        /* inline void empty_id_dict()
+        {
+            size_t nargs = 2;
+            jl_value_t* args[nargs];
+
+            args[0] = empty_fun;
+            args[1] = id_dict;
+
+            jl_value_t* result = jl_invoke_already_compiled_SC(empty_instance, args, nargs);
+            if(!result)
+                printf("ERROR: Could not empty %s\n", global_var_name);
+        } */
 
         inline jl_value_t* get_id_dict()
         {
@@ -218,9 +244,13 @@ class JuliaGlobalIdDict
     private:
         jl_value_t* id_dict;
         const char* global_var_name;
-
+        
+        //method instances for __UGenRef__ already live in JuliaObject. Those are the ones called in RT calls.
         jl_function_t* set_index_fun;
         jl_function_t* delete_index_fun;
+        
+        //jl_function_t* empty_fun;
+        //jl_method_instance_t* empty_instance;
 };
 
 class JuliaGlobalUtilities
@@ -634,6 +664,13 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                         return;
                     }
 
+                    bool initialized_global_gc_id_dict = global_gc_id_dict.initialize_id_dict("__JuliaGlobalGCIdDict__");
+                    if(!initialized_global_gc_id_dict)
+                    {
+                        printf("ERROR: Could not intialize JuliaGlobalGCIdDict \n");
+                        return;
+                    }
+
                     //Get world_counter right away, otherwise last_age, in include sections, would be
                     //still age 1. This update here allows me to only advance age on the NRT thread, while 
                     //on the RT thread I only invoke methods that are been already compiled and would work 
@@ -709,6 +746,7 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 JuliaGlobalUtilities::unload_global_utilities();
                 global_def_id_dict.unload_id_dict();
                 global_object_id_dict.unload_id_dict();
+                global_gc_id_dict.unload_id_dict();
 
                 jl_atexit_hook(0); 
                 
@@ -733,6 +771,11 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
         JuliaGlobalIdDict &get_global_object_id_dict()
         {
             return global_object_id_dict;
+        }
+
+        JuliaGlobalIdDict &get_global_gc_id_dict()
+        {
+            return global_gc_id_dict;
         }
 
         jl_module_t* get_julia_collider_module()
@@ -767,6 +810,7 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
 
         JuliaGlobalIdDict global_def_id_dict;
         JuliaGlobalIdDict global_object_id_dict;
+        JuliaGlobalIdDict global_gc_id_dict;
 
         jl_module_t* julia_collider_module;
         
@@ -1780,7 +1824,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* RT THREAD. Called when a Julia UGen is created on the server */
         inline JuliaObjectsArrayState get_julia_object(int unique_id, JuliaObject** julia_object)
         {
-            bool barrier_acquired = JuliaAtomicBarrier::RTChecklock();
+            bool barrier_acquired = JuliaAtomicBarrier::RTTrylock();
 
             if(barrier_acquired)
             {
@@ -1893,22 +1937,31 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 /***************************************************************************/
                             /* GLOBAL VARS */
 /***************************************************************************/
+/* GLOBAL STATE */
 JuliaGlobalState*   julia_global_state;
-JuliaAtomicBarrier* julia_gc_barrier;
+
+/* OBJECT COMPILER AND ARRAY OF JuliaObject* */
 JuliaAtomicBarrier* julia_compiler_barrier;
 JuliaObjectsArray*  julia_objects_array;
+
+/* GC */
+JuliaAtomicBarrier* julia_gc_barrier;
 std::thread perform_gc_thread;
 std::atomic<bool> perform_gc_thread_run;
+int gc_count = 0;
+
+/* For edge cases only where GC is performing at a UGen destructor */
+std::atomic<bool>gc_array_needs_emptying{false};
+int gc_array_num = 1000; //Maximum of 1000 concurrent UGens... Should be enough
+jl_value_t** gc_array;
 
 /****************************************************************************/
                             /* ASYNC COMMANDS */
 /****************************************************************************/
 
-/* IT ONCE CRASHED HERE WHILE PERFORMING GC AND SYNTH RUNNING.
- I DON'T KNOW IF IT WAS FOR SOME BADLY ALLOCATED OBJECT OR FOR finalization on some __Data__?? 
-In any case, check better the concurrency of events in NRT thread to ALWAYS be sure GC is never performed while any other action should be
-performed. Probably the mistake was that, in RT thread, I should get lock to the GC in more sections, and, mistakenly, RT thread accessed
-allocation while GC was performing. OR: I released a UGenRef while the object was still using. Check the code back again. */
+/* I ONCE HAD A : 
+gc_assert_datatype_fail(ptls, vt, sp); 
+*/
 inline void perform_gc(int full)
 {
     julia_gc_barrier->NRTSpinlock();
@@ -1918,9 +1971,40 @@ inline void perform_gc(int full)
     
     /* Must use a jl_invoke_already_compiled_SC call, as this call can happen concurrently 
     to RT thread */
-    //////
-    //:://
-    //////
+
+    //printf("WARNING: STOP UGEN NOW\n");
+    //std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    if(gc_array_needs_emptying)
+    {
+        for(int i = 0; i < gc_array_num; i++)
+        {
+            jl_value_t* this_ugen_ref = gc_array[i];
+
+            //Remove UGenRef from global object id dict here
+            if(this_ugen_ref != nullptr)
+            {
+                printf("WARNING: DELETING __UGenRef__ FROM GC AND GLOBAL_OBJECT_ID_DICT\n");
+                
+                int32_t delete_index_nargs = 3;
+                jl_value_t* delete_index_args[delete_index_nargs];
+
+                /* Quite inefficient (I can't use julia_object->delete_index_ugen_ref_fun), but it should not mess up with World Age in RT thread. */
+                delete_index_args[0] = julia_global_state->get_delete_index_fun();
+                delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
+                delete_index_args[2] = this_ugen_ref;
+
+                /* This jl_lookup_generic_and_compile_return_value_SC() function has JL_TRY and JL_CATCH blocks. I should get rid of those */
+                jl_value_t* delete_index_successful = jl_lookup_generic_and_compile_return_value_SC(delete_index_args, delete_index_nargs);
+                if(!delete_index_successful)
+                    Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
+
+                gc_array[i] = nullptr;
+            }
+        }
+
+        gc_array_needs_emptying = false;
+    }
 
     if(!jl_gc_is_enabled())
     {
@@ -1993,6 +2077,16 @@ inline bool julia_boot(World* inWorld, void* cmd)
             julia_compiler_barrier = new JuliaAtomicBarrier();
             julia_objects_array    = new JuliaObjectsArray(inWorld, julia_global_state);
 
+            gc_array = (jl_value_t**)malloc(sizeof(jl_value_t*) * gc_array_num);
+            if(!gc_array)
+            {
+                printf("ERROR: Could not allocate gc_array\n");
+                return false;
+            }
+
+            for(int i = 0; i < gc_array_num; i++)
+                gc_array[i] = nullptr;
+
             perform_gc(1);
 
             //Setup thread for GC collection every 10 seconds. This thread will call into the NRT thread async mechanism
@@ -2022,10 +2116,21 @@ bool julia_load(World* world, void* cmd)
     if(julia_global_state->is_initialized())
     {
         julia_compiler_barrier->NRTSpinlock();
+
+        /* if(gc_count == 0)
+            perform_gc(0); */
         
         julia_objects_array->create_julia_object(julia_reply_with_load_path);
+
+
+       /*  perform_gc(1);
         
         julia_compiler_barrier->Unlock();
+
+        //run lousy gc after every 5 calls
+        gc_count++;
+        if(gc_count == 5)
+            gc_count = 0; */
     }
     else
     {
@@ -2087,6 +2192,8 @@ inline bool julia_quit(World* world, void* cmd)
 
         //julia_global_state->~JuliaGlobalState();
         delete julia_global_state;
+
+        free(gc_array);
     }
 
     return true;

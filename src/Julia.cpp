@@ -185,7 +185,7 @@ public:
             return;
         }
 
-        bool gc_state = julia_gc_barrier->RTChecklock();
+        bool gc_state = julia_gc_barrier->RTTrylock();
         printf("GC_STATE: %d\n", gc_state);
         if(!gc_state) 
         {
@@ -193,6 +193,12 @@ public:
             set_calc_function<Julia, &Julia::next_NRT_busy>();  
             return;
         }
+
+        /*********************************/
+        /*********************************/
+        /* ADD COMPILER BARRIER HERE TOO */
+        /*********************************/
+        /*********************************/
 
         bool successful_allocation = allocate_julia_args();
         if(!successful_allocation)
@@ -203,8 +209,8 @@ public:
             return;
         }
 
-        bool successful_ugen_ref = add_ugen_ref_to_global_object_id_dict();
-        if(!successful_ugen_ref)
+        bool succesful_added_ugen_ref = add_ugen_ref_to_global_object_id_dict();
+        if(!succesful_added_ugen_ref)
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
             set_calc_function<Julia, &Julia::output_silence>();
@@ -233,19 +239,78 @@ public:
             making sure that the GC won't run as this object, and with it, and these last Julia calls 
             are running. What I can do is check if the GC is performing. If it is, have another IdDict in the GC class
             where I can push these Julia object and that will run these destructor calls at the before next GC collection */
-            bool gc_state = julia_gc_barrier->RTChecklock();
-            bool compiler_state = julia_compiler_barrier->RTChecklock();
-            //If failed in acquiring access, add this __UGenRef__ to the GC IdDict()
-            if(!gc_state || !compiler_state)
+            bool gc_state = julia_gc_barrier->RTTrylock();
+            if(!gc_state)
             {
-                /* POST THE __UGenRef__ for this object into the GC IdDict() */
+                /* GC PERFORMING */
+
+                printf("WARNING: GC locked: posting __UGenRef__ destruction to gc_array \n");
+                
+                for(int i = 0; i < gc_array_num; i++)
+                {
+                    jl_value_t* this_ugen_ref = gc_array[i];
+                    if(this_ugen_ref == nullptr)
+                    {
+                        gc_array[i] = ugen_ref_object;
+                        break;
+                    }
+                }
+
+                gc_array_needs_emptying = true;
+
+                return;
+            }
+            
+            bool compiler_state = julia_compiler_barrier->RTTrylock();
+            if(!compiler_state)
+            {
+                /* GC AND COMPILER PERFORMING */
+
+                printf("WARNING: Compiler and GC locked: posting __UGenRef__ destruction to gc_array \n");
+
+                for(int i = 0; i < gc_array_num; i++)
+                {
+                    jl_value_t* this_ugen_ref = gc_array[i];
+                    if(this_ugen_ref == nullptr)
+                    {
+                        gc_array[i] = ugen_ref_object;
+                        break;
+                    }
+                }
+
+                gc_array_needs_emptying = true;
+                
+                julia_gc_barrier->Unlock();
                 return;
             }
 
+            printf("OK TO DELETE \n");
+
             //LOCK ACQUIRED HERE. Delete __UGenRef__ directly
-
+            
             /* Perhaps, remove destructor function entirely? With finalizers, it's not needed at all */
+            /* 
+            jl_function_t* ugen_destructor_fun = julia_object->destructor_fun;
+            if(!ugen_destructor_fun)
+                Print("ERROR: Invalid __destructor__ function \n");
 
+            jl_method_instance_t* ugen_destructor_instance = julia_object->destructor_instance;
+            if(!ugen_destructor_instance)
+                Print("ERROR: Invalid __destructor__ instance \n");
+
+            if(ugen_destructor_fun && ugen_destructor_instance && ugen_object)
+            {
+                int32_t destructor_nargs = 2;
+                jl_value_t* destructor_args[destructor_nargs];
+                destructor_args[0] = ugen_destructor_fun;
+                destructor_args[1] = ugen_object;
+
+                jl_invoke_already_compiled_SC(ugen_destructor_instance, destructor_args, destructor_nargs);
+            } */
+
+            //This call can't be concurrent to GC collection. If it is, the __UGenRef__ for this UGen won't be deleted
+            //from the object_id_dict(), as the call would be concurrent to the locking of the GC. That __UGenRef__ would
+            //be living forever, wasting memory.
             remove_ugen_ref_from_global_object_id_dict();
 
             julia_gc_barrier->Unlock();
@@ -440,7 +505,6 @@ private:
             return false;
         }
 
-        //SHould it be RTAlloc()???
         int32_t set_index_nargs = 3;
         jl_value_t* set_index_args[set_index_nargs];
 
@@ -459,12 +523,12 @@ private:
         return true;
     }
 
-    inline void remove_ugen_ref_from_global_object_id_dict()
+    inline bool remove_ugen_ref_from_global_object_id_dict()
     {
         if(!ugen_ref_object)
         {
             Print("Invalid __UGenRef__ to be freed \n");
-            return;
+            return false;
         }
 
         int32_t delete_index_nargs = 3;
@@ -475,7 +539,14 @@ private:
         delete_index_args[2] = ugen_ref_object;
 
         //Now the GC can pick up this object (and relative allocated __Data__ objects, finalizing them)
-        jl_invoke_already_compiled_SC(julia_object->delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
+        jl_value_t* delete_index_successful = jl_invoke_already_compiled_SC(julia_object->delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
+        if(!delete_index_successful)
+        {
+            Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
+            return false;
+        }
+
+        return true;
     }
 
     inline void next_NRT_busy(int inNumSamples)
@@ -500,7 +571,7 @@ private:
         }
         
         /* if(!gc_state), next_NRT_busy will run again at next audio buffer */
-        bool gc_state = julia_gc_barrier->RTChecklock();
+        bool gc_state = julia_gc_barrier->RTTrylock();
         if(!gc_state) 
         {
             Print("WARNING: Julia's GC is running. Object creation deferred.\n");
@@ -519,8 +590,8 @@ private:
             return;
         }
 
-        bool successful_ugen_ref = add_ugen_ref_to_global_object_id_dict();
-        if(!successful_ugen_ref)
+        bool succesful_added_ugen_ref = add_ugen_ref_to_global_object_id_dict();
+        if(!succesful_added_ugen_ref)
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
             set_calc_function<Julia, &Julia::output_silence>();
@@ -536,7 +607,7 @@ private:
 
     inline void next_julia_code(int inNumSamples) 
     {
-        if(julia_compiler_barrier->RTChecklock())
+        if(julia_compiler_barrier->RTTrylock())
         {
             //If function changed, allocate it new object on this cycle
             if(args[0] != julia_object->perform_fun)
@@ -549,7 +620,7 @@ private:
                 }
 
                 //Reaquire GC lock to allocate all objects later...
-                bool gc_state = julia_gc_barrier->RTChecklock();
+                bool gc_state = julia_gc_barrier->RTTrylock();
                 if(!gc_state)
                 {
                     output_silence(inNumSamples);
@@ -559,7 +630,15 @@ private:
 
                 just_reallocated = true;
 
-                remove_ugen_ref_from_global_object_id_dict();
+                bool succesful_removed_ugen_ref = remove_ugen_ref_from_global_object_id_dict();
+                if(!succesful_removed_ugen_ref)
+                {
+                    //Print("ERROR: Invalid __constructor__ instance \n");
+                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
 
                 //Check I/O mismatch and print to user.
                 if(julia_object->num_inputs > real_num_inputs)
@@ -639,7 +718,15 @@ private:
 
                 args[1] = ugen_object;
 
-                add_ugen_ref_to_global_object_id_dict();
+                bool succesful_added_ugen_ref = add_ugen_ref_to_global_object_id_dict();
+                if(!succesful_added_ugen_ref)
+                {
+                    //Print("ERROR: Invalid __UGen__ object \n");
+                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
 
                 julia_gc_barrier->Unlock();
 
