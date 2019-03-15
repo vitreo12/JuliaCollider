@@ -1961,7 +1961,8 @@ jl_value_t** gc_array;
 
 /* I ONCE HAD A : 
 gc_assert_datatype_fail(ptls, vt, sp); 
-*/
+MAYBE IT WAS CAUSED BY THE FACT THAT Buffer WAS A MUTABLE STRUCT THAT I WAS MODIFYING VALUES
+IN jl_get_buf_shared_SC(), AND IT SHOULD HAVE BEEN A STRUCT??? */
 inline void perform_gc(int full)
 {
     julia_gc_barrier->NRTSpinlock();
@@ -2090,8 +2091,8 @@ inline bool julia_boot(World* inWorld, void* cmd)
             perform_gc(1);
 
             //Setup thread for GC collection every 10 seconds. This thread will call into the NRT thread async mechanism
-            perform_gc_thread_run.store(true);
-            perform_gc_thread = std::thread(perform_gc_on_NRT_thread, inWorld);
+            //perform_gc_thread_run.store(true);
+            //perform_gc_thread = std::thread(perform_gc_on_NRT_thread, inWorld);
         }
     }
     else
@@ -2117,20 +2118,19 @@ bool julia_load(World* world, void* cmd)
     {
         julia_compiler_barrier->NRTSpinlock();
 
-        /* if(gc_count == 0)
-            perform_gc(0); */
+        if(gc_count == 0)
+            perform_gc(0);
         
         julia_objects_array->create_julia_object(julia_reply_with_load_path);
 
-
-       /*  perform_gc(1);
+        perform_gc(1);
         
         julia_compiler_barrier->Unlock();
 
         //run lousy gc after every 5 calls
         gc_count++;
         if(gc_count == 5)
-            gc_count = 0; */
+            gc_count = 0;
     }
     else
     {
@@ -2178,8 +2178,8 @@ inline bool julia_quit(World* world, void* cmd)
     
     if(julia_global_state->is_initialized())
     {        
-        perform_gc_thread_run.store(false);
-        perform_gc_thread.join();
+        //perform_gc_thread_run.store(false);
+        //perform_gc_thread.join();
 
         //julia_objects_array->~JuliaObjectsArray();
         delete julia_objects_array;

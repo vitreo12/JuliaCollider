@@ -3,6 +3,9 @@
 //Functions declared in julia.h and defined here...
 extern "C" 
 {
+    /* PERHAPS, With changed mechanism of GC and no GC when RT performs, there is no need
+    in accessing the struct this way and I can just assign new values. Also, test Buffer as a 
+    struct instead of a mutable struct */
     void jl_get_buf_shared_SC(jl_value_t* buffer_object, float fbufnum)
     {
         if (fbufnum < 0.f)
