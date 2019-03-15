@@ -4,6 +4,7 @@ s.bootWithJulia;
 
 p = Platform.resourceDir +/+ "sounds/a11wlk01.wav";
 b = Buffer.read(s, p);
+b.free;
 
 s.quitWithJulia;
 
@@ -11,18 +12,25 @@ s.sendMsg(\cmd, "/julia_query_id_dicts");
 
 a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
 
-b = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
+c = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
 
 a.query;
 
-b.query;
+c.query;
 
-10.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
+50.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
+
+(
+s.bind({
+	s.sendMsg(\cmd, "/julia_GC");
+	CmdPeriod.run;
+});
+)
 
 //1
-{Julia.ar(a, DC.ar(0.5))}.play;
+{Julia.ar(a, DC.ar(0.1), DC.ar(b))}.play;
 
-{Julia.ar(b, DC.ar(10))}.play;
+50.do{{Julia.ar(c, DC.ar(100)) / 50}.play};
 
 {SinOsc.ar(DC.ar(440))}.play;
 
@@ -37,6 +45,8 @@ b.query;
 {Julia.ar(a, Julia.ar(a, DC.ar(1)) * 440)}.play;
 
 {LFSaw.ar(LFSaw.ar(1) * 440)}.play;
+
+50.do{{Julia.ar(a, DC.ar(1.0.rand), DC.ar(b)) / 50}.play};
 
 //Multiple ins/outs
 (

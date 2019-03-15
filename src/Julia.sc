@@ -140,7 +140,8 @@ JuliaDefProxy {
 	}
 }
 
-//Turn on/off GC timed collections
+//Turn on/off GC timed collections or force GC runs
+//Register a GC call for CmdPeriod.run
 JuliaGC {
 
 }

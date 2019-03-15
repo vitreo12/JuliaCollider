@@ -1,5 +1,5 @@
 @object Sine begin
-    @inputs 1 ("frequency")
+    @inputs 2
     @outputs 1
     
     #Declaration of structs (possibly, include() calls aswell)
@@ -14,9 +14,9 @@
     @constructor begin
         phasor::Phasor = Phasor()
 
-        data::__Data__{Float32} = __Data__(Float32, Int32(100))
+        data::Data{Float32} = Data(Float32, Int32(100))
 
-        buffer::__Buffer__ = __Buffer__()
+        buffer::Buffer = Buffer(2)
 
         #println(buffer)
         #println(buffer[Int32(1) + Int32(floor(0.5 * length(buffer)))])
@@ -34,18 +34,14 @@
     end
 
     @perform begin
-        buffer::__Buffer__ = @unit(buffer)
-
-        get_shared_buf(buffer, Float32(0.0))
-
         sampleRate::Float32 = Float32(@sampleRate())
 
-        buf_length::Int32 = Int32(length(@unit(data)))
+        data_length::Int32 = Int32(length(data))
 
         #frequency_kr::Float32 = @in0(1)
 
         @sample begin
-            phase::Float32 = @unit(phasor.p) #equivalent to __unit__.phasor.p
+            phase::Float32 = phasor.p #equivalent to __unit__.phasor.p
             
             frequency::Float32 = @in(1)
             
@@ -55,22 +51,22 @@
             
             out_value::Float32 = calc_cos(Float32(phase * 2pi))
             
-            @out(1) = @unit(buffer)[Int32(1) + Int32(floor(phase * length(@unit(buffer))))]
+            @out(1) = buffer[Int32(1) + Int32(floor(phase * length(buffer)))]
             
-            #@unit(buffer)[Int32(1) + Int32(floor(phase * length(@unit(buffer))))]
+            #buffer[Int32(1) + Int32(floor(phase * length(buffer)))]
             
             #(phase * 2) - 1
 
             phase += abs(frequency) / (sampleRate - 1)
             
-            data_index::Int32 = mod(@sample_index, buf_length)
+            data_index::Int32 = mod(@sample_index, data_length)
             if(data_index == 0)
                 data_index = 1
             end
 
-            @unit(data)[data_index] = out_value
+            data[data_index] = out_value
             
-            @unit(phasor.p) = phase
+            phasor.p = phase
         end
     end
 
