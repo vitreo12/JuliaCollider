@@ -1,0 +1,14 @@
+What needs to be worked on for supernova support:
+
+1)  Concurrent calls to jl_invoke_already_compiled_SC can easily coexist, but I need
+    to implement a second atomic boolean at object creation that, if the GC 
+    or compiler barriers are being locked by another RT call, will check if that lock
+    happened from a RT thread or a NRT. If it's a RT thread, it means another process already
+    locked the GC and compiler, and so, it's possible to build paralell objects. If not, just
+    wait as usual
+
+2)  Mechanism for gc_array would need to be atomically protected, so that __UGenRef__ would not
+    be overwritten by concurrent access to it.
+
+3)  Find a way to lock a buffer access inside of a Julia call the same way that LOCK_SNDBUF_SHARED
+    is used inside of normal C++ UGens.
