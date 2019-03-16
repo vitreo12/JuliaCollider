@@ -228,12 +228,30 @@ Julia : MultiOutUGen {
 }
 
 + Server {
+
 	bootJulia {
-		if(this.options.memSize < 65536, {
-			("ERROR: Could not boot Julia: Minimum server.options.memSize must be of at least 65536.").postln;
+		var gc_fun;
+
+		if(this.options.memSize < 131072, {
+			("ERROR: Could not boot Julia: Minimum server.options.memSize must be of at least 131072.").postln;
 		}, {
 			Routine.run {
 				this.sendMsg(\cmd, "/julia_boot");
+
+				gc_fun = {
+					//Routine.run({
+						//0.01.wait;
+						this.sendMsg(\cmd, "/julia_GC");
+					//});
+
+					//Return a string to be retrieved in quitWithJulia
+					"julia_gc_fun";
+				};
+
+				/* Perform GC everytime CMD + . is executed.
+				What about multiple clients and one server, though??? */
+				CmdPeriod.add(gc_fun);
+
 				this.sync;
 			}
 		});
@@ -246,9 +264,30 @@ Julia : MultiOutUGen {
 	}
 
 	quitWithJulia {
+		var gc_fun;
+
 		Routine.run {
-			this.sendMsg(\cmd, "/julia_quit");
+
+			CmdPeriod.objects.do({
+				arg item;
+				item.postln;
+				if(item.isFunction, {
+					if(item.value == "julia_gc_fun", {
+						gc_fun = item;
+					});
+				});
+			});
+
+			//Remove the gc_fun at CmdPeriod
+			CmdPeriod.remove(gc_fun);
+
+			//syncing because item.value will perform one last GC async call.
 			this.sync;
+
+			this.sendMsg(\cmd, "/julia_quit");
+
+			this.sync;
+
 			this.quit;
 		};
 	}
