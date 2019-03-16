@@ -6,73 +6,51 @@ extern "C"
     /* PERHAPS, With changed mechanism of GC and no GC when RT performs, there is no need
     in accessing the struct this way and I can just assign new values. Also, test Buffer as a 
     struct instead of a mutable struct */
-    void jl_get_buf_shared_SC(jl_value_t* buffer_object, float fbufnum)
+    void* jl_get_buf_shared_SC(void* buffer_SCWorld, float fbufnum)
     {
-        if (fbufnum < 0.f)
-            fbufnum = 0.f;
-        
-        size_t size_of_null_ptr = sizeof(NULL);
+        printf("*** NEW BUFFER!!! ***\n");
+        World* SCWorld = (World*)buffer_SCWorld;
 
-        
+        uint32 bufnum = (int)fbufnum; 
 
-        //printf("BUFNUM: %d\n", print_bufnum);
+        //If bufnum is not more that maximum number of buffers in World* it means bufnum doesn't point to a LocalBuf
+        if(!(bufnum >= SCWorld->mNumSndBufs))
+        {
+            SndBuf* buf = SCWorld->mSndBufs + bufnum; 
 
-        //__Buffer__.bufnum is the third entry in __Buffer__ struct. First two entry are two Ptr{Cvoid}, so, two NULL. By shifting position by two sizeof(NULL), the resulting position is the bufnum::Float32 value
-        float object_bufnum = *(float*)jl_data_ptr(((jl_value_t*)((char*)buffer_object + (size_of_null_ptr * 2))));
-
-        if(fbufnum != object_bufnum) 
-        { 
-            //__Buffer__.SCWorld is the first entry in __Buffer__ struct. No need of shifting.
-            World* SCWorld = *(World**)jl_data_ptr(buffer_object);
-
-            uint32 bufnum = (int)fbufnum; 
-            
-            //If bufnum is not more that maximum number of buffers in World* it means bufnum doesn't point to a LocalBuf
-            if(!(bufnum >= SCWorld->mNumSndBufs))
+            if(!buf->data)
             {
-                SndBuf *buf = SCWorld->mSndBufs + bufnum; 
-                
-                /* Assign bufnum in __Buffer__ to fbufnum */
-                *(float*)jl_data_ptr(((jl_value_t*)((char*)buffer_object + (size_of_null_ptr * 2)))) = fbufnum;
-
-                if(!buf->data)
-                {
-                    printf("WARNING: Julia: Invalid buffer \n");
-                    
-                    //Set SndBuf to NULL 
-                    *(void**)jl_data_ptr(((jl_value_t*)((char*)buffer_object + size_of_null_ptr))) = NULL;
-
-                    return;
-                }
-
-                /* THIS MACRO IS USELESS HERE FOR SUPERNOVA. It should be set after each call to jl_get_buf_shared_SC to lock
-                the buffer for the entirety of the Julia function... */
-                LOCK_SNDBUF_SHARED(buf); 
-
-                /* ASSIGN buf to __Buffer__.snd_buf */
-                //Second entry(snd_buf::Ptr{Cvoid}) (just shift by a sizeof(NULL), which is the size of the World Ptr{Cvoid})
-                *(void**)jl_data_ptr(((jl_value_t*)((char*)buffer_object + size_of_null_ptr))) = (void*)buf;
+                printf("WARNING: Julia: Invalid buffer: %d\n", bufnum);
+                return nullptr;
             }
-            else
-            {
-                printf("WARNING: Julia: local buffers are not yet supported \n");
-                
-                //Set SndBuf to NULL 
-                *(void**)jl_data_ptr(((jl_value_t*)((char*)buffer_object + size_of_null_ptr))) = NULL;
+
+            /* THIS MACRO IS USELESS HERE FOR SUPERNOVA. It should be set after each call to jl_get_buf_shared_SC to lock
+            the buffer for the entirety of the Julia function... */
+            LOCK_SNDBUF_SHARED(buf); 
+
+            return (void*)buf;
+        }
+        else
+        {
+            printf("WARNING: Julia: local buffers are not yet supported \n");
             
-                /* int localBufNum = bufnum - SCWorld->mNumSndBufs; 
-                
-                Graph *parent = unit->mParent; 
-                
-                if(localBufNum <= parent->localBufNum)
-                    unit->m_buf = parent->mLocalSndBufs + localBufNum; 
-                else 
-                { 
-                    bufnum = 0; 
-                    unit->m_buf = SCWorld->mSndBufs + bufnum; 
-                }  */
-            }
-        }  
+            return nullptr;
+        
+            /* int localBufNum = bufnum - SCWorld->mNumSndBufs; 
+            
+            Graph *parent = unit->mParent; 
+            
+            if(localBufNum <= parent->localBufNum)
+                unit->m_buf = parent->mLocalSndBufs + localBufNum; 
+            else 
+            { 
+                bufnum = 0; 
+                unit->m_buf = SCWorld->mSndBufs + bufnum; 
+            } 
+
+            return (void*)buf;
+            */
+        }
     }
 
     float jl_get_float_value_buf_SC(void* buf, size_t index, size_t channel)
