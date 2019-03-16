@@ -21,9 +21,9 @@
         #println(buffer)
         #println(buffer[Int32(1) + Int32(floor(0.5 * length(buffer)))])
 
-        #get_shared_buf(buffer, Float32(0.0))
+        #__get_shared_buf__(buffer, Float32(0.0))
 
-        #println(length(buffer))
+        #println(buffer)
 
         #Must always be last.
         @new(phasor, data, buffer)
@@ -69,7 +69,4 @@
             phasor.p = phase
         end
     end
-
-    #used to RTFree datas
-    @destructor begin end
 end

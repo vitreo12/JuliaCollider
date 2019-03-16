@@ -1,3 +1,9 @@
+Data should be a struct (instead of mutable struct). This way, I can't have
+a finalizer, and I would need three more
+arrays like gc_array and in ~Julia. Then, I would store the pointers to ugen_object,
+ugen_destructor_function and ugen_destructor_instance. I would then call the DESTRUCTOR
+with jl_invoke.... right before the GC call. 
+
 0) ADD VARIABLES UNROLLING IN DESTRUCTOR
 
 1) Have a class for GC calls on a third thread
