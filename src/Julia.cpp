@@ -13,6 +13,10 @@ extern "C"
         
         size_t size_of_null_ptr = sizeof(NULL);
 
+        
+
+        //printf("BUFNUM: %d\n", print_bufnum);
+
         //__Buffer__.bufnum is the third entry in __Buffer__ struct. First two entry are two Ptr{Cvoid}, so, two NULL. By shifting position by two sizeof(NULL), the resulting position is the bufnum::Float32 value
         float object_bufnum = *(float*)jl_data_ptr(((jl_value_t*)((char*)buffer_object + (size_of_null_ptr * 2))));
 
@@ -41,6 +45,8 @@ extern "C"
                     return;
                 }
 
+                /* THIS MACRO IS USELESS HERE FOR SUPERNOVA. It should be set after each call to jl_get_buf_shared_SC to lock
+                the buffer for the entirety of the Julia function... */
                 LOCK_SNDBUF_SHARED(buf); 
 
                 /* ASSIGN buf to __Buffer__.snd_buf */
@@ -197,11 +203,14 @@ public:
             return;
         }
 
-        /*********************************/
-        /*********************************/
-        /* ADD COMPILER BARRIER HERE TOO */
-        /*********************************/
-        /*********************************/
+        bool compiler_state = julia_compiler_barrier->RTTrylock();
+        if(!compiler_state)
+        {
+            Print("WARNING: Julia's compiler is running. Object creation deferred.\n");
+            set_calc_function<Julia, &Julia::next_NRT_busy>(); 
+            julia_gc_barrier->Unlock();
+            return;
+        }
 
         bool successful_allocation = allocate_julia_args();
         if(!successful_allocation)
@@ -209,20 +218,34 @@ public:
             Print("ERROR: Could not allocate UGen \n");
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
             return;
         }
 
+        bool succesful_destructor = get_destructor();
+        if(!succesful_destructor)
+        {
+            Print("ERROR: Could retrieve UGen destructor \n");
+            set_calc_function<Julia, &Julia::output_silence>();
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+    
         bool succesful_added_ugen_ref = add_ugen_ref_to_global_object_id_dict();
         if(!succesful_added_ugen_ref)
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
             return;
         }
 
         //Unlock the gc barrier
         julia_gc_barrier->Unlock();
+
+        julia_compiler_barrier->Unlock();
         
         //set_calc_function already does one sample of audio.
         set_calc_function<Julia, &Julia::next_julia_code>();
@@ -287,29 +310,9 @@ public:
                 return;
             }
 
-            printf("OK TO DELETE \n");
-
-            //LOCK ACQUIRED HERE. Delete __UGenRef__ directly
-            
-            /* Perhaps, remove destructor function entirely? With finalizers, it's not needed at all */
-            /* 
-            jl_function_t* ugen_destructor_fun = julia_object->destructor_fun;
-            if(!ugen_destructor_fun)
-                Print("ERROR: Invalid __destructor__ function \n");
-
-            jl_method_instance_t* ugen_destructor_instance = julia_object->destructor_instance;
-            if(!ugen_destructor_instance)
-                Print("ERROR: Invalid __destructor__ instance \n");
-
-            if(ugen_destructor_fun && ugen_destructor_instance && ugen_object)
-            {
-                int32_t destructor_nargs = 2;
-                jl_value_t* destructor_args[destructor_nargs];
-                destructor_args[0] = ugen_destructor_fun;
-                destructor_args[1] = ugen_object;
-
-                jl_invoke_already_compiled_SC(ugen_destructor_instance, destructor_args, destructor_nargs);
-            } */
+            /* I know that, even if julia_object was removed from julia_objects_array, destructor_fun and instance and ugen_object
+            are kept alive in __UGenRef__ */
+            perform_destructor();
 
             //This call can't be concurrent to GC collection. If it is, the __UGenRef__ for this UGen won't be deleted
             //from the object_id_dict(), as the call would be concurrent to the locking of the GC. That __UGenRef__ would
@@ -345,6 +348,9 @@ private:
     
     jl_function_t* perform_fun;
     jl_method_instance_t* perform_instance;
+
+    jl_function_t* destructor_fun;
+    jl_method_instance_t* destructor_instance;
 
     jl_value_t* ugen_ref_object;
 
@@ -484,6 +490,26 @@ private:
         args[3] = outs_vector; //__outs__::Vector{Vector{Float32}}
         args[4] = buf_size; //__buffer_size__::Int32 
         args[5] = julia_global_state->get_scsynth(); //__scsynth__::__SCSynth__
+
+        return true;
+    }
+
+    inline bool get_destructor()
+    {
+        /* Get destructor too */
+        destructor_fun = julia_object->destructor_fun;
+        if(!destructor_fun)
+        {
+            Print("ERROR: Invalid __destructor__ function \n");
+            return false;
+        }
+
+        destructor_instance = julia_object->destructor_instance;
+        if(!destructor_instance)
+        {
+            Print("ERROR: Invalid __destructor__ instance \n");
+            return false;
+        }
         
         return true;
     }
@@ -491,14 +517,19 @@ private:
     inline bool add_ugen_ref_to_global_object_id_dict()
     {  
         //First, create UGenRef object...
-        int32_t ugen_ref_nargs = 4;
+        int32_t ugen_ref_nargs = 6;
         jl_value_t* ugen_ref_args[ugen_ref_nargs];
         
-        //__UGenRef__ constructor
+        //__UGenRef__ constructor.
+        /* DESTRUCTOR is added because, if object definition in julia_object gets deleted, destructor
+        gets aswell, and I have no way of retrieving it. This way, __UGenRef__ will store everything I might
+        need at destructor too (namely, destructor_fun and destructor_instance). */
         ugen_ref_args[0] = julia_object->ugen_ref_fun;
         ugen_ref_args[1] = ugen_object;
         ugen_ref_args[2] = ins_vector;
         ugen_ref_args[3] = outs_vector;
+        ugen_ref_args[4] = destructor_fun;
+        ugen_ref_args[5] = (jl_value_t*)destructor_instance;
 
         //Create __UGenRef__ for this object
         ugen_ref_object = jl_invoke_already_compiled_SC(julia_object->ugen_ref_instance, ugen_ref_args, ugen_ref_nargs);
@@ -552,6 +583,22 @@ private:
         return true;
     }
 
+    inline bool perform_destructor()
+    {
+        printf("PERFORMING DESTRUCTOR \n");
+
+        int32_t destructor_nargs = 2;
+        jl_value_t* destructor_args[destructor_nargs];
+        destructor_args[0] = destructor_fun;
+        destructor_args[1] = ugen_object;
+
+        jl_value_t* destructor_call = jl_invoke_already_compiled_SC(destructor_instance, destructor_args, destructor_nargs);
+        if(!destructor_call)
+            return false;
+
+        return true;
+    }
+
     inline void next_NRT_busy(int inNumSamples)
     {
         /* Output silence */
@@ -590,6 +637,16 @@ private:
             Print("ERROR: Could not allocate UGen \n");
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
+            return;
+        }
+
+        bool succesful_destructor = get_destructor();
+        if(!succesful_destructor)
+        {
+            Print("ERROR: Could retrieve UGen destructor \n");
+            set_calc_function<Julia, &Julia::output_silence>();
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
             return;
         }
 
@@ -633,6 +690,17 @@ private:
 
                 just_reallocated = true;
 
+                /* DESTRUCTOR must always be before the removal of __UGenRef__ from global object id dict */
+                bool succesful_performed_destructor = perform_destructor();
+                if(!succesful_performed_destructor)
+                {
+                    //Print("ERROR: Invalid __constructor__ instance \n");
+                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+                
                 bool succesful_removed_ugen_ref = remove_ugen_ref_from_global_object_id_dict();
                 if(!succesful_removed_ugen_ref)
                 {
@@ -721,6 +789,17 @@ private:
 
                 args[1] = ugen_object;
 
+                /* Get new destructor too */
+                bool succesful_destructor = get_destructor();
+                if(!succesful_destructor)
+                {
+                    //Print("ERROR: Invalid __UGen__ object \n");
+                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+
                 bool succesful_added_ugen_ref = add_ugen_ref_to_global_object_id_dict();
                 if(!succesful_added_ugen_ref)
                 {
@@ -731,6 +810,8 @@ private:
                     return;
                 }
 
+
+                //Only unlock GC. Compiler will be unlocked only if object was compiled succesfully
                 julia_gc_barrier->Unlock();
 
                 print_once_inputs = false;
@@ -749,6 +830,8 @@ private:
                 return;
             }
 
+            /* If every recompilation went through correctly, output silence and set false to the reallocation bool..
+            At next cycle, we'll hear the newly compiled object */
             if(julia_object->compiled)
             {
                 output_silence(inNumSamples);

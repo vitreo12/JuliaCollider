@@ -1166,6 +1166,8 @@ class JuliaObjectCompiler
             jl_value_t* ins;
             jl_value_t* outs;
             jl_value_t* ugen_ref_object;
+            jl_value_t* destructor_fun;
+            jl_method_instance_t* destructor_instance;
 
             printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
@@ -1180,11 +1182,11 @@ class JuliaObjectCompiler
                     //jl_get_ptls_states()->world_age = jl_get_world_counter();
                     printf("PERFORM DONE\n");
                     //jl_call1(jl_get_function(jl_base_module, "println"), ugen_object);
-                    if(precompile_destructor(evaluated_module, &ugen_object, julia_object))
+                    if(precompile_destructor(evaluated_module, &ugen_object, &destructor_fun, &destructor_instance, julia_object))
                     {
                         //jl_get_ptls_states()->world_age = jl_get_world_counter();
                         printf("DESTRUCTOR DONE\n");
-                        if(precompile_ugen_ref(evaluated_module, &ugen_object, &ins, &outs, &ugen_ref_object, julia_object))
+                        if(precompile_ugen_ref(evaluated_module, &ugen_object, &ins, &outs, &destructor_fun, &destructor_instance, &ugen_ref_object, julia_object))
                         {
                             //jl_get_ptls_states()->world_age = jl_get_world_counter();
                             printf("UGEN REF DONE\n");
@@ -1419,10 +1421,10 @@ class JuliaObjectCompiler
             return true;
         }
 
-        inline bool precompile_destructor(jl_module_t* evaluated_module, jl_value_t** ugen_object, JuliaObject* julia_object)
+        inline bool precompile_destructor(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** destructor_fun, jl_method_instance_t** destructor_instance, JuliaObject* julia_object)
         {
-            jl_function_t* destructor_fun = jl_get_function(evaluated_module, "__destructor__");
-            if(!destructor_fun)
+            jl_function_t* destructor_fun_temp = jl_get_function(evaluated_module, "__destructor__");
+            if(!destructor_fun_temp)
             {
                 printf("ERROR: Invalid __destructor__ function\n");
                 return false;
@@ -1435,7 +1437,7 @@ class JuliaObjectCompiler
 
             printf("DESTRUCTOR ALLOC DONE\n");
 
-            destructor_args[0] = destructor_fun;
+            destructor_args[0] = destructor_fun_temp;
             destructor_args[1] = ugen_object[0];
 
             if(!ugen_object)
@@ -1445,23 +1447,26 @@ class JuliaObjectCompiler
             }
             
             /* COMPILATION */
-            jl_method_instance_t* destructor_instance = jl_lookup_generic_and_compile_SC(destructor_args, destructor_nargs);
+            jl_method_instance_t* destructor_instance_temp = jl_lookup_generic_and_compile_SC(destructor_args, destructor_nargs);
 
             printf("DESTRUCTOR METHOD DONE\n");
 
-            if(!destructor_instance)
+            if(!destructor_instance_temp)
             {
                 printf("ERROR: Could not compile __destructor__ function\n");
                 return false;
             }
 
-            julia_object->destructor_fun = destructor_fun;
-            julia_object->destructor_instance = destructor_instance;
+            julia_object->destructor_fun = destructor_fun_temp;
+            julia_object->destructor_instance = destructor_instance_temp;
+
+            destructor_fun[0] = destructor_fun_temp;
+            destructor_instance[0] = destructor_instance_temp;
 
             return true;
         }
 
-        inline bool precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, jl_value_t** outs, jl_value_t** ugen_ref_object, JuliaObject* julia_object)
+        inline bool precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, jl_value_t** outs, jl_value_t** destructor_fun, jl_method_instance_t** destructor_instance, jl_value_t** ugen_ref_object, JuliaObject* julia_object)
         {
             jl_function_t* ugen_ref_fun = jl_get_function(evaluated_module, "__UGenRef__");
             if(!ugen_ref_fun)
@@ -1472,7 +1477,7 @@ class JuliaObjectCompiler
 
             //Ins and outs are pointing to junk data, but I don't care. I just need to precompile the Ref to it.
 
-            int32_t ugen_ref_nargs = 4;
+            int32_t ugen_ref_nargs = 6;
             jl_value_t* ugen_ref_args[ugen_ref_nargs];
             
             //__UGenRef__ constructor
@@ -1480,6 +1485,8 @@ class JuliaObjectCompiler
             ugen_ref_args[1] = ugen_object[0];
             ugen_ref_args[2] = ins[0];
             ugen_ref_args[3] = outs[0];
+            ugen_ref_args[4] = destructor_fun[0];
+            ugen_ref_args[5] = (jl_value_t*)destructor_instance[0];
 
             /* COMPILATION */
             jl_method_instance_t* ugen_ref_instance = jl_lookup_generic_and_compile_SC(ugen_ref_args, ugen_ref_nargs);
@@ -1961,21 +1968,16 @@ jl_value_t** gc_array;
 
 /* I ONCE HAD A : 
 gc_assert_datatype_fail(ptls, vt, sp); 
-MAYBE IT WAS CAUSED BY THE FACT THAT Buffer WAS A MUTABLE STRUCT THAT I WAS MODIFYING VALUES
-IN jl_get_buf_shared_SC(), AND IT SHOULD HAVE BEEN A STRUCT??? */
+It was most likely caused by the way I am accessing "Buffer" in jl_get_buf_shared_SC. Maybe, doing so,
+it's changing its internal layout and exceed memory. Julia GC, then, won't recognize the datatype for that
+Buffer object comes GC time. */
 inline void perform_gc(int full)
 {
     julia_gc_barrier->NRTSpinlock();
 
-    /* First, delete all objects of the IdDict() that picks up UGens that were deleted
-    while a GC collection was happening from the global_object_id_dict */
-    
-    /* Must use a jl_invoke_already_compiled_SC call, as this call can happen concurrently 
-    to RT thread */
-
-    //printf("WARNING: STOP UGEN NOW\n");
-    //std::this_thread::sleep_for(std::chrono::seconds(2));
-
+    /*
+     
+    */
     if(gc_array_needs_emptying)
     {
         for(int i = 0; i < gc_array_num; i++)
@@ -2119,7 +2121,7 @@ bool julia_load(World* world, void* cmd)
         julia_compiler_barrier->NRTSpinlock();
 
         if(gc_count == 0)
-            perform_gc(0);
+            perform_gc(1);
         
         julia_objects_array->create_julia_object(julia_reply_with_load_path);
 
@@ -2127,7 +2129,7 @@ bool julia_load(World* world, void* cmd)
         
         julia_compiler_barrier->Unlock();
 
-        //run lousy gc after every 5 calls
+        //run extra gc before creating object after every 5 calls
         gc_count++;
         if(gc_count == 5)
             gc_count = 0;
@@ -2195,6 +2197,8 @@ inline bool julia_quit(World* world, void* cmd)
 
         free(gc_array);
     }
+
+    printf("-> Julia: Finished quitting \n");
 
     return true;
 }
