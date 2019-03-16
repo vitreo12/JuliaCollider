@@ -1970,7 +1970,34 @@ jl_value_t** gc_array;
 gc_assert_datatype_fail(ptls, vt, sp); 
 It was most likely caused by the way I am accessing "Buffer" in jl_get_buf_shared_SC. Maybe, doing so,
 it's changing its internal layout and exceed memory. Julia GC, then, won't recognize the datatype for that
-Buffer object comes GC time. */
+Buffer object comes GC time. 
+
+Causes could also include the fact that "Buffer" is being modified at the same time as the GC is executing, thus corrupting
+memory, as there is no lock between RT and NRT when RT is performing the DSP loop. gc_mark_loop is what crashes. In fact, it could be
+that the GC doesn't recognize the memory it's pointing at while it's being changed. Maybe a simple solution would
+be to make jl_get_buf_shared_SC to only run when GC is not running? Skipping cycle?
+
+I can try having two jl_get_buf_shared_SC functions: one for bufnum and one for snd_buf.
+
+function __get_buf_shared__(buffer::Buffer, fbufnum::Float32)
+    if(fbufnum < 0.0f0)
+        fbufnum = 0.0f0
+    end
+
+    if(buffer.bufnum != fbufnum)
+        buffer.bufnum = fbufnum
+        buffer.snd_buf = ccall(:jl_get_buf_shared_SC, Ptr{Cvoid}, (Ptr{Cvoid}, Cfloat,), buffer.SCWorld, fbufnum)
+    end
+
+    return nothing
+end
+
+void
+
+ONE THING TO TRY, ANYWAY, IS TO HAVE compare_exchange_strong instead of weak for Spinlocks.
+
+
+*/
 inline void perform_gc(int full)
 {
     julia_gc_barrier->NRTSpinlock();
@@ -2051,12 +2078,22 @@ void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *r
 on the NRT thread anyway, and so they are sequentially executed. There is no parallelism at any time, because the third thread I am using
 for scheduling the GC calls, simply calls the function that will post the GC perform functio into the NRT thread FIFO. It's not actually executing
 that function. */
+
+/* 
+THIS THREAD COULD JUST CHECK EVERY 10 SECONDS IF THE global_object_id_dict IS EMPTY, LOCKING GC BEFOREHAND.
+ACTUALLY, I could just have a static global variable that counts the number of active Julia UGens, and simply check
+that value, without checking the id dict size. When value is zero, lock GC, empty gc_array and perform.
+THIS WAY I KNOW I WON'T EVER PERFORM GC WHILE ANY UGEN IS PLAYING, AND NO UGEN WILL EVER BE ALLOCATED WHILE GC IS PERFORMING.
+*/
 inline void perform_gc_on_NRT_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
     {
-        //Run the command directly so that it will be called on NRT thread scheduling
-        JuliaGC(inWorld, nullptr, nullptr, nullptr);
+        if(julia_compiler_barrier->RTTrylock())
+        {
+            JuliaGC(inWorld, nullptr, nullptr, nullptr);
+            julia_compiler_barrier->Unlock();
+        }
 
         printf("*** My Thread ID: %d ***\n", std::this_thread::get_id());
 
