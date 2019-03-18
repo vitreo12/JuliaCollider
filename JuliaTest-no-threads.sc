@@ -18,7 +18,7 @@ a.query;
 
 c.query;
 
-50.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
+10.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
 
 (
 s.bind({
@@ -28,7 +28,7 @@ s.bind({
 )
 
 //1
-{Julia.ar(a, DC.ar(0.1), DC.ar(b))}.play;
+{Julia.ar(a, DC.ar(0.25), DC.ar(b))}.play;
 
 50.do{{Julia.ar(c, DC.ar(100)) / 50}.play};
 

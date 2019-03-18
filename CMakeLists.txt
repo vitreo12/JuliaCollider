@@ -8,6 +8,12 @@ include_directories(${SC_PATH}/include/plugin_interface)
 include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
+#For SC_HiddenWorld.h
+include_directories(${SC_PATH}/external_libraries/TLSF-2.4.6/src)
+include_directories(${SC_PATH}/external_libraries/boost_sync/include)
+include_directories(${SC_PATH}/server/scsynth)
+
+
 #JULIA INCLUDES
 include_directories(${JULIA_PATH}/include/julia)
 ###############

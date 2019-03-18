@@ -10,6 +10,11 @@
         end
     end
 
+    struct RecursiveData
+        another_data::Data{Float32, 1}
+        another_buffer::Buffer
+    end
+
     #initialization of variables
     @constructor begin
         phasor::Phasor = Phasor()
@@ -17,6 +22,8 @@
         data::Data{Float32} = Data(Float32, Int32(100))
 
         buffer::Buffer = Buffer(2)
+
+        recursive_data::RecursiveData = RecursiveData(Data(Float32, 4410), Buffer(2))
 
         #println(buffer)
         #println(buffer[Int32(1) + Int32(floor(0.5 * length(buffer)))])
@@ -26,7 +33,7 @@
         #println(buffer)
 
         #Must always be last.
-        @new(phasor, data, buffer)
+        @new(phasor, data, buffer, recursive_data)
     end
 
     function calc_cos(sample::Float32)
@@ -51,7 +58,7 @@
             
             out_value::Float32 = calc_cos(Float32(phase * 2pi))
             
-            @out(1) = buffer[Int32(1) + Int32(floor(phase * length(buffer)))]
+            @out(1) = buffer[Int32(1) + Int32(floor(phase * length(buffer)))] + recursive_data.another_buffer[Int32(1) + Int32(floor(mod((phase * 2), 1.0) * length(recursive_data.another_buffer)))]
             
             #buffer[Int32(1) + Int32(floor(phase * length(buffer)))]
             

@@ -10,6 +10,10 @@
 #include "JuliaUtilities.hpp"
 
 #include "SC_PlugIn.hpp"
+#include "SC_HiddenWorld.h"
+
+//Modified SC_AllocPool.h header to retrieve private members of AllocPool class
+#include "SC_AllocPoolModified.h"
 
 //MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
 //LINUX: ./build_install_native.sh ~/Sources/JuliaCollider/vitreo12-julia/julia-native ~/Sources/SuperCollider-3.10.0 ~/.local/share/SuperCollider/Extensions
@@ -601,10 +605,16 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 
                 if(path_to_julia_sysimg)
                 {
+                    HiddenWorld* hw = SCWorld->hw;
+                    AllocPool* alloc_pool = hw->mAllocPool;
+
+                    void* RT_memory_start = alloc_pool->get_area_ptr()->get_unaligned_pointer();
+                    size_t RT_memory_size = alloc_pool->get_area_ptr()->get_size();
+                    
                     #ifdef __APPLE__
-                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, SCInterfaceTable);
+                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, SCInterfaceTable, RT_memory_start, RT_memory_size);
                     #elif __linux__
-                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, SCInterfaceTable);
+                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, SCInterfaceTable, RT_memory_start, RT_memory_size);
                     #endif
                 }
 
@@ -993,6 +1003,12 @@ class JuliaObjectCompiler
             return true;
         }
 
+        /*************************************************************************************************/
+        /*************************************************************************************************/
+        /*** This should also find a way to remove the module from Main, perhaps set it to jl_nothing? ***/
+        /*************************************************************************************************/
+        /*************************************************************************************************/
+        
         inline bool unload_julia_object(JuliaObject* julia_object)
         {
             if(!julia_object)
