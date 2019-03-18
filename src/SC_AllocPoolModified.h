@@ -293,3 +293,24 @@ private:
 	unsigned long mBinBlocks[4];
 };
 
+/* JULIA COLLIDER */
+typedef struct JuliaAllocPool
+{
+	AllocPool* alloc_pool;
+} JuliaAllocPool;
+
+typedef struct JuliaAllocFuncs
+{
+	void* (*fRTAlloc)(JuliaAllocPool* inPool, size_t inSize);
+	void* (*fRTRealloc)(JuliaAllocPool* inPool, void *inPtr, size_t inSize);
+	void  (*fRTFree)(JuliaAllocPool* inPool, void *inPtr);
+	size_t(*fRTTotalFreeMemory)(JuliaAllocPool* inPool);
+} JuliaAllocFuncs;
+
+void* julia_pool_malloc(JuliaAllocPool* inPool, size_t inSize);
+
+void* julia_pool_realloc(JuliaAllocPool* inPool, void* inPtr, size_t inSize);
+
+void julia_pool_free(JuliaAllocPool* inPool, void* inPtr);
+
+size_t julia_pool_total_free_memory(JuliaAllocPool* inPool);

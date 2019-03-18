@@ -8,12 +8,6 @@ include_directories(${SC_PATH}/include/plugin_interface)
 include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
-#For SC_HiddenWorld.h
-include_directories(${SC_PATH}/external_libraries/TLSF-2.4.6/src)
-include_directories(${SC_PATH}/external_libraries/boost_sync/include)
-include_directories(${SC_PATH}/server/scsynth)
-
-
 #JULIA INCLUDES
 include_directories(${JULIA_PATH}/include/julia)
 ###############
@@ -104,7 +98,7 @@ if(MINGW)
 endif()
 
 #Julia.cpp is inside src/ folder. Headers are all in there, should probably simply include the whole src directory aswell
-add_library(${PROJECT} MODULE "src/${FILENAME}")
+add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolModified.cpp")
 
 #JULIA LINKER FLAGS.
 #-L'${JULIA_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.

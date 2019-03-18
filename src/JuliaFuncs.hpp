@@ -10,7 +10,6 @@
 #include "JuliaUtilities.hpp"
 
 #include "SC_PlugIn.hpp"
-#include "SC_HiddenWorld.h"
 
 //Modified SC_AllocPool.h header to retrieve private members of AllocPool class
 #include "SC_AllocPoolModified.h"
@@ -575,11 +574,40 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 return;
             }
 
+            /* Allocate a pool for RT memory allocation of Julia. Bare in mind that
+            AllocPool is not thread safe, and only one julia thread at a time can run allocation/frees 
+            I COULD USE supernova's simple_pool, which is thread safe. For now, keep it like this.*/
+            julia_alloc_pool = (JuliaAllocPool*)malloc(sizeof(JuliaAllocPool));
+
+            julia_alloc_funcs = (JuliaAllocFuncs*)malloc(sizeof(JuliaAllocFuncs));
+            
+            alloc_pool = new AllocPool(malloc, free, 100000 * 1024, 0);
+            
+            if(!julia_alloc_pool || !julia_alloc_funcs || !alloc_pool)
+            {
+                printf("ERROR: Could not allocate memory for Julia memory pool\n");
+                return;
+            }
+
+            /* Set allocation functions for the pool */
+            julia_alloc_pool->alloc_pool = alloc_pool;
+
+            printf("INITIAL ALLOCPOOL %zu\n", (uintptr_t)alloc_pool);
+            
+            julia_alloc_funcs->fRTAlloc = &julia_pool_malloc;
+            julia_alloc_funcs->fRTRealloc = &julia_pool_realloc;
+            julia_alloc_funcs->fRTFree = &julia_pool_free;
+            julia_alloc_funcs->fRTTotalFreeMemory = &julia_pool_total_free_memory;
+
             boot_julia();
         }
         
         ~JuliaGlobalState()
         {
+            delete alloc_pool;
+            free(julia_alloc_pool);
+            free(julia_alloc_funcs);
+
             quit_julia();
         }
 
@@ -602,19 +630,16 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 //Set env variable for JULIA_LOAD_PATH to set correct path to stdlib. It would be
                 //much better if I can find a way to set the DATAROOTDIR julia variable to do this.
                 setenv("JULIA_LOAD_PATH", path_to_julia_stdlib, 1);
+
+                void* pool_starting_position = julia_alloc_pool->alloc_pool->get_area_ptr()->get_unaligned_pointer();
+                size_t pool_size = julia_alloc_pool->alloc_pool->get_area_ptr()->get_size();
                 
                 if(path_to_julia_sysimg)
                 {
-                    HiddenWorld* hw = SCWorld->hw;
-                    AllocPool* alloc_pool = hw->mAllocPool;
-
-                    void* RT_memory_start = alloc_pool->get_area_ptr()->get_unaligned_pointer();
-                    size_t RT_memory_size = alloc_pool->get_area_ptr()->get_size();
-                    
                     #ifdef __APPLE__
-                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, SCInterfaceTable, RT_memory_start, RT_memory_size);
+                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size);
                     #elif __linux__
-                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, SCInterfaceTable, RT_memory_start, RT_memory_size);
+                        jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size);
                     #endif
                 }
 
@@ -814,6 +839,10 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
     private:
         World* SCWorld;
         InterfaceTable* SCInterfaceTable;
+
+        AllocPool* alloc_pool;
+        JuliaAllocPool* julia_alloc_pool;
+        JuliaAllocFuncs* julia_alloc_funcs;
 
         //Extra variable to check if also the JuliaGlobalUtilities thing went through, not just Julia initialization.       
         bool initialized = false;
