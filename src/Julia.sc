@@ -90,17 +90,36 @@ JuliaDef {
 	}
 
 	query {
-		("-> Julia @object: " ++ name).postln;
-		("-> Server: " ++ srvr).postln;
-		("-> ID: " ++ server_id).postln;
-		("-> Inputs: " ++ inputs).postln;
-		("-> Outputs: " ++ outputs).postln;
-		("-> File Path: " ++ file_path).postln;
+		("*** Julia @object: " ++ name ++ " ***").postln;
+		("*** Server: " ++ srvr ++ " ***").postln;
+		("*** ID: " ++ server_id ++ " ***").postln;
+		("*** Inputs: " ++ inputs ++ " ***").postln;
+		("*** Outputs: " ++ outputs ++ " ***").postln;
+		("*** File Path: " ++ file_path ++ " ***").postln;
+	}
+
+	/* Free a JuliaDef */
+	free {
+		var server, julia_object_id;
+
+		server = srvr;
+		julia_object_id = server_id;
+
+		server.sendMsg(\cmd, "/julia_free", julia_object_id);
+
+		//Reset state anyway, despite response from server.
+		server_id = -1;
+		inputs = -1;
+		outputs = -1;
+		name = "@No_Name";
+		file_path = "";
+
+		this.query.value();
 	}
 
 	/* Trigger recompilation of file_path */
 	recompile {
-
+		this.newJuliaDef(srvr, file_path);
 	}
 
 	/* Replaces file_path , frees the previous one and recompiles the new one */
@@ -108,13 +127,10 @@ JuliaDef {
 
 	}
 
+	/* FUTURE WORK HERE: */
+
 	/* Retrieve a JuliaDef from server by name */
 	retrieve {
-
-	}
-
-	/* Free a JuliaDef */
-	free {
 
 	}
 
@@ -230,36 +246,40 @@ Julia : MultiOutUGen {
 + Server {
 
 	bootJulia {
+		arg pool_size;
 		var gc_fun;
+		Routine.run {
+			pool_size.postln;
+			this.sendMsg(\cmd, "/julia_boot", pool_size);
 
-		if(this.options.memSize < 131072, {
-			("ERROR: Could not boot Julia: Minimum server.options.memSize must be of at least 131072.").postln;
-		}, {
-			Routine.run {
-				this.sendMsg(\cmd, "/julia_boot");
+			gc_fun = {
+				Routine.run({
+					0.01.wait;
+					this.sendMsg(\cmd, "/julia_GC");
+				});
 
-				gc_fun = {
-					//Routine.run({
-						//0.01.wait;
-						this.sendMsg(\cmd, "/julia_GC");
-					//});
+				//Return a string to be retrieved in quitWithJulia
+				"julia_gc_fun";
+			};
 
-					//Return a string to be retrieved in quitWithJulia
-					"julia_gc_fun";
-				};
+			/* Perform GC everytime CMD + . is executed.
+			What about multiple clients and one server, though??? */
+			CmdPeriod.add(gc_fun);
 
-				/* Perform GC everytime CMD + . is executed.
-				What about multiple clients and one server, though??? */
-				CmdPeriod.add(gc_fun);
-
-				this.sync;
-			}
-		});
+			this.sync;
+		};
 	}
 
 	bootWithJulia {
+		arg pool_size = 131072;
+
+		if(pool_size < 131072, {
+			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
+			pool_size = 131072;
+		});
+
 		this.waitForBoot({
-			this.bootJulia;
+			this.bootJulia(pool_size);
 		});
 	}
 
@@ -268,6 +288,7 @@ Julia : MultiOutUGen {
 
 		Routine.run {
 
+			//Not the most elegant way...
 			CmdPeriod.objects.do({
 				arg item;
 				item.postln;

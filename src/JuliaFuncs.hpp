@@ -78,68 +78,6 @@ typedef struct JuliaObject
 /***************************************************************************/
                                 /* CLASSES */
 /***************************************************************************/
-
-/* SHOULD I RE-IMPLEMENT THIS BARRIER WITH std::atomic_flag INSTEAD OF std::atomic<bool>??? 
-IT MIGHT BE FASTER!!!!!!!!! */
-class AtomicBarrier
-{
-    public:
-        AtomicBarrier(){}
-        ~AtomicBarrier(){}
-
-        /* To be called from NRT thread only. */
-        inline void Spinlock()
-        {
-            bool expected_val = false;
-            //Spinlock. Wait ad-infinitum until the RT thread has set barrier to false.
-            //SHOULD IT BE compare_exchange_strong for extra sureness???
-            while(!barrier.compare_exchange_weak(expected_val, true))
-                expected_val = false; //reset expected_val to false as it's been changed in compare_exchange_weak to true
-        }
-
-        /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
-        inline bool Trylock()
-        {
-            bool expected_val = false;
-            return barrier.compare_exchange_strong(expected_val, true);
-        }
-
-        inline void Unlock()
-        {
-            barrier.store(false);
-        }
-
-        inline bool get_barrier_value()
-        {
-            return barrier.load();
-        }
-
-    private:
-        std::atomic<bool> barrier{false};
-};
-
-class JuliaAtomicBarrier : public AtomicBarrier
-{
-    public:
-        JuliaAtomicBarrier(){}
-        ~JuliaAtomicBarrier(){}
-
-        inline void NRTSpinlock()
-        {
-            AtomicBarrier::Spinlock();
-        }
-
-        inline bool RTTrylock()
-        {
-            return AtomicBarrier::Trylock();
-        }
-
-        /* inline void Unlock()
-        {
-            AtomicBarrier::Unlock();
-        } */
-};
-
 /* IdDict() wrapper.
 Dict() is faster than IdDict(), but it allocates more memory. 
 Also, I must use IdDict{Any, Any} because every __UGenRef__ will be different, as it's defined in each module differently.
@@ -565,25 +503,22 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
     public:
         //Ignoring constructor, as initialization will happen AFTER object creation. It will happen when an 
         //async command is triggered, which would call into boot_julia.
-        JuliaGlobalState(World* SCWorld_, InterfaceTable* SCInterfaceTable_)
+        JuliaGlobalState(World* SCWorld_, int julia_pool_alloc_mem_size)
         {
             SCWorld = SCWorld_;
-            SCInterfaceTable = SCInterfaceTable_;
 
-            if(!SCWorld || !SCInterfaceTable)
+            if(!SCWorld)
             {
-                printf("ERROR: Invalid World* or InterfaceTable* \n");
+                printf("ERROR: Invalid World*\n");
                 return;
             }
 
-            /* Allocate a pool for RT memory allocation of Julia. Bare in mind that
-            AllocPool is not thread safe, and only one julia thread at a time can run allocation/frees 
-            I COULD USE supernova's simple_pool, which is thread safe. For now, keep it like this.*/
             julia_alloc_pool = (JuliaAllocPool*)malloc(sizeof(JuliaAllocPool));
-
             julia_alloc_funcs = (JuliaAllocFuncs*)malloc(sizeof(JuliaAllocFuncs));
             
-            alloc_pool = new AllocPool(malloc, free, 100000 * 1024, 0);
+            /* Thread safe version of the standard SuperCollider's AllocPool class. Perhaps, supernova's simple_pool
+            would be a better choice here.*/
+            alloc_pool = new AllocPoolSafe(malloc, free, julia_pool_alloc_mem_size * 1024, 0);
             
             if(!julia_alloc_pool || !julia_alloc_funcs || !alloc_pool)
             {
@@ -591,11 +526,10 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 return;
             }
 
-            /* Set allocation functions for the pool */
+            /* Assign pool */
             julia_alloc_pool->alloc_pool = alloc_pool;
-
-            printf("INITIAL ALLOCPOOL %zu\n", (uintptr_t)alloc_pool);
             
+            /* Set allocation functions for the pool to be used from julia */
             julia_alloc_funcs->fRTAlloc = &julia_pool_malloc;
             julia_alloc_funcs->fRTRealloc = &julia_pool_realloc;
             julia_alloc_funcs->fRTFree = &julia_pool_free;
@@ -820,6 +754,16 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
             return julia_collider_module;
         }
 
+        JuliaAllocPool* get_julia_alloc_pool()
+        {
+            return julia_alloc_pool;
+        }
+
+        JuliaAllocFuncs* get_julia_alloc_funcs()
+        {
+            return julia_alloc_funcs;
+        }
+
         //In julia.h, #define JL_RTLD_DEFAULT (JL_RTLD_LAZY | JL_RTLD_DEEPBIND) is defined. Could I just redefine the flags there?
         #ifdef __linux__
             inline void load_julia_shared_library()
@@ -840,9 +784,8 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
 
     private:
         World* SCWorld;
-        InterfaceTable* SCInterfaceTable;
 
-        AllocPool* alloc_pool;
+        AllocPoolSafe* alloc_pool;
         JuliaAllocPool* julia_alloc_pool;
         JuliaAllocFuncs* julia_alloc_funcs;
 
@@ -961,6 +904,24 @@ class JuliaReplyWithLoadPath : public JuliaReply
     private:
         std::string julia_load_path;
 };
+
+class JuliaObjectId : public RTClassAlloc
+{
+    public:
+        JuliaObjectId(int julia_object_id_)
+        {
+            julia_object_id = julia_object_id_;
+        }
+
+        inline int get_julia_object_id()
+        {
+            return julia_object_id;
+        }
+
+    private:
+        int julia_object_id;
+};
+
 
 /* Number of active entries */
 class JuliaEntriesCounter
@@ -1789,9 +1750,9 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             
             //If an @object already exist, just replace the content at that ID and set its "being_replaced" flag to true.
             new_id = check_existing_module(evaluated_module);
-            if(new_id >= 0)
-                julia_object = julia_objects_array + new_id; //the julia_object being replaced
-            else if(new_id < 0)
+            if(new_id >= 0) //Found a julia_object to be replaced
+                julia_object = julia_objects_array + new_id; 
+            else if(new_id < 0) //No existing julia_objects with same module name. Get a new id
             {
                 //Retrieve a new ID be checking out the first free entry in the julia_objects_array
                 for(int i = 0; i < num_total_entries; i++)
@@ -1808,7 +1769,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 
             //Unload previous object from same id if it's being replaced by same @object. It assumes NRT thread has lock.
             if(julia_object->being_replaced)
-                delete_julia_object(new_id, julia_object);
+                delete_julia_object(new_id);
 
             //Run object's compilation.
             bool succesful_compilation = compile_julia_object(julia_object, evaluated_module);
@@ -1857,17 +1818,32 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
 
         inline int check_existing_module(jl_module_t* evaluated_module)
         {
-            for(int i = 0; i < get_active_entries(); i++)
+            int active_entries = get_active_entries();
+            if(!active_entries)
+                return -1;
+            
+            int entries_count = 0;
+
+            for(int i = 0; i < num_total_entries; i++)
             {
                 JuliaObject* this_julia_object = julia_objects_array + i;
-                char* eval_module_name = jl_symbol_name(evaluated_module->name);
-                char* this_julia_object_module_name = jl_symbol_name((this_julia_object->evaluated_module)->name);
-                //Compare string content
-                if(strcmp(eval_module_name, this_julia_object_module_name) == 0)
+                if(this_julia_object->compiled)
                 {
-                    printf("WARNING: Replacing @object: %s\n", eval_module_name);
-                    this_julia_object->being_replaced = true;
-                    return i;
+                    char* eval_module_name = jl_symbol_name(evaluated_module->name);
+                    char* this_julia_object_module_name = jl_symbol_name((this_julia_object->evaluated_module)->name);
+                    
+                    //Compare string content
+                    if(strcmp(eval_module_name, this_julia_object_module_name) == 0)
+                    {
+                        printf("WARNING: Replacing @object: %s\n", eval_module_name);
+                        this_julia_object->being_replaced = true;
+                        return i;
+                    }
+
+                    entries_count++;
+                    //Scanned through all active entries.
+                    if(entries_count == active_entries)
+                        return -1;
                 }
             }
 
@@ -1902,14 +1878,14 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         }
 
         /* NRT THREAD. Called at JuliaDef.free() */
-        inline void delete_julia_object(int unique_id, JuliaObject* julia_object)
+        inline void delete_julia_object(int unique_id)
         {
             //JuliaAtomicBarrier::NRTSpinlock();
 
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
-            unload_julia_object(julia_object);
-            if(unload_julia_object(julia_object))
+            unload_julia_object(this_julia_object);
+            if(unload_julia_object(this_julia_object))
                 decrease_active_entries();
 
             //JuliaAtomicBarrier::Unlock();
@@ -2015,35 +1991,10 @@ jl_value_t** gc_array;
 
 /* I ONCE HAD A : 
 gc_assert_datatype_fail(ptls, vt, sp); 
-It was most likely caused by the way I am accessing "Buffer" in jl_get_buf_shared_SC. Maybe, doing so,
-it's changing its internal layout and exceed memory. Julia GC, then, won't recognize the datatype for that
-Buffer object comes GC time. 
-
-Causes could also include the fact that "Buffer" is being modified at the same time as the GC is executing, thus corrupting
-memory, as there is no lock between RT and NRT when RT is performing the DSP loop. gc_mark_loop is what crashes. In fact, it could be
-that the GC doesn't recognize the memory it's pointing at while it's being changed. Maybe a simple solution would
-be to make jl_get_buf_shared_SC to only run when GC is not running? Skipping cycle?
-
-I can try having two jl_get_buf_shared_SC functions: one for bufnum and one for snd_buf.
-
-function __get_buf_shared__(buffer::Buffer, fbufnum::Float32)
-    if(fbufnum < 0.0f0)
-        fbufnum = 0.0f0
-    end
-
-    if(buffer.bufnum != fbufnum)
-        buffer.bufnum = fbufnum
-        buffer.snd_buf = ccall(:jl_get_buf_shared_SC, Ptr{Cvoid}, (Ptr{Cvoid}, Cfloat,), buffer.SCWorld, fbufnum)
-    end
-
-    return nothing
-end
-
-void
-
-ONE THING TO TRY, ANYWAY, IS TO HAVE compare_exchange_strong instead of weak for Spinlocks.
-
-
+IT WAS CAUSED BY THE FACT THAT AllocPool IS NOT THREAD SAFE. SOME MEMORY ALLOCATED, THEN
+WAS CORRUPTED AND UNRECOGNIZED BY JULIA. FOR NOW, I SHOULD HAVE AN EXCLUSIVE ACCESS TO THE ALLOCATOR, 
+EITHER THE RT THREAD OR NRT THREAD CAN RUN. GC CANNOT HAPPEN AT THE SAME TIME OF RT THREAD.
+IF WANTING A THREAD-SAFE ALLOCATOR, LOOK INTO supernova's simple_pool CLASS
 */
 inline void perform_gc(int full)
 {
@@ -2152,12 +2103,21 @@ inline void perform_gc_on_NRT_thread(World* inWorld)
     printf("*** MY THREAD DONE ***\n");
 }
 
+struct JuliaBootArgs
+{
+    int julia_pool_alloc_mem_size;
+};
+
 //On RT Thread for now.
 inline bool julia_boot(World* inWorld, void* cmd)
 {
     if(!jl_is_initialized())
     {
-        julia_global_state = new JuliaGlobalState(inWorld, ft);
+        JuliaBootArgs* julia_boot_args = (JuliaBootArgs*)cmd;
+
+        int julia_pool_alloc_mem_size = julia_boot_args->julia_pool_alloc_mem_size;
+
+        julia_global_state = new JuliaGlobalState(inWorld, julia_pool_alloc_mem_size);
         if(julia_global_state->is_initialized())
         {
             julia_gc_barrier       = new JuliaAtomicBarrier();
@@ -2187,17 +2147,31 @@ inline bool julia_boot(World* inWorld, void* cmd)
     return true;
 }
 
-void julia_boot_cleanup(World* world, void* cmd) {}
+void julia_boot_cleanup(World* world, void* cmd) 
+{
+    JuliaBootArgs* julia_boot_args = (JuliaBootArgs*)cmd;
+    if(julia_boot_args)
+        RTFree(world, julia_boot_args);
+}
 
 void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_boot", nullptr, 0, (AsyncStageFn)julia_boot, 0, julia_boot_cleanup, 0, nullptr);
+    /* first argument is the memory size for JuliaAllocPool */
+    int julia_pool_alloc_mem_size = args->geti();
+
+    printf("POOL MEM SIZE %d\n", julia_pool_alloc_mem_size);
+
+    JuliaBootArgs* julia_boot_args = (JuliaBootArgs*)RTAlloc(inWorld, sizeof(JuliaBootArgs));
+    if(!julia_boot_args)
+        return;
+
+    julia_boot_args->julia_pool_alloc_mem_size = julia_pool_alloc_mem_size;
+
+    DoAsynchronousCommand(inWorld, replyAddr, "/jl_boot", (void*)julia_boot_args, 0, (AsyncStageFn)julia_boot, 0, julia_boot_cleanup, 0, nullptr);
 }
 
 bool julia_load(World* world, void* cmd)
 {
-    printf("*** JL_LOAD (NRT) Thread ID: %d ***\n", std::this_thread::get_id());
-
     JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
 
     if(julia_global_state->is_initialized())
@@ -2237,20 +2211,73 @@ void julia_load_cleanup(World* world, void* cmd)
 
 void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    int osc_unique_id = args->geti();
-    const char* julia_load_path = args->gets(); //this const char* will be deep copied in constructor.
-
-    //Alloc with overloaded new operator
-	JuliaReplyWithLoadPath* julia_reply_with_load_path = new(inWorld) JuliaReplyWithLoadPath(osc_unique_id, julia_load_path);
-    
-    if(!julia_reply_with_load_path)
+    if(jl_is_initialized())
     {
-        printf("Could not allocate Julia Reply\n");
-        return;
-    }
+        int osc_unique_id = args->geti();
+        const char* julia_load_path = args->gets(); //this const char* will be deep copied in constructor.
 
-    //julia_reply_with_load_path->get_buffer() is the return message that will be sent at "/done" of this async command.
-    DoAsynchronousCommand(inWorld, replyAddr, julia_reply_with_load_path->get_buffer(), julia_reply_with_load_path, (AsyncStageFn)julia_load, 0, 0, julia_load_cleanup, 0, nullptr);
+        //Alloc with overloaded new operator
+        JuliaReplyWithLoadPath* julia_reply_with_load_path = new(inWorld) JuliaReplyWithLoadPath(osc_unique_id, julia_load_path);
+        
+        if(!julia_reply_with_load_path)
+        {
+            printf("Could not allocate Julia Reply\n");
+            return;
+        }
+
+        //julia_reply_with_load_path->get_buffer() is the return message that will be sent at "/done" of this async command.
+        DoAsynchronousCommand(inWorld, replyAddr, julia_reply_with_load_path->get_buffer(), julia_reply_with_load_path, (AsyncStageFn)julia_load, 0, 0, julia_load_cleanup, 0, nullptr);
+    }
+    else
+        printf("WARNING: Julia hasn't been initialized yet\n");
+    
+}
+
+bool julia_free(World* world, void* cmd)
+{
+    if(julia_global_state->is_initialized())
+    {
+        julia_compiler_barrier->NRTSpinlock();
+        
+        JuliaObjectId* julia_object_id = (JuliaObjectId*)cmd;
+        int object_id = julia_object_id->get_julia_object_id();
+        
+        julia_objects_array->delete_julia_object(object_id);
+        
+        julia_compiler_barrier->Unlock();
+    }
+    return true;
+}
+
+void julia_free_cleanup(World* world, void* cmd) 
+{
+    JuliaObjectId* julia_object_id = (JuliaObjectId*)cmd;
+
+    if(julia_object_id)
+        JuliaObjectId::operator delete(julia_object_id, world); //Needs to be called excplicitly
+}
+
+void JuliaFree(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    if(jl_is_initialized())
+    {
+        int object_id = args->geti(); 
+
+        //Alloc with overloaded new operator
+        JuliaObjectId* julia_object_id = new(inWorld) JuliaObjectId(object_id);
+        
+        if(!julia_object_id)
+        {
+            printf("Could not allocate Julia Reply\n");
+            return;
+        }
+
+        //julia_reply_with_load_path->get_buffer() is the return message that will be sent at "/done" of this async command.
+        DoAsynchronousCommand(inWorld, replyAddr, "/jl_free", julia_object_id, (AsyncStageFn)julia_free, 0, 0, julia_free_cleanup, 0, nullptr);
+    }
+    else
+        printf("WARNING: Julia hasn't been initialized yet\n");
+    
 }
 
 inline bool julia_quit(World* world, void* cmd)
@@ -2291,7 +2318,8 @@ void julia_quit_cleanup(World* world, void* cmd) {}
 
 void JuliaQuit(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_quit", nullptr, (AsyncStageFn)julia_quit, 0, 0, julia_quit_cleanup, 0, nullptr);
+    if(jl_is_initialized())
+        DoAsynchronousCommand(inWorld, replyAddr, "/jl_quit", nullptr, (AsyncStageFn)julia_quit, 0, 0, julia_quit_cleanup, 0, nullptr);
 }
 
 inline bool julia_query_id_dicts(World* world, void* cmd)
@@ -2311,14 +2339,33 @@ inline bool julia_query_id_dicts(World* world, void* cmd)
 
 void JuliaQueryIdDicts(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_query_id_dicts", nullptr, (AsyncStageFn)julia_query_id_dicts, 0, 0, julia_gc_cleanup, 0, nullptr);
+    if(jl_is_initialized())
+        DoAsynchronousCommand(inWorld, replyAddr, "/jl_query_id_dicts", nullptr, (AsyncStageFn)julia_query_id_dicts, 0, 0, julia_gc_cleanup, 0, nullptr);
+}
+
+/* Debug memory footprint of Julia. Notice how UGens don't allocate memory, as they
+use GC's pools. Also, notice how the recompilation of same module still takes quite some memory.
+Try of ways of reducing the memory footprint of recompiling the same Julia module */
+inline bool julia_total_free_memory(World* world, void* cmd)
+{
+    printf("FREE MEMORY: %zu\n", julia_global_state->get_julia_alloc_funcs()->fRTTotalFreeMemory(julia_global_state->get_julia_alloc_pool()));
+    return true;
+}
+
+void JuliaTotalFreeMemory(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    if(jl_is_initialized())
+        DoAsynchronousCommand(inWorld, replyAddr, "/jl_total_free_memory", nullptr, (AsyncStageFn)julia_total_free_memory, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("/julia_load", (PlugInCmdFunc)JuliaLoad, nullptr);
+    DefinePlugInCmd("/julia_free", (PlugInCmdFunc)JuliaFree, nullptr);
+    //DefinePlugInCmd("/julia_replace", (PlugInCmdFunc)JuliaReplace, nullptr);
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("/julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
+    DefinePlugInCmd("/julia_total_free_memory", (PlugInCmdFunc)JuliaTotalFreeMemory, nullptr);
 }

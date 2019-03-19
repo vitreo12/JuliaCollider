@@ -231,14 +231,16 @@ public:
 
     ~Julia() 
     {
+        if(args)
+            free_args();
+
+        if(ins && outs)
+            free_ins_outs();
+
+        Print("IS VALID? %d\n", valid);
+
         if(valid)
         {
-            if(args)
-                free_args();
-
-            if(ins && outs)
-                free_ins_outs();
-
             /* Any Julia code here (destructor functon included) is WRONG, as I have no way of 
             making sure that the GC won't run as this object, and with it, and these last Julia calls 
             are running. What I can do is check if the GC is performing. If it is, have another IdDict in the GC class
@@ -318,17 +320,19 @@ private:
 
     jl_value_t* ugen_object;
     int32_t nargs = 6;
-    jl_value_t** args;
+    jl_value_t** args = nullptr;
     jl_value_t* ins_vector;
     jl_value_t* outs_vector;
-    jl_value_t** ins;
-    jl_value_t** outs;
+    jl_value_t** ins = nullptr;
+    jl_value_t** outs = nullptr;
     
     jl_function_t* perform_fun;
     jl_method_instance_t* perform_instance;
 
     jl_function_t* destructor_fun;
     jl_method_instance_t* destructor_instance;
+    jl_function_t* delete_index_ugen_ref_fun;
+    jl_method_instance_t* delete_index_ugen_ref_instance;
 
     jl_value_t* ugen_ref_object;
 
@@ -488,6 +492,21 @@ private:
             Print("ERROR: Invalid __destructor__ instance \n");
             return false;
         }
+
+        /* Get delete_index_ugen_ref */
+        delete_index_ugen_ref_fun = julia_object->delete_index_ugen_ref_fun;
+        if(!delete_index_ugen_ref_fun)
+        {
+            Print("ERROR: Invalid delete_index_ugen_ref_fun \n");
+            return false;
+        }
+
+        delete_index_ugen_ref_instance = julia_object->delete_index_ugen_ref_instance;
+        if(!delete_index_ugen_ref_instance)
+        {
+            Print("ERROR: Invalid delete_index_ugen_ref_instance \n");
+            return false;
+        }
         
         return true;
     }
@@ -546,12 +565,12 @@ private:
         int32_t delete_index_nargs = 3;
         jl_value_t* delete_index_args[delete_index_nargs];
 
-        delete_index_args[0] = julia_object->delete_index_ugen_ref_fun;
+        delete_index_args[0] = delete_index_ugen_ref_fun;
         delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
         delete_index_args[2] = ugen_ref_object;
 
         //Now the GC can pick up this object (and relative allocated __Data__ objects, finalizing them)
-        jl_value_t* delete_index_successful = jl_invoke_already_compiled_SC(julia_object->delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
+        jl_value_t* delete_index_successful = jl_invoke_already_compiled_SC(delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
         if(!delete_index_successful)
         {
             Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
@@ -652,6 +671,18 @@ private:
             {
                 if(!julia_object->compiled)
                 {
+                    //JuliaDef.free()
+                    if(valid)
+                    {
+                        //They will use previous julia_object functions
+                        perform_destructor();
+                        remove_ugen_ref_from_global_object_id_dict();
+                        valid = false;
+                        set_calc_function<Julia, &Julia::output_silence>();
+                        julia_compiler_barrier->Unlock();
+                        return;
+                    }
+                    
                     output_silence(inNumSamples);
                     julia_compiler_barrier->Unlock();
                     return;
@@ -814,6 +845,7 @@ private:
             {
                 output_silence(inNumSamples);
                 just_reallocated = false;
+                //valid = true;
                 julia_compiler_barrier->Unlock();
                 return;
             }
