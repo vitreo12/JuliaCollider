@@ -12,23 +12,40 @@ s.sendMsg(\cmd, "/julia_query_id_dicts");
 
 a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
 
+a.query;
+a.recompile;
+a.free;
+
 c = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
 
-a.query;
-
 c.query;
+c.recompile;
+c.free;
 
 10.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
 
 (
-s.bind({
-	s.sendMsg(\cmd, "/julia_GC");
-	CmdPeriod.run;
-});
+Routine.run{
+	loop{
+		s.sendMsg(\cmd, "/julia_GC");
+		1.wait;
+	}
+};
+)
+
+(
+Routine.run{
+	loop{
+		s.sendMsg(\cmd, "/julia_total_free_memory");
+		2.wait;
+	}
+};
 )
 
 //1
 {Julia.ar(a, DC.ar(0.25), DC.ar(b))}.play;
+
+{Julia.ar(c, DC.ar(100))}.play
 
 50.do{{Julia.ar(c, DC.ar(100)) / 50}.play};
 
