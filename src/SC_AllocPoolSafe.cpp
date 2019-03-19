@@ -20,7 +20,7 @@
 
 #include <string.h>
 #include <stdexcept>
-#include "SC_AllocPoolModified.h"
+#include "SC_AllocPoolSafe.h"
 #include "SC_BoundsMacros.h"
 #include <assert.h>
 #include <string>
@@ -66,7 +66,7 @@ void freemem(AllocPool *pool, void* ptr)
 	pool->Free(ptr);
 }
 */
-void AllocPool::InitAlloc()
+void AllocPoolSafe::InitAlloc()
 {
 	if (mAreaInitSize == 0) return;
 
@@ -80,7 +80,7 @@ void AllocPool::InitAlloc()
 	check_pool();
 }
 
-void AllocPool::InitBins()
+void AllocPoolSafe::InitBins()
 {
 	for (int i=0; i<kNumAllocBins; ++i) {
 		mBins[i].BeEmpty();
@@ -90,7 +90,7 @@ void AllocPool::InitBins()
 	}
 }
 
-AllocPool::AllocPool(NewAreaFunc inAllocArea, FreeAreaFunc inFreeArea,
+AllocPoolSafe::AllocPoolSafe(NewAreaFunc inAllocArea, FreeAreaFunc inFreeArea,
 					size_t inAreaInitSize, size_t inAreaMoreSize)
 {
 	InitBins();
@@ -104,12 +104,12 @@ AllocPool::AllocPool(NewAreaFunc inAllocArea, FreeAreaFunc inFreeArea,
 	InitAlloc();
 }
 
-AllocPool::~AllocPool()
+AllocPoolSafe::~AllocPoolSafe()
 {
 	FreeAll();
 }
 
-void AllocPool::FreeAll()
+void AllocPoolSafe::FreeAll()
 {
 	check_pool();
 	AllocAreaPtr area = mAreas;
@@ -126,7 +126,7 @@ void AllocPool::FreeAll()
 	check_pool();
 }
 
-void AllocPool::FreeAllInternal()
+void AllocPoolSafe::FreeAllInternal()
 {
 	check_pool();
 	InitBins();
@@ -147,21 +147,31 @@ void AllocPool::FreeAllInternal()
 	check_pool();
 }
 
-void AllocPool::Reinit()
+void AllocPoolSafe::Reinit()
 {
 	FreeAll();
 	InitAlloc();
 }
 
-void AllocPool::Free(void *inPtr)
+void AllocPoolSafe::Free(void *inPtr, bool is_realloc)
 {
 #ifdef DISABLE_MEMORY_POOLS
 	free(inPtr);
 	return;
 #endif
 
+	/* LOCK */
+	if(!is_realloc)
+		AtomicBarrier::Spinlock();
+
 	check_pool();
-	if (inPtr == 0) return;                   /* free(0) has no effect */
+	if (inPtr == 0)
+	{ 
+		/* UNLOCK */
+		if(!is_realloc)
+			AtomicBarrier::Unlock();
+		return;                   /* free(0) has no effect */
+	}
 
 	AllocChunkPtr chunk = MemToChunk(inPtr);
 
@@ -193,11 +203,16 @@ void AllocPool::Free(void *inPtr)
 		LinkFree(chunk);
 	}
 	check_pool();
+
+	/* UNLOCK */
+	if(!is_realloc)
+		AtomicBarrier::Unlock();
+
 }
 
 
 
-AllocAreaPtr AllocPool::NewArea(size_t inAreaSize)
+AllocAreaPtr AllocPoolSafe::NewArea(size_t inAreaSize)
 {
 	void *ptr = (AllocAreaPtr)(mAllocArea)(inAreaSize + kAreaOverhead);
 
@@ -231,7 +246,7 @@ AllocAreaPtr AllocPool::NewArea(size_t inAreaSize)
 	return area;
 }
 
-void AllocPool::FreeArea(AllocChunkPtr chunk)
+void AllocPoolSafe::FreeArea(AllocChunkPtr chunk)
 {
 	AllocAreaPtr area = (AllocAreaPtr)((char*)chunk - sizeof(AllocAreaHdr));
 
@@ -247,7 +262,7 @@ void AllocPool::FreeArea(AllocChunkPtr chunk)
 }
 
 
-size_t AllocPool::TotalFree()
+size_t AllocPoolSafe::TotalFree()
 {
 	size_t total = 0;
 	for (int i=0; i<kNumAllocBins; ++i) {
@@ -261,7 +276,7 @@ size_t AllocPool::TotalFree()
 	return total;
 }
 
-size_t AllocPool::LargestFreeChunk()
+size_t AllocPoolSafe::LargestFreeChunk()
 {
 	int word = 0;
 	for (int i=3; i>=0; --i) {
@@ -294,7 +309,7 @@ size_t AllocPool::LargestFreeChunk()
 	return maxsize;
 }
 
-void* AllocPool::Alloc(size_t inReqSize)
+void* AllocPoolSafe::Alloc(size_t inReqSize, bool is_realloc)
 {
 #ifdef DISABLE_MEMORY_POOLS
 	return malloc(inReqSize);
@@ -311,6 +326,10 @@ void* AllocPool::Alloc(size_t inReqSize)
 
 	// Also fwiw, changed 'victim' in the original code to 'candidate'. 'victim' just bothered me.
 
+
+	/* LOCK. Only if not called from Realloc() */
+	if(!is_realloc)
+		AtomicBarrier::Spinlock();
 
 	AllocChunkPtr 	candidate;        /* inspected/selected chunk */
 	size_t			candidate_size;   /* its size */
@@ -387,13 +406,20 @@ void* AllocPool::Alloc(size_t inReqSize)
 
 	// exit paths:
 	found_nothing:
-		//ipostbuf("alloc failed. size: %d\n", inReqSize);
-		throw std::runtime_error(std::string("alloc failed, increase server's memory allocation (e.g. via ServerOptions)"));
+		AtomicBarrier::Unlock(); /* UNLOCK in any case, be it in realloc or not.*/
+		return NULL;
+		//printf("WARNING: AllocPoolSafe, end of memory pool\n");
+		//throw std::runtime_error(std::string("alloc failed, increase server's memory allocation (e.g. via ServerOptions)"));
 
 	whole_new_area:
 		//ipostbuf("whole_new_area\n");
 		area = NewArea(areaSize);
-		if (!area) return 0;
+		if (!area) 
+		{
+			/* UNLOCK */
+			AtomicBarrier::Unlock();
+			return 0;
+		}
 		candidate = &area->mChunk;
 		candidate_size = candidate->Size();
 		goto return_chunk;
@@ -401,7 +427,13 @@ void* AllocPool::Alloc(size_t inReqSize)
 	split_new_area:
 		//ipostbuf("split_new_area\n");
 		area = NewArea(areaSize);
-		if (!area) return 0;
+		if (!area) 
+		{
+			/* UNLOCK */
+			if(!is_realloc)
+				AtomicBarrier::Unlock();
+			return 0;
+		}
 		candidate = &area->mChunk;
 		candidate_size = candidate->Size();
 		remainder_size = (int)(areaSize - size);
@@ -419,21 +451,23 @@ void* AllocPool::Alloc(size_t inReqSize)
 		UnlinkFree(candidate);
 		//	FALL THROUGH
 	return_chunk:
-
 		candidate->SetSizeInUse(candidate_size);
 			check_malloced_chunk(candidate, candidate_size);
 			check_pool();
 			garbage_fill(candidate);
+		if(!is_realloc) /* UNLOCK */
+			AtomicBarrier::Unlock();
 		return candidate->ToPtr();
 }
 
 
-void* AllocPool::Realloc(void* inPtr, size_t inReqSize)
+void* AllocPoolSafe::Realloc(void* inPtr, size_t inReqSize)
 {
 #ifdef DISABLE_MEMORY_POOLS
 	return realloc(inPtr, inReqSize);
 #endif
 
+	AtomicBarrier::Spinlock();
 
 	void *outPtr;
 	AllocChunkPtr prev;
@@ -441,7 +475,11 @@ void* AllocPool::Realloc(void* inPtr, size_t inReqSize)
 	bool docopy = false;
 
 	/* realloc of null is supposed to be same as malloc */
-	if (inPtr == 0) return Alloc(inReqSize);
+	if (inPtr == 0) 
+	{
+		AtomicBarrier::Unlock();
+		return Alloc(inReqSize);
+	}
 
 	AllocChunkPtr oldChunk = MemToChunk(inPtr);
 	AllocChunkPtr newChunk = oldChunk;
@@ -492,17 +530,25 @@ void* AllocPool::Realloc(void* inPtr, size_t inReqSize)
 
 		/* Must allocate */
 
-		outPtr = Alloc(inReqSize);
+		outPtr = Alloc(inReqSize, true);
 
 		check_pool();
-		if (outPtr == 0) {
-			//ipostbuf("realloc failed. size: %d\n", inReqSize);
-			throw std::runtime_error(std::string("realloc failed, increase server's memory allocation (e.g. via ServerOptions)"));
+		if (outPtr == 0)
+		{
+			/* UNLOCK */
+			AtomicBarrier::Unlock();
+			return NULL;
+			//printf("WARNING: AllocPoolSafe, end of memory pool\n");
+			//throw std::runtime_error(std::string("realloc failed, increase server's memory allocation (e.g. via ServerOptions)"));
 		}
 
 		/* Otherwise copy, free, and exit */
 		memcpy(outPtr, inPtr, oldsize - sizeof(AllocChunk));
-		Free(inPtr);
+		
+		Free(inPtr, true);
+		
+		AtomicBarrier::Unlock();
+
 		return outPtr;
 	} else goto split;
 
@@ -518,7 +564,7 @@ void* AllocPool::Realloc(void* inPtr, size_t inReqSize)
 			AllocChunkPtr remainder = newChunk->ChunkAtOffset(size);
 			remainder->SetSizeInUse(remainder_size);
 			newChunk->SetSizeInUse(size);
-			Free(remainder->ToPtr()); /* let free() deal with it */
+			Free(remainder->ToPtr(), true); /* let free() deal with it */
 		} else {
 			newChunk->SetSizeInUse(newsize);
 		}
@@ -529,10 +575,14 @@ void* AllocPool::Realloc(void* inPtr, size_t inReqSize)
 	  	check_inuse_chunk(newChunk);
 		check_pool();
 		garbage_fill(newChunk);
+	
+
+	AtomicBarrier::Unlock();
+
 	return outPtr;
 }
 
-void AllocPool::LinkFree(AllocChunkPtr inChunk)
+void AllocPoolSafe::LinkFree(AllocChunkPtr inChunk)
 {
 	size_t size = inChunk->Size();
 	size_t index = BinIndex(size);
@@ -549,7 +599,7 @@ void AllocPool::LinkFree(AllocChunkPtr inChunk)
 	}
 }
 
-void AllocPool::DoCheckArea(AllocAreaPtr area)
+void AllocPoolSafe::DoCheckArea(AllocAreaPtr area)
 {
 	assert(area->mChunk.PrevInUse());
 
@@ -564,7 +614,7 @@ void AllocPool::DoCheckArea(AllocAreaPtr area)
 	}
 }
 
-void AllocPool::DoCheckBin(AllocChunkPtr bin, long index)
+void AllocPoolSafe::DoCheckBin(AllocChunkPtr bin, long index)
 {
 	AllocChunkPtr p = bin->Next();
 
@@ -576,7 +626,7 @@ void AllocPool::DoCheckBin(AllocChunkPtr bin, long index)
 }
 
 
-void AllocPool::DoCheckPool()
+void AllocPoolSafe::DoCheckPool()
 {
 	AllocAreaPtr area = mAreas;
 	if (area) {
@@ -594,7 +644,7 @@ void AllocPool::DoCheckPool()
 }
 
 
-void AllocPool::DoCheckChunk(AllocChunkPtr p)
+void AllocPoolSafe::DoCheckChunk(AllocChunkPtr p)
 {
 #ifndef NDEBUG
   size_t size = p->Size();
@@ -607,7 +657,7 @@ void AllocPool::DoCheckChunk(AllocChunkPtr p)
 }
 
 
-void AllocPool::DoCheckFreeChunk(AllocChunkPtr p)
+void AllocPoolSafe::DoCheckFreeChunk(AllocChunkPtr p)
 {
   size_t size = p->Size();
 #ifndef NDEBUG
@@ -635,7 +685,7 @@ void AllocPool::DoCheckFreeChunk(AllocChunkPtr p)
     assert(size == 0);
 }
 
-void AllocPool::DoCheckInUseChunk(AllocChunkPtr p)
+void AllocPoolSafe::DoCheckInUseChunk(AllocChunkPtr p)
 {
 	size_t size = p->Size();
 	AllocChunkPtr next = p->NextChunk();
@@ -662,7 +712,7 @@ void AllocPool::DoCheckInUseChunk(AllocChunkPtr p)
 	}
 }
 
-void AllocPool::DoCheckAllocedChunk(AllocChunkPtr p, size_t s)
+void AllocPoolSafe::DoCheckAllocedChunk(AllocChunkPtr p, size_t s)
 {
 #ifndef NDEBUG
   size_t size = p->Size();
@@ -686,13 +736,13 @@ void AllocPool::DoCheckAllocedChunk(AllocChunkPtr p, size_t s)
 
 }
 
-void AllocPool::DoGarbageFill(AllocChunkPtr p)
+void AllocPoolSafe::DoGarbageFill(AllocChunkPtr p)
 {
 	long size = (p->Size() - sizeof(AllocChunk));
 	DoGarbageFill(p, size);
 }
 
-void AllocPool::DoGarbageFill(AllocChunkPtr p, long size)
+void AllocPoolSafe::DoGarbageFill(AllocChunkPtr p, long size)
 {
 	size /= sizeof(long);
 	long *ptr = (long*)p->ToPtr();
@@ -704,7 +754,7 @@ void AllocPool::DoGarbageFill(AllocChunkPtr p, long size)
 /* JULIACOLLIDER */
 void* julia_pool_malloc(JuliaAllocPool* inPool, size_t inSize)
 {
-	return inPool->alloc_pool->Alloc(inSize);
+	return inPool->alloc_pool->Alloc(inSize, false);
 }
 
 void* julia_pool_realloc(JuliaAllocPool* inPool, void* inPtr, size_t inSize)
@@ -714,7 +764,7 @@ void* julia_pool_realloc(JuliaAllocPool* inPool, void* inPtr, size_t inSize)
 
 void julia_pool_free(JuliaAllocPool* inPool, void* inPtr)
 {
-	inPool->alloc_pool->Free(inPtr);
+	inPool->alloc_pool->Free(inPtr, false);
 }
 
 size_t julia_pool_total_free_memory(JuliaAllocPool* inPool)

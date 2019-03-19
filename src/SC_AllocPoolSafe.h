@@ -34,6 +34,8 @@ Improved bit block scanning by using a count leading zeroes instruction.
 #include "function_attributes.h"
 #include <stdlib.h>
 
+#include "JuliaAtomicBarrier.h"
+
 const int kNumAllocBins = 128;
 const int kNumSmallBins = 64;
 const int kMaxSmallBin = kNumSmallBins - 1;
@@ -49,14 +51,14 @@ const size_t kChunkInUse = 1;
 const size_t kSizeBits = ~kChunkInUse;
 
 class AllocChunk;
-class AllocPool;
+class AllocPoolSafe;
 typedef AllocChunk *AllocChunkPtr;
 typedef Link<AllocChunk> AllocBin;
 typedef AllocBin* AllocBinPtr;
 
 class AllocChunk : public Link<AllocChunk>
 {
-	friend class AllocPool;
+	friend class AllocPoolSafe;
 
 	size_t Size()
 		{ return mSize & kSizeBits; }
@@ -117,7 +119,7 @@ public:
 	}
 
 protected:
-	friend class AllocPool;
+	friend class AllocPoolSafe;
 
 	AllocAreaPtr mPrev, mNext;
 	size_t mSize;
@@ -130,7 +132,7 @@ public:
 	void SanityCheck();
 
 private:
-	friend class AllocPool;
+	friend class AllocPoolSafe;
 
 	AllocChunk mChunk;
 };
@@ -141,18 +143,19 @@ const size_t kAreaOverhead = sizeof(AllocAreaHdr) + 2 * sizeof(AllocChunk) + kAl
 typedef void* (*NewAreaFunc)(size_t size);
 typedef void (*FreeAreaFunc)(void *);
 
-class AllocPool
+/* Modified AllocPool with locks on Alloc, Free and Realloc calls */
+class AllocPoolSafe : public AtomicBarrier
 {
 public:
-	AllocPool(NewAreaFunc allocArea, FreeAreaFunc freeArea,
+	AllocPoolSafe(NewAreaFunc allocArea, FreeAreaFunc freeArea,
 					size_t areaInitSize, size_t areaMoreSize);
-	~AllocPool();
+	~AllocPoolSafe();
 
 	void Reinit();
 
-	MALLOC void *Alloc(size_t inBytes);
+	MALLOC void *Alloc(size_t inBytes, bool is_realloc = false);
 	MALLOC void *Realloc(void* inPtr, size_t inBytes);
-	void Free(void* inPtr);
+	void Free(void* inPtr, bool is_realloc = false);
 	void FreeAll();
 	void FreeAllInternal();
 
@@ -296,7 +299,7 @@ private:
 /* JULIA COLLIDER */
 typedef struct JuliaAllocPool
 {
-	AllocPool* alloc_pool;
+	AllocPoolSafe* alloc_pool;
 } JuliaAllocPool;
 
 typedef struct JuliaAllocFuncs

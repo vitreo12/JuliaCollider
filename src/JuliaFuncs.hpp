@@ -11,8 +11,10 @@
 
 #include "SC_PlugIn.hpp"
 
+#include "JuliaAtomicBarrier.h"
+
 //Modified SC_AllocPool.h header to retrieve private members of AllocPool class
-#include "SC_AllocPoolModified.h"
+#include "SC_AllocPoolSafe.h"
 
 //MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
 //LINUX: ./build_install_native.sh ~/Sources/JuliaCollider/vitreo12-julia/julia-native ~/Sources/SuperCollider-3.10.0 ~/.local/share/SuperCollider/Extensions
