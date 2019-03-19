@@ -11,7 +11,7 @@ JuliaDef {
 	var <compiled = false;
 
 	*new {
-		arg server, path;
+		arg server = Server.default, path = "";
 		^super.new.init(server, path);
 	}
 
@@ -22,7 +22,10 @@ JuliaDef {
 
 	newJuliaDef {
 		arg server, path;
+
 		var obj_name, ins, outs, srvr_id, condition, osc_unique_id, osc_func;
+
+		if(path == "", {^this});
 
 		srvr = server ?? Server.default;
 
@@ -98,8 +101,7 @@ JuliaDef {
 		("*** File Path: " ++ file_path ++ " ***").postln;
 	}
 
-	/* Free a JuliaDef */
-	free {
+	freeJuliaDef {
 		var server, julia_object_id;
 
 		server = srvr;
@@ -107,7 +109,7 @@ JuliaDef {
 
 		server.sendMsg(\cmd, "/julia_free", julia_object_id);
 
-		//Reset state anyway, despite response from server.
+		//Reset state anyway, no need for response from the server.
 		server_id = -1;
 		inputs = -1;
 		outputs = -1;
@@ -117,34 +119,172 @@ JuliaDef {
 		this.query.value();
 	}
 
+	/* Free a JuliaDef */
+	free {
+		if(server_id != -1, {
+			this.free;
+		}, {
+			"WARNING: Invalid JuliaDef to free".postln;
+		});
+	}
+
 	/* Trigger recompilation of file_path */
 	recompile {
-		this.newJuliaDef(srvr, file_path);
+		if(file_path != "", {
+			this.newJuliaDef(srvr, file_path);
+		}, {
+			"WARNING: Invalid JuliaDef to recompile".postln;
+		});
 	}
 
-	/* Replaces file_path , frees the previous one and recompiles the new one */
-	replace {
-
+	/* Retrieve a JuliaDef from server by name, and assign it to this JuliaDef */
+	*retrieve {
+		arg server, obj_name;
+		^this.new().getCompiledJuliaDef(server, obj_name);
 	}
 
-	/* FUTURE WORK HERE: */
+	getCompiledJuliaDef {
+		arg server, obj_name;
+		var path, ins, outs, srvr_id, condition, osc_unique_id, osc_func;
 
-	/* Retrieve a JuliaDef from server by name */
-	retrieve {
+		srvr = server ?? Server.default;
 
+		condition = Condition(false);
+
+		//Unique number generator
+		osc_unique_id = UniqueID.next;
+
+		//Define the OSC receiving function
+		osc_func = OSCFunc.newMatching({
+			arg msg, time, addr;
+			var server_addr, msg_unpacked;
+			server_addr = server.addr;
+			//If OSC comes from the right server address...
+			if(addr == server_addr, {
+				//Split characters at new line. (unpacking the message, effectively)
+				msg_unpacked = msg[1].asString.split($\n);
+				if(msg_unpacked[0].asInteger == osc_unique_id, {
+					//Test against correct command.
+					if(msg_unpacked[1] == "/jl_get_julia_object_by_name", {
+						//Unpack message
+						srvr_id = msg_unpacked[2].asInteger;
+						path = msg_unpacked[3];
+						ins = msg_unpacked[4].asInteger;
+						outs = msg_unpacked[5].asInteger;
+
+						//Unhang condition
+						condition.unhang;
+
+						//Free the OSCFunc. It's not possible to use .oneShot, as,
+						//if it doesn't pick correct ID, it would still be deleted.
+						osc_func.free;
+					});
+				});
+			});
+		}, '/done'
+		);
+
+		Routine.run {
+			//Tell the server to send an OSC message. Its "/done" msg will be received by the OSCFunc.
+			//Send the UniqueID number aswell to be then re-sent back and parsed in OSCFunc.
+			server.sendMsg(\cmd, "/julia_get_julia_object_by_name", osc_unique_id, obj_name);
+
+			//Wait for positive response from the OSCFunc
+			condition.hang;
+
+			//Assign variables to JuliaDef after unhanging.
+			server_id = srvr_id;
+			file_path = path;
+			inputs = ins;
+			outputs = outs;
+
+			//Assign name, the opposite as newJuliaDef.
+			if(inputs > -1, {name = obj_name;});
+
+			//Sync server right after variables assignment
+			server.sync;
+
+			//Print out
+			this.query.value();
+		}
 	}
 
-	/* List of all compiled JuliaDefs on the server */
-	getCompiledJuliaDefs {
+	/* List of all compiled JuliaDefs on a server */
+	*getCompiledJuliaDefs {
+		arg server;
+		var osc_unique_id, condition, osc_func, return_array;
 
+		return_array = List.newClear();
+
+		server = server ?? Server.default;
+		condition = Condition(false);
+
+		//Unique number generator
+		osc_unique_id = UniqueID.next;
+
+		//Define the OSC receiving function
+		osc_func = OSCFunc.newMatching({
+			arg msg, time, addr;
+			var server_addr, msg_unpacked, i;
+			server_addr = server.addr;
+			//If OSC comes from the right server address...
+			if(addr == server_addr, {
+				//Split characters at new line. (unpacking the message, effectively)
+				msg_unpacked = msg[1].asString.split($\n);
+				if(msg_unpacked[0].asInteger == osc_unique_id, {
+					//Test against correct command.
+					if(msg_unpacked[1] == "/jl_get_julia_objects_list", {
+
+						//Add from third element onwards
+						msg_unpacked.do({
+							arg item, i;
+							if(i > 1, {
+								return_array.add(item);
+							});
+						});
+
+						//Remove last (empty character)
+						return_array.pop;
+
+						//Unhang condition
+						condition.unhang;
+
+						//Free the OSCFunc. It's not possible to use .oneShot, as,
+						//if it doesn't pick correct ID, it would still be deleted.
+						osc_func.free;
+					});
+				});
+			});
+		}, '/done'
+		);
+
+		Routine.run {
+			//Tell the server to send an OSC message. Its "/done" msg will be received by the OSCFunc.
+			//Send the UniqueID number aswell to be then re-sent back and parsed in OSCFunc.
+			server.sendMsg(\cmd, "/julia_get_julia_objects_list", osc_unique_id);
+
+			//Wait for positive response from the OSCFunc
+			condition.hang;
+
+			("-> Compiled JuliaDefs: " ++ return_array).postln;
+
+			//Sync server right after variables assignment
+			server.sync;
+		}
+
+		//It will be empty at the moment of return, but filled when server command returns
+		^return_array;
 	}
+
+	/* FUTURE */
 
 	/* Precompile a JuliaDef in the Julia sysimg. At next boot, it will be loaded. */
 	precompile {
-
+		"WARNING: To be implemented...".postln;
 	}
 }
 
+/* FUTURE */
 JuliaDefProxy {
 	*new {
 		arg server, num_inputs, num_outputs;
@@ -153,6 +293,7 @@ JuliaDefProxy {
 
 	init {
 		arg server, num_inputs, num_outputs;
+		"WARNING: To be implemented...".postln;
 	}
 }
 
@@ -162,7 +303,6 @@ JuliaGC {
 
 }
 
-//Executed in SynthDef...
 Julia : MultiOutUGen {
 	*ar { |... args|
 		var new_args, name, server_id, inputs, outputs, zero_output;
@@ -252,6 +392,7 @@ Julia : MultiOutUGen {
 			pool_size.postln;
 			this.sendMsg(\cmd, "/julia_boot", pool_size);
 
+			/*
 			gc_fun = {
 				Routine.run({
 					0.01.wait;
@@ -265,6 +406,7 @@ Julia : MultiOutUGen {
 			/* Perform GC everytime CMD + . is executed.
 			What about multiple clients and one server, though??? */
 			CmdPeriod.add(gc_fun);
+			*/
 
 			this.sync;
 		};
@@ -288,6 +430,7 @@ Julia : MultiOutUGen {
 
 		Routine.run {
 
+			/*
 			//Not the most elegant way...
 			CmdPeriod.objects.do({
 				arg item;
@@ -301,6 +444,7 @@ Julia : MultiOutUGen {
 
 			//Remove the gc_fun at CmdPeriod
 			CmdPeriod.remove(gc_fun);
+			*/
 
 			//syncing because item.value will perform one last GC async call.
 			this.sync;

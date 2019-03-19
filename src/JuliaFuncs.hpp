@@ -46,6 +46,9 @@ typedef struct JuliaObject
     bool compiled;
     //bool RT_busy;
     bool being_replaced;
+
+    /* PATH */
+    std::string path;
     
     /* JULIADEF */
     jl_value_t* julia_def; 
@@ -819,7 +822,8 @@ class RTClassAlloc
     private:
 };
 
-#define JULIA_CHAR_BUFFER_SIZE 500
+//Not the safest way. GetJuliaDefs could simply run out of the characters
+#define JULIA_CHAR_BUFFER_SIZE 1000
 
 class JuliaReply : public RTClassAlloc
 {
@@ -1103,6 +1107,9 @@ class JuliaObjectCompiler
             julia_object->being_replaced = false;
             julia_object->compiled = false;
             //julia_object->RT_busy = false;
+
+            /* PATH */
+            julia_object->path.clear();
             
             /* MODULE */
             julia_object->evaluated_module = nullptr;
@@ -1142,7 +1149,7 @@ class JuliaObjectCompiler
         {
             bool precompile_state = precompile_stages(evaluated_module, julia_object);
 
-            printf("PRECOMPILE STATE (precompile_julia_object): %i \n", precompile_state);
+            //printf("PRECOMPILE STATE (precompile_julia_object): %i \n", precompile_state);
 
             //if any stage failed, keep nullptrs and memset to zero.
             if(!precompile_state)
@@ -1155,7 +1162,7 @@ class JuliaObjectCompiler
             /* REMOVE jl_call() from here--- */
             add_julia_object_to_global_def_id_dict(julia_object);
             
-            printf("AFTER ID DICT\n");
+            //printf("AFTER ID DICT\n");
 
             /* precompile_state = true */
             julia_object->compiled = precompile_state;
@@ -1177,31 +1184,31 @@ class JuliaObjectCompiler
             jl_value_t* destructor_fun;
             jl_method_instance_t* destructor_instance;
 
-            printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
+            //printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
             //jl_get_ptls_states()->world_age = jl_get_world_counter();
             /* These functions will return false if anything goes wrong. */
             if(precompile_constructor(evaluated_module, julia_object))
             {
                 //jl_get_ptls_states()->world_age = jl_get_world_counter();
-                printf("CONSTRUCTOR DONE\n");
+                //printf("CONSTRUCTOR DONE\n");
                 if(precompile_perform(evaluated_module, &ugen_object, &ins, &outs, julia_object))
                 {
                     //jl_get_ptls_states()->world_age = jl_get_world_counter();
-                    printf("PERFORM DONE\n");
+                    //printf("PERFORM DONE\n");
                     //jl_call1(jl_get_function(jl_base_module, "println"), ugen_object);
                     if(precompile_destructor(evaluated_module, &ugen_object, &destructor_fun, &destructor_instance, julia_object))
                     {
                         //jl_get_ptls_states()->world_age = jl_get_world_counter();
-                        printf("DESTRUCTOR DONE\n");
+                        //printf("DESTRUCTOR DONE\n");
                         if(precompile_ugen_ref(evaluated_module, &ugen_object, &ins, &outs, &destructor_fun, &destructor_instance, &ugen_ref_object, julia_object))
                         {
                             //jl_get_ptls_states()->world_age = jl_get_world_counter();
-                            printf("UGEN REF DONE\n");
+                            //printf("UGEN REF DONE\n");
                             if(precompile_set_index_delete_index_julia_def(evaluated_module, &ugen_ref_object, julia_object))
                             {
                                 //jl_get_ptls_states()->world_age = jl_get_world_counter();
-                                printf("SET INDEX DONE\n");
+                                //printf("SET INDEX DONE\n");
                                 if(create_julia_def(evaluated_module, julia_object))
                                 {
                                     //jl_get_ptls_states()->world_age = jl_get_world_counter();
@@ -1214,7 +1221,7 @@ class JuliaObjectCompiler
             }
             
             //jl_get_ptls_states()->world_age = jl_get_world_counter();
-            printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
+            //printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
             return precompile_state;
         }
@@ -1786,6 +1793,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
 
             //SHOULD BE SET BEFORE AT OBJECT COMPILATION. NOT NOW.
+            julia_object->path = julia_reply_with_load_path->get_julia_load_path(); //string performs deep copy on a const char*
             julia_object->name = name;
             julia_object->num_inputs = num_inputs;
             julia_object->num_outputs = num_outputs;
@@ -1889,6 +1897,70 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 decrease_active_entries();
 
             //JuliaAtomicBarrier::Unlock();
+        }
+
+        inline void get_julia_objects_list(JuliaReply* julia_reply)
+        {
+            julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_get_julia_objects_list");
+            
+            int active_entries = get_active_entries();
+            if(!active_entries)
+                return;
+            
+            int entries_count = 0;
+
+            for(int i = 0; i < num_total_entries; i++)
+            {
+                JuliaObject* this_julia_object = julia_objects_array + i;
+
+                if(this_julia_object->compiled)
+                {
+                    //Accumulate results
+                    julia_reply->create_done_command(this_julia_object->name);
+                    
+                    entries_count++;
+                    
+                    //Scanned through all active entries.
+                    if(entries_count == active_entries)
+                        return;
+                }
+            }
+        }
+
+        inline void get_julia_object_by_name(JuliaReplyWithLoadPath* julia_reply)
+        {
+            int active_entries = get_active_entries();
+            if(!active_entries)
+                return;
+
+            const char* name = julia_reply->get_julia_load_path();
+
+            int entries_count = 0;
+
+            for(int i = 0; i < num_total_entries; i++)
+            {
+                JuliaObject* this_julia_object = julia_objects_array + i;
+
+                if(this_julia_object->compiled)
+                {
+                    if(strcmp(name, this_julia_object->name) == 0)
+                    {
+                        int new_id = i;
+                        //send path in place of name
+                        julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_get_julia_object_by_name", new_id, this_julia_object->path.c_str(), this_julia_object->num_inputs, this_julia_object->num_outputs);
+                        break;
+                    }
+                    
+                    entries_count++;
+                    
+                    //Scanned through all active entries, no success.
+                    if(entries_count == active_entries)
+                    {
+                        julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_get_julia_object_by_name", -1, "", -1, -1);
+                        return;
+                    }
+                }
+            }
         }
 
     private:
@@ -2277,7 +2349,86 @@ void JuliaFree(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     }
     else
         printf("WARNING: Julia hasn't been initialized yet\n");
-    
+}
+
+bool julia_get_julia_objects_list(World* world, void* cmd)
+{
+    if(julia_global_state->is_initialized())
+    {
+        JuliaReply* julia_reply = (JuliaReply*)cmd;
+        julia_objects_array->get_julia_objects_list(julia_reply);
+    }
+
+    return true;
+}
+
+void julia_get_julia_objects_list_cleanup(World* world, void* cmd) 
+{
+    JuliaReply* julia_reply = (JuliaReply*)cmd;
+    if(julia_reply)
+        JuliaReply::operator delete(julia_reply, world);
+}
+
+void JuliaGetJuliaObjectsList(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    if(jl_is_initialized())
+    {
+        int OSC_unique_id = args->geti();
+
+        JuliaReply* julia_reply = new(inWorld) JuliaReply(OSC_unique_id);
+        
+        if(!julia_reply)
+        {
+            printf("ERROR: Could not allocate JuliaReply\n");
+            return;
+        }
+
+        //julia_reply_with_load_path->get_buffer() is the return message that will be sent at "/done" of this async command.
+        DoAsynchronousCommand(inWorld, replyAddr, julia_reply->get_buffer(), julia_reply, (AsyncStageFn)julia_get_julia_objects_list, 0, 0, julia_get_julia_objects_list_cleanup, 0, nullptr);
+    }
+    else
+        printf("WARNING: Julia hasn't been initialized yet\n");
+}
+
+bool julia_get_julia_object_by_name(World* world, void* cmd)
+{
+    if(julia_global_state->is_initialized())
+    {
+        JuliaReplyWithLoadPath* julia_reply = (JuliaReplyWithLoadPath*)cmd;
+        julia_objects_array->get_julia_object_by_name(julia_reply);
+    }
+
+    return true;
+}
+
+void julia_get_julia_object_by_name_cleanup(World* world, void* cmd) 
+{
+    JuliaReplyWithLoadPath* julia_reply = (JuliaReplyWithLoadPath*)cmd;
+    if(julia_reply)
+        JuliaReplyWithLoadPath::operator delete(julia_reply, world);
+}
+
+void JuliaGetJuliaObjectByName(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    if(jl_is_initialized())
+    {
+        int OSC_unique_id = args->geti();
+        const char* object_name = args->gets();
+
+        //Use JuliaReplyPath's load path as a string replacement for object_name
+        JuliaReplyWithLoadPath* julia_reply = new(inWorld) JuliaReplyWithLoadPath(OSC_unique_id, object_name);
+        
+        if(!julia_reply)
+        {
+            printf("ERROR: Could not allocate JuliaReply\n");
+            return;
+        }
+
+        //julia_reply_with_load_path->get_buffer() is the return message that will be sent at "/done" of this async command.
+        DoAsynchronousCommand(inWorld, replyAddr, julia_reply->get_buffer(), julia_reply, (AsyncStageFn)julia_get_julia_object_by_name, 0, 0, julia_get_julia_object_by_name_cleanup, 0, nullptr);
+    }
+    else
+        printf("WARNING: Julia hasn't been initialized yet\n");
 }
 
 inline bool julia_quit(World* world, void* cmd)
@@ -2363,7 +2514,8 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
     DefinePlugInCmd("/julia_load", (PlugInCmdFunc)JuliaLoad, nullptr);
     DefinePlugInCmd("/julia_free", (PlugInCmdFunc)JuliaFree, nullptr);
-    //DefinePlugInCmd("/julia_replace", (PlugInCmdFunc)JuliaReplace, nullptr);
+    DefinePlugInCmd("/julia_get_julia_objects_list", (PlugInCmdFunc)JuliaGetJuliaObjectsList, nullptr);
+    DefinePlugInCmd("/julia_get_julia_object_by_name", (PlugInCmdFunc)JuliaGetJuliaObjectByName, nullptr);
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("/julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);

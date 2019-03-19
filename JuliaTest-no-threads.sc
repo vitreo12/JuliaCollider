@@ -16,6 +16,13 @@ a.query;
 a.recompile;
 a.free;
 
+d = JuliaDef.getCompiledJuliaDefs;
+
+//Now t will follow "Sine". Recompiling one will recompile the other.
+t = JuliaDef.retrieve(s, d[0].asString;);
+t.recompile;
+t.query;
+
 c = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
 
 c.query;
@@ -43,7 +50,7 @@ Routine.run{
 )
 
 //1
-{Julia.ar(a, DC.ar(0.25), DC.ar(b))}.play;
+{Julia.ar(t, DC.ar(0.25), DC.ar(b))}.play;
 
 {Julia.ar(c, DC.ar(100))}.play
 
