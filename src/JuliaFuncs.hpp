@@ -2501,6 +2501,50 @@ void JuliaTotalFreeMemory(World *inWorld, void* inUserData, struct sc_msg_iter *
         DoAsynchronousCommand(inWorld, replyAddr, "/jl_total_free_memory", nullptr, (AsyncStageFn)julia_total_free_memory, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
+
+inline void test_alloc(AllocPoolSafe* alloc_pool_test, size_t size)
+{
+    void* memory = alloc_pool_test->Alloc(size);
+    void* more_memory = alloc_pool_test->Realloc(memory, size * 2);
+    alloc_pool_test->Free(more_memory);
+}
+
+inline bool julia_test_alloc_pool_safe(World* world, void* cmd)
+{
+    size_t size = 1024000;
+    AllocPoolSafe* alloc_pool_test = new AllocPoolSafe(malloc, free, size, 0);
+
+    std::thread thread1 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread2 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread3 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread4 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread5 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread6 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread7 = std::thread(test_alloc, alloc_pool_test, 1000);
+    std::thread thread8 = std::thread(test_alloc, alloc_pool_test, 1000);
+
+    thread1.join();
+    thread2.join();
+    thread3.join();
+    thread4.join();
+    thread5.join();
+    thread6.join();
+    thread7.join();
+    thread8.join();
+
+    //Check if all memory was succesfully freed
+    printf("MEMORY: %zu\n", alloc_pool_test->TotalFree());
+    printf("BARRIER: %d\n", alloc_pool_test->get_barrier_value());
+
+    delete alloc_pool_test;
+}
+
+void JuliaTestAllocPoolSafe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    if(jl_is_initialized())
+        DoAsynchronousCommand(inWorld, replyAddr, "/jl_test_alloc_pool_safe", nullptr, (AsyncStageFn)julia_test_alloc_pool_safe, 0, 0, julia_gc_cleanup, 0, nullptr);
+}
+
 inline void DefineJuliaCmds()
 {
     DefinePlugInCmd("/julia_boot", (PlugInCmdFunc)JuliaBoot, nullptr);
@@ -2512,4 +2556,7 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
     DefinePlugInCmd("/julia_total_free_memory", (PlugInCmdFunc)JuliaTotalFreeMemory, nullptr);
+
+    /* TEST COMMANDS */
+    DefinePlugInCmd("/julia_test_alloc_pool_safe", (PlugInCmdFunc)JuliaTestAllocPoolSafe, nullptr);
 }
