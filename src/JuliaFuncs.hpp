@@ -6,14 +6,12 @@
 #include <thread>
 #include <chrono>
 
-#include "julia.h"
-#include "JuliaUtilities.hpp"
 
+#include "julia.h"
 #include "SC_PlugIn.hpp"
 
+#include "JuliaUtilitiesMacros.hpp"
 #include "JuliaAtomicBarrier.h"
-
-//Modified SC_AllocPool.h header to retrieve private members of AllocPool class
 #include "SC_AllocPoolSafe.h"
 
 //MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
@@ -1702,9 +1700,9 @@ class JuliaObjectCompiler
         }
 };
 
-#define JULIA_OBJECTS_ARRAY_INCREMENT 100
+#define JULIA_OBJECTS_ARRAY_COUNT 1000
 
-//For retrieval on RT thread
+//For retrieval on RT thread. Busy will only be usde when added support for resizing the array
 enum class JuliaObjectsArrayState {Busy, Free, Invalid};
 
 /* Allocate it with a unique_ptr? Or just a normal new/delete? */
@@ -1728,24 +1726,17 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             int new_id;
             JuliaObject* julia_object;
             
+            // FUTURE: resizable array
             /*
-            IGNORE RESIZING FOR NOW:
-            This won't work, as if the memory location is moved with the new calloc call, the RT thread's JuliaObject* pointers
-            will be pointing at junk memory. What I can have is a tagged approach, where every 100 entries I allocate new memory 
-            without reallocating the previous one, and just tag the last pointer of previous 100 entries to be the first one of the
-            new entries, so it won't be a contiguous block of memory, but it will not change the pointers of previously allocated objects.
+            check_resizable_array();
             */
-            /*
-            if(get_active_entries() == num_total_entries)
+
+            //Array is full
+            if(get_active_entries() >= num_total_entries)
             {
-                //Lock the access to the array only when resizing.
-                JuliaAtomicBarrier::Spinlock();
-
-                resize_julia_objects_array();
-
-                JuliaAtomicBarrier::Unlock();
+                printf("ERROR: Reached maximum limit (%d) of active JuliaDefs. Free before creating new ones. \n", num_total_entries);
+                return false;
             }
-            */
 
             //Run code evaluation and module compilation
             jl_module_t* evaluated_module = eval_julia_object(julia_reply_with_load_path);
@@ -1862,10 +1853,11 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         /* RT THREAD. Called when a Julia UGen is created on the server */
         inline JuliaObjectsArrayState get_julia_object(int unique_id, JuliaObject** julia_object)
         {
-            bool barrier_acquired = JuliaAtomicBarrier::RTTrylock();
+            //This barrier will be useful when support for resizing the array will be added.
+            //bool barrier_acquired = JuliaAtomicBarrier::RTTrylock();
 
-            if(barrier_acquired)
-            {
+            //if(barrier_acquired)
+            //{
                 JuliaObject* this_julia_object = julia_objects_array + unique_id;
 
                 if(this_julia_object->compiled)
@@ -1873,30 +1865,25 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                 else
                 {
                     printf("WARNING: Invalid @object. Perhaps JuliaDef is not valid on server \n");
-                    JuliaAtomicBarrier::Unlock();
+                    //JuliaAtomicBarrier::Unlock();
                     return JuliaObjectsArrayState::Invalid;
                 }
 
-                JuliaAtomicBarrier::Unlock();
+                //JuliaAtomicBarrier::Unlock();
                 return JuliaObjectsArrayState::Free;
-            }
-
+            //}
             
-            return JuliaObjectsArrayState::Busy;
+            //return JuliaObjectsArrayState::Busy;
         }
 
         /* NRT THREAD. Called at JuliaDef.free() */
         inline void delete_julia_object(int unique_id)
         {
-            //JuliaAtomicBarrier::NRTSpinlock();
-
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
             unload_julia_object(this_julia_object);
             if(unload_julia_object(this_julia_object))
                 decrease_active_entries();
-
-            //JuliaAtomicBarrier::Unlock();
         }
 
         inline void get_julia_objects_list(JuliaReply* julia_reply)
@@ -1956,6 +1943,7 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                     //Scanned through all active entries, no success.
                     if(entries_count == active_entries)
                     {
+                        printf("WARNING: Unable to find any @object with name: %s\n", name);
                         julia_reply->create_done_command(julia_reply->get_OSC_unique_id(), "/jl_get_julia_object_by_name", -1, "", -1, -1);
                         return;
                     }
@@ -1967,22 +1955,20 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         //Array of JuliaObject(s)
         JuliaObject* julia_objects_array = nullptr;
 
-        //incremental size
-        int num_total_entries = JULIA_OBJECTS_ARRAY_INCREMENT;
+        //Fixed size: 1000 @object entries for the array.
+        int num_total_entries = JULIA_OBJECTS_ARRAY_COUNT;
 
         //Constructor
         inline void init_julia_objects_array()
         {
             //RTalloc?
-            JuliaObject* res = (JuliaObject*)calloc(num_total_entries, sizeof(JuliaObject));
+            julia_objects_array = (JuliaObject*)calloc(num_total_entries, sizeof(JuliaObject));
             
-            if(!res)
+            if(!julia_objects_array)
             {
-                printf("Failed to allocate memory for JuliaObjects class \n");
+                printf("ERROR:Failed to allocate memory for JuliaObjects class \n");
                 return;
             }
-
-            julia_objects_array = res;
         }
 
         //Destructor
@@ -1990,50 +1976,26 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         {
             free(julia_objects_array);
         }
-
-        //Called when id > num_entries.
-        inline void resize_julia_objects_array()
+        
+        /* 
+        // FUTURE: Resizable array
+        inline void check_resizable_array()
         {
-            /* int previous_num_total_entries = num_total_entries;
 
-            //Add more entries
-            advance_num_total_entries();
-
-            //Manual realloc()... more control on the different stages
-            JuliaObject* res = (JuliaObject*)calloc(num_total_entries, sizeof(JuliaObject));
-
-            //If failed, reset num entries to before and exit.
-            if(!res)
-            {
-                decrease_num_total_entries();
-                printf("Failed to allocate more memory for JuliaObjects class \n");
-                return; //julia_objects_array is still valid
-            }
-
-            //copy previous entries to new array
-            memcpy(res, julia_objects_array, previous_num_total_entries);
-            
-            //previous array to be freed
-            JuliaObject* previous_julia_objects_array = julia_objects_array; 
-
-            //swap pointers. No need for atomic, since JuliaAtomicBarrier::Spinlock has acquired already
-            julia_objects_array = res;
-
-            //free previous array.
-            free(previous_julia_objects_array); */
         }
 
         inline void advance_num_total_entries()
         {
-            num_total_entries += JULIA_OBJECTS_ARRAY_INCREMENT;
+            num_total_entries += JULIA_OBJECTS_ARRAY_COUNT;
         }
 
         inline void decrease_num_total_entries()
         {
-            num_total_entries -= JULIA_OBJECTS_ARRAY_INCREMENT;
+            num_total_entries -= JULIA_OBJECTS_ARRAY_COUNT;
             if(num_total_entries < 0)
                 num_total_entries = 0;
         }
+        */
 };
 
 /***************************************************************************/
@@ -2054,7 +2016,7 @@ int gc_count = 0;
 
 /* For edge cases only where GC is performing at a UGen destructor */
 std::atomic<bool>gc_array_needs_emptying{false};
-int gc_array_num = 1000; //Maximum of 1000 concurrent UGens... Should be enough
+int gc_array_num = 1000; //Maximum of 1000 concurrent UGens to delete. Should be enough
 jl_value_t** gc_array;
 
 /****************************************************************************/
@@ -2253,8 +2215,13 @@ bool julia_load(World* world, void* cmd)
         if(gc_count == 0)
             perform_gc(1);
         
-        julia_objects_array->create_julia_object(julia_reply_with_load_path);
-
+        bool object_created = julia_objects_array->create_julia_object(julia_reply_with_load_path);
+        if(!object_created)
+        {
+            julia_reply_with_load_path->create_done_command(julia_reply_with_load_path->get_OSC_unique_id(), "/jl_load", -1, "@No_Name", -1, -1);
+            printf("ERROR: Could not create JuliaDef\n");
+        }
+        
         perform_gc(1);
         
         julia_compiler_barrier->Unlock();
