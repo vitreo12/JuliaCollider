@@ -8,7 +8,11 @@ IT MIGHT BE FASTER!!!!!!!!! */
 class AtomicBarrier
 {
     public:
-        AtomicBarrier(){}
+        AtomicBarrier()
+        {
+            barrier.store(false);
+        }
+
         ~AtomicBarrier(){}
 
         void Spinlock();

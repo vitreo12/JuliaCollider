@@ -217,7 +217,10 @@ AllocAreaPtr AllocPoolSafe::NewArea(size_t inAreaSize)
 	void *ptr = (AllocAreaPtr)(mAllocArea)(inAreaSize + kAreaOverhead);
 
 	if (ptr == NULL)
-		throw std::runtime_error(std::string("Could not allocate new area"));
+	{
+		return NULL;
+		//throw std::runtime_error(std::string("Could not allocate new area"));
+	}
 
 	// AllocAreaPtr area = (AllocAreaPtr)((unsigned long)ptr & ~kAlignMask);
 	AllocAreaPtr area = (AllocAreaPtr)(((size_t)ptr + kAlignMask) & ~kAlignMask);
@@ -406,7 +409,8 @@ void* AllocPoolSafe::Alloc(size_t inReqSize, bool is_realloc)
 
 	// exit paths:
 	found_nothing:
-		AtomicBarrier::Unlock(); /* UNLOCK in any case, be it in realloc or not.*/
+		if(!is_realloc)
+			AtomicBarrier::Unlock(); /* UNLOCK */
 		return NULL;
 		//printf("WARNING: AllocPoolSafe, end of memory pool\n");
 		//throw std::runtime_error(std::string("alloc failed, increase server's memory allocation (e.g. via ServerOptions)"));
@@ -416,8 +420,8 @@ void* AllocPoolSafe::Alloc(size_t inReqSize, bool is_realloc)
 		area = NewArea(areaSize);
 		if (!area) 
 		{
-			/* UNLOCK */
-			AtomicBarrier::Unlock();
+			if(!is_realloc)
+				AtomicBarrier::Unlock(); /* UNLOCK */
 			return 0;
 		}
 		candidate = &area->mChunk;
@@ -478,7 +482,8 @@ void* AllocPoolSafe::Realloc(void* inPtr, size_t inReqSize)
 	if (inPtr == 0) 
 	{
 		AtomicBarrier::Unlock();
-		return Alloc(inReqSize);
+		//Return a standard Alloc call.
+		return Alloc(inReqSize, false);
 	}
 
 	AllocChunkPtr oldChunk = MemToChunk(inPtr);
@@ -530,6 +535,7 @@ void* AllocPoolSafe::Realloc(void* inPtr, size_t inReqSize)
 
 		/* Must allocate */
 
+		//true == won't check for lock. It has it already from Realloc
 		outPtr = Alloc(inReqSize, true);
 
 		check_pool();
