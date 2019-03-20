@@ -11,10 +11,8 @@ class AtomicBarrier
         AtomicBarrier(){}
         ~AtomicBarrier(){}
 
-        /* To be called from NRT thread only. */
         void Spinlock();
 
-        /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
         bool Trylock();
 
         void Unlock();
@@ -33,6 +31,7 @@ class JuliaAtomicBarrier : public AtomicBarrier
 
         void NRTSpinlock();
 
+        /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
         bool RTTrylock();
 
         /* inline void Unlock(); */

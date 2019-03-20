@@ -1,4 +1,4 @@
-s.options.memSize = 131072;
+s.options.sampleRate = 48000;
 
 s.bootWithJulia;
 
@@ -16,6 +16,7 @@ a.query;
 a.recompile;
 a.free;
 
+//It's async.
 d = JuliaDef.getCompiledJuliaDefs;
 
 //Now t will follow "Sine". Recompiling one will recompile the other.
@@ -50,7 +51,7 @@ Routine.run{
 )
 
 //1
-{Julia.ar(t, DC.ar(0.25), DC.ar(b))}.play;
+{Julia.ar(a, DC.ar(0.25), DC.ar(b))}.play;
 
 {Julia.ar(c, DC.ar(100))}.play
 

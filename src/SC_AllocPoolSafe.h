@@ -304,10 +304,10 @@ typedef struct JuliaAllocPool
 
 typedef struct JuliaAllocFuncs
 {
-	void* (*fRTAlloc)(JuliaAllocPool* inPool, size_t inSize);
-	void* (*fRTRealloc)(JuliaAllocPool* inPool, void *inPtr, size_t inSize);
-	void  (*fRTFree)(JuliaAllocPool* inPool, void *inPtr);
-	size_t(*fRTTotalFreeMemory)(JuliaAllocPool* inPool);
+	void*  (*fRTAlloc)(JuliaAllocPool* inPool, size_t inSize);
+	void*  (*fRTRealloc)(JuliaAllocPool* inPool, void *inPtr, size_t inSize);
+	void   (*fRTFree)(JuliaAllocPool* inPool, void *inPtr);
+	size_t (*fRTTotalFreeMemory)(JuliaAllocPool* inPool);
 } JuliaAllocFuncs;
 
 void* julia_pool_malloc(JuliaAllocPool* inPool, size_t inSize);
