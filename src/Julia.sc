@@ -93,6 +93,9 @@ JuliaDef {
 	}
 
 	query {
+		if(name == "@No_Name", {
+			("Warning: Empty JuliaDef").postln;
+		});
 		("*** Julia @object: " ++ name ++ " ***").postln;
 		("*** Server: " ++ srvr ++ " ***").postln;
 		("*** ID: " ++ server_id ++ " ***").postln;
@@ -122,7 +125,7 @@ JuliaDef {
 	/* Free a JuliaDef */
 	free {
 		if(server_id != -1, {
-			this.free;
+			this.freeJuliaDef;
 		}, {
 			"WARNING: Invalid JuliaDef to free".postln;
 		});
@@ -137,7 +140,7 @@ JuliaDef {
 		});
 	}
 
-	/* Retrieve a JuliaDef from server by name, and assign it to this JuliaDef */
+	/* Retrieve a JuliaDef from server by name, and assign it to a new JuliaDef, returning it */
 	*retrieve {
 		arg server, obj_name;
 		^this.new().getCompiledJuliaDef(server, obj_name);
@@ -444,10 +447,10 @@ Julia : MultiOutUGen {
 
 			//Remove the gc_fun at CmdPeriod
 			CmdPeriod.remove(gc_fun);
-			*/
 
 			//syncing because item.value will perform one last GC async call.
 			this.sync;
+			*/
 
 			this.sendMsg(\cmd, "/julia_quit");
 
