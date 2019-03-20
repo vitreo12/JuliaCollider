@@ -98,7 +98,7 @@ if(MINGW)
 endif()
 
 #Julia.cpp is inside src/ folder. Headers are all in there, should probably simply include the whole src directory aswell
-add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolSafe.cpp" "src/JuliaAtomicBarrier.cpp")
+add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolSafe.cpp" "src/JuliaAtomicBarrier.cpp" "src/SCBuffer.cpp")
 
 #JULIA LINKER FLAGS.
 #-L'${JULIA_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
