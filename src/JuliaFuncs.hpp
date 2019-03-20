@@ -6,7 +6,6 @@
 #include <thread>
 #include <chrono>
 
-
 #include "julia.h"
 #include "SC_PlugIn.hpp"
 
@@ -1306,7 +1305,7 @@ class JuliaObjectCompiler
 
             for(int i = 0; i < num_inputs; i++)
             {
-                dummy_ins[i] = (float*)RTAlloc(in_world, buffer_size * sizeof(float));
+                dummy_ins[i] = (float*)malloc(buffer_size * sizeof(float));
                 if(!dummy_ins[i])
                 {
                     printf("ERROR: Could not allocate memory for inputs \n");
@@ -1366,7 +1365,7 @@ class JuliaObjectCompiler
 
             for(int i = 0; i < num_outputs; i++)
             {
-                dummy_outs[i] = (float*)RTAlloc(in_world, buffer_size * sizeof(float));
+                dummy_outs[i] = (float*)malloc(buffer_size * sizeof(float));
                 if(!dummy_outs[i])
                 {
                     printf("ERROR: Could not allocate memory for outs \n");
@@ -1410,10 +1409,10 @@ class JuliaObjectCompiler
             jl_method_instance_t* perform_instance = jl_lookup_generic_and_compile_SC(perform_args, perform_nargs);
 
             for(int i = 0; i < num_inputs; i++)
-                RTFree(in_world, dummy_ins[i]);
+                free(dummy_ins[i]);
 
             for(int i = 0; i < num_outputs; i++)
-                RTFree(in_world, dummy_outs[i]);
+                free(dummy_outs[i]);
 
             /* JULIA OBJECT ASSIGN */
             if(!perform_instance)
@@ -1961,7 +1960,6 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         //Constructor
         inline void init_julia_objects_array()
         {
-            //RTalloc?
             julia_objects_array = (JuliaObject*)calloc(num_total_entries, sizeof(JuliaObject));
             
             if(!julia_objects_array)
@@ -2142,7 +2140,7 @@ struct JuliaBootArgs
     int julia_pool_alloc_mem_size;
 };
 
-//On RT Thread for now.
+//On RT thread
 inline bool julia_boot(World* inWorld, void* cmd)
 {
     if(!jl_is_initialized())
@@ -2181,6 +2179,8 @@ inline bool julia_boot(World* inWorld, void* cmd)
     return true;
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTFree into World*. */
 void julia_boot_cleanup(World* world, void* cmd) 
 {
     JuliaBootArgs* julia_boot_args = (JuliaBootArgs*)cmd;
@@ -2188,6 +2188,8 @@ void julia_boot_cleanup(World* world, void* cmd)
         RTFree(world, julia_boot_args);
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTAlloc into World*. */
 void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     /* first argument is the memory size for JuliaAllocPool */
@@ -2240,6 +2242,8 @@ bool julia_load(World* world, void* cmd)
     return true;
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTFree into World*. */
 void julia_load_cleanup(World* world, void* cmd) 
 {
     JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
@@ -2248,6 +2252,8 @@ void julia_load_cleanup(World* world, void* cmd)
         JuliaReplyWithLoadPath::operator delete(julia_reply_with_load_path, world); //Needs to be called excplicitly
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTAlloc into World*. */
 void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     if(jl_is_initialized())
@@ -2288,6 +2294,8 @@ bool julia_free(World* world, void* cmd)
     return true;
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTFree into World*. */
 void julia_free_cleanup(World* world, void* cmd) 
 {
     JuliaObjectId* julia_object_id = (JuliaObjectId*)cmd;
@@ -2296,6 +2304,8 @@ void julia_free_cleanup(World* world, void* cmd)
         JuliaObjectId::operator delete(julia_object_id, world); //Needs to be called excplicitly
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTAlloc into World*. */
 void JuliaFree(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     if(jl_is_initialized())
@@ -2331,11 +2341,14 @@ bool julia_get_julia_objects_list(World* world, void* cmd)
 
 void julia_get_julia_objects_list_cleanup(World* world, void* cmd) 
 {
+
     JuliaReply* julia_reply = (JuliaReply*)cmd;
     if(julia_reply)
         JuliaReply::operator delete(julia_reply, world);
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTAlloc into World*. */
 void JuliaGetJuliaObjectsList(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     if(jl_is_initialized())
@@ -2368,6 +2381,8 @@ bool julia_get_julia_object_by_name(World* world, void* cmd)
     return true;
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTFree into World*. */
 void julia_get_julia_object_by_name_cleanup(World* world, void* cmd) 
 {
     JuliaReplyWithLoadPath* julia_reply = (JuliaReplyWithLoadPath*)cmd;
@@ -2375,6 +2390,8 @@ void julia_get_julia_object_by_name_cleanup(World* world, void* cmd)
         JuliaReplyWithLoadPath::operator delete(julia_reply, world);
 }
 
+/* This gets executed on RT thread,
+so it's safe to RTAlloc into World*. */
 void JuliaGetJuliaObjectByName(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     if(jl_is_initialized())
