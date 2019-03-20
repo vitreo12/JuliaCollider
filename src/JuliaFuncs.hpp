@@ -540,11 +540,13 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
         
         ~JuliaGlobalState()
         {
+            //First quit julia. It will run finalizers and it will still need the memory pool to be alive
+            quit_julia();
+
+            //Then delete pool 
             delete alloc_pool;
             free(julia_alloc_pool);
             free(julia_alloc_funcs);
-
-            quit_julia();
         }
 
         //Called with async command.
@@ -718,6 +720,8 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
                 global_def_id_dict.unload_id_dict();
                 global_object_id_dict.unload_id_dict();
                 global_gc_id_dict.unload_id_dict();
+
+                jl_gc_enable(1);
 
                 jl_atexit_hook(0); 
                 
@@ -2429,17 +2433,21 @@ inline bool julia_quit(World* world, void* cmd)
         //perform_gc_thread_run.store(false);
         //perform_gc_thread.join();
 
-        //julia_objects_array->~JuliaObjectsArray();
         delete julia_objects_array;
+
+        julia_gc_barrier->NRTSpinlock();
+        julia_compiler_barrier->NRTSpinlock();
+
+        //This will quit Julia
+        delete julia_global_state;
+
+        julia_gc_barrier->Unlock();
         
-        //julia_gc_barrier->~JuliaAtomicBarrier();
         delete julia_gc_barrier;
 
-        //julia_compiler_barrier->~JuliaAtomicBarrier();
-        delete julia_compiler_barrier;
+        julia_compiler_barrier->Unlock();
 
-        //julia_global_state->~JuliaGlobalState();
-        delete julia_global_state;
+        delete julia_compiler_barrier;
 
         free(gc_array);
     }
