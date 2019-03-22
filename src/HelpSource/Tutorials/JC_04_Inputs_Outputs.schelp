@@ -1,0 +1,5 @@
+title:: JuliaCollider 04: The @inputs and @outputs macros
+summary:: Analysis and usage of the @inputs and @outputs macros
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+

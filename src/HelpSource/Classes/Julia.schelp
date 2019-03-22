@@ -1,0 +1,30 @@
+CLASS:: Julia
+SUMMARY:: Executes a JuliaDef on the server
+CATEGORIES:: JuliaCollider>Classes, UGens>JuliaCollider
+RELATED:: Classes/JuliaDef, Overviews/JuliaCollider
+
+DESCRIPTION::
+(put long description here)
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+
+ARGUMENT::  ... args
+Variable number of arguments. The first argument MUST always been a JuliaDef, followed any number of UGen arguments, according to the Julia @object->@inputs.
+
+METHOD:: kr
+Julia only currently supports the .ar method.
+
+EXAMPLES::
+
+code::
+(some example code)
+::
+
+subsection::Sub-section
+
+code::
+(some more example code)
+::

@@ -50,23 +50,27 @@ cmake -DJULIA_PATH=$JULIA_PATH -DSC_PATH=$SC_PATH -DCMAKE_BUILD_TYPE=Release -DN
 make 
 
 #make a Julia dir, inside of ./build, and put all the built stuff and libs in it
-mkdir -p Julia
-mkdir -p Julia/julia
-mkdir -p Julia/julia/startup
+mkdir -p JuliaCollider
+mkdir -p JuliaCollider/julia
+mkdir -p JuliaCollider/julia/startup
 
 echo "Copying files over..."
 
-rsync -r --links --update "$JULIA_PATH/lib" ./Julia/julia               #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
-rsync --update "$JULIA_PATH/etc/julia/startup.jl" ./Julia/julia/startup #copy startup.jl
-rsync -r -L --update "$JULIA_PATH/share/julia/stdlib" ./Julia/julia     #copy stdlib. Need to deep copy all the symlinks (-L flag)
-rsync -r --links --update ../src/JuliaObjects ./Julia/julia             #copy /JuliaObjects 
+rsync -r --links --update "$JULIA_PATH/lib" ./JuliaCollider/julia               #copy julia lib from JULIA_PATH to the new Julia folder, inside of a julia/ sub directory, maybe also copy include?
+rsync --update "$JULIA_PATH/etc/julia/startup.jl" ./JuliaCollider/julia/startup #copy startup.jl
+rsync -r -L --update "$JULIA_PATH/share/julia/stdlib" ./JuliaCollider/julia     #copy /stdlib. Need to deep copy all the symlinks (-L flag)
 
 if [[ "$OSTYPE" == "darwin"* ]]; then                     
-    cp Julia.scx ./Julia                                                #copy compiled Julia.scx
+    cp Julia.scx ./JuliaCollider                                                #copy compiled Julia.scx
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then 
-    cp Julia.so ./Julia                                                 #copy compiled Julia.so file
+    cp Julia.so ./JuliaCollider                                                 #copy compiled Julia.so file
 fi          
-cp ../src/Julia.sc ./Julia                                              #copy .sc class
+
+rsync --update ../src/Julia.sc ./JuliaCollider                                  #copy .sc class
+rsync -r --update ../src/HelpSource ./JuliaCollider                             #copy .schelp(s)
+rsync -r --links --update ../src/Examples ./JuliaCollider                       #copy /Examples 
 
 #copy stuff over to SC's User Extension directory
-rsync -r --links --update ./Julia "$SC_EXTENSIONS_PATH"
+rsync -r --links --update ./JuliaCollider "$SC_EXTENSIONS_PATH"
+
+echo "Done!"

@@ -1,0 +1,43 @@
+title:: JuliaCollider 01: Introduction to JuliaCollider
+summary:: Introduction to the JuliaCollider environment
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+JuliaCollider is
+
+A typical JuliaCollider file would look like:
+
+section:: Booting JuliaCollider
+JuliaCollider does not boot automatically with the server, but can be initialized at anytime with the strong::bootJulia:: link::Classes/Server:: method. Alternatively, one could use the strong::bootWithJulia:: link::Classes/Server:: method to run Julia's initialization together with the boot of the server. It is worth noting that JuliaCollider uses its own real-time allocator, and it's possible to change its size with an argument to either of the boot commands (default = 131072 Kb).
+
+code::
+(
+s.waitForBoot{
+	s.bootJulia;
+};
+)
+
+/* Equivalent to: */
+
+s.bootWithJulia;
+::
+
+section:: The JuliaDef class
+The link::Classes/JuliaDef:: class is the client side representation of a compiled Julia file on the server, and its interface works very similarly to how the link::Classes/Buffer:: class works. To create a new JuliaDef, two arguments are needed: the server and a string path to the Julia file to load on the server.
+
+code::
+p = Platform.userExtensionDir ++ "/JuliaCollider/Examples/SineWave.jl";
+j = JuliaDef(s, p); //Note: the server (and Julia) needs to be booted
+::
+
+section:: The Julia UGen
+
+
+s.bootJulia
+s.quitWithJulia
+
+
+
+note::
+JuliaDefProxy
+::

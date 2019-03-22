@@ -1,0 +1,5 @@
+title:: JuliaCollider 05: The @constructor and @perform macros
+summary:: Analysis and usage of the @constructor and @perform macros
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+

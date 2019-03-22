@@ -10,8 +10,11 @@ s.quitWithJulia;
 
 s.sendMsg(\cmd, "/julia_query_id_dicts");
 
-a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+s.sendMsg(\cmd, "/julia_test_alloc_pool_safe");
 
+a = JuliaDef(10, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+
+a.edit;
 a.query;
 a.recompile;
 a.free;
@@ -26,6 +29,7 @@ t.query;
 
 c = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
 
+c.edit;
 c.query;
 c.recompile;
 c.free;
