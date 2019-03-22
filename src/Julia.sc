@@ -25,7 +25,31 @@ JuliaDef {
 
 		var obj_name, ins, outs, srvr_id, condition, osc_unique_id, osc_func;
 
-		if(path == "", {^this});
+		if((server.class == Server).not, {
+			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			^this;
+		});
+
+		if((server.serverRunning).not, {
+			("ERROR: JuliaDef: Server is not running.").postln;
+			^this;
+		});
+
+		if((path.class == String).not, {
+			("ERROR: JuliaDef: second argument is not a String.").postln;
+			^this;
+		});
+
+		if(path == "", {
+			("ERROR: JuliaDef: second argument is an empty String.").postln;
+			^this;
+		});
+
+
+		if((File.existsCaseSensitive(path)).not, {
+			("ERROR: JuliaDef: path: \"" ++ path ++ "\" does not exist.").postln;
+			^this;
+		});
 
 		srvr = server ?? Server.default;
 
@@ -102,6 +126,10 @@ JuliaDef {
 		("*** Inputs: " ++ inputs ++ " ***").postln;
 		("*** Outputs: " ++ outputs ++ " ***").postln;
 		("*** File Path: " ++ file_path ++ " ***").postln;
+	}
+
+	edit {
+		("open \"" ++ file_path ++ "\"").unixCmd;
 	}
 
 	freeJuliaDef {
@@ -389,8 +417,15 @@ Julia : MultiOutUGen {
 + Server {
 
 	bootJulia {
-		arg pool_size;
+		arg pool_size = 131072;
+
 		var gc_fun;
+
+		if(pool_size < 131072, {
+			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
+			pool_size = 131072;
+		});
+
 		Routine.run {
 			pool_size.postln;
 			this.sendMsg(\cmd, "/julia_boot", pool_size);
@@ -417,11 +452,6 @@ Julia : MultiOutUGen {
 
 	bootWithJulia {
 		arg pool_size = 131072;
-
-		if(pool_size < 131072, {
-			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
-			pool_size = 131072;
-		});
 
 		this.waitForBoot({
 			this.bootJulia(pool_size);

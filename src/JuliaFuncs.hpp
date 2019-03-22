@@ -2123,17 +2123,17 @@ inline void perform_gc_on_NRT_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
     {
+        //Perform only if compiler is not working.
         if(julia_compiler_barrier->RTTrylock())
         {
+            //printf("*** My Thread ID: %d ***\n", std::this_thread::get_id());
             JuliaGC(inWorld, nullptr, nullptr, nullptr);
             julia_compiler_barrier->Unlock();
         }
 
-        printf("*** My Thread ID: %d ***\n", std::this_thread::get_id());
-
         //Run every 10 seconds. Should probably set it to something higher for a full sweep (like once a minute), 
         //And a perform_gc(0) every 30 seconds
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
     printf("*** MY THREAD DONE ***\n");
@@ -2207,7 +2207,7 @@ void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
 
     julia_boot_args->julia_pool_alloc_mem_size = julia_pool_alloc_mem_size;
 
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_boot", (void*)julia_boot_args, 0, (AsyncStageFn)julia_boot, 0, julia_boot_cleanup, 0, nullptr);
+    DoAsynchronousCommand(inWorld, replyAddr, "/jl_boot", (void*)julia_boot_args, (AsyncStageFn)julia_boot, 0, 0, julia_boot_cleanup, 0, nullptr);
 }
 
 bool julia_load(World* world, void* cmd)
