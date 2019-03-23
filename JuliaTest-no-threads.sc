@@ -12,7 +12,7 @@ s.sendMsg(\cmd, "/julia_query_id_dicts");
 
 s.sendMsg(\cmd, "/julia_test_alloc_pool_safe");
 
-a = JuliaDef(10, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SineWave.jl");
 
 a.edit;
 a.query;
@@ -20,21 +20,21 @@ a.recompile;
 a.free;
 
 //It's async.
-d = JuliaDef.getCompiledJuliaDefs;
+d = JuliaDef.getCompiledJuliaDefs(s);
 
 //Now t will follow "Sine". Recompiling one will recompile the other.
-t = JuliaDef.retrieve(s, d[0].asString;);
+t = JuliaDef.retrieve(s, d[0]);
 t.recompile;
 t.query;
 
-c = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/Phasor.jl");
+c = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Phasor.jl");
 
 c.edit;
 c.query;
 c.recompile;
 c.free;
 
-10.do{a = JuliaDef(s, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
+10.do{a.recompile};
 
 (
 Routine.run{
@@ -55,7 +55,7 @@ Routine.run{
 )
 
 //1
-{Julia.ar(a, DC.ar(0.25), DC.ar(b))}.play;
+{Julia.ar(a, DC.ar(200))}.play;
 
 {Julia.ar(c, DC.ar(100))}.play
 
