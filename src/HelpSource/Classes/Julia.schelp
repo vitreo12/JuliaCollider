@@ -4,7 +4,14 @@ CATEGORIES:: JuliaCollider>Classes, UGens>JuliaCollider
 RELATED:: Classes/JuliaDef, Overviews/JuliaCollider
 
 DESCRIPTION::
-(put long description here)
+
+note::
+As of now, the link::Classes/Julia:: UGen only accepts audio inputs (strong::.ar:: UGen method). Use the link::Classes/DC:: UGen for strong::kr:: to strong::ar:: conversion.
+::
+
+note::
+Dynamic switching of link::Classes/JuliaDef:: is not yet permitted, and the link::Classes/JuliaDef:: must be known when defining the link::Classes/SynthDef:: where the specific link::Classes/Julia:: UGen is declared.
+::
 
 CLASSMETHODS::
 

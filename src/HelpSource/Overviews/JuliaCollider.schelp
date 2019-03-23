@@ -37,6 +37,9 @@ definitionList::
 ## link::Tutorials/JC_03_JuliaCollider_Syntax:: || Analysis of the strong::JuliaCollider:: syntax
 ## link::Tutorials/JC_04_Inputs_Outputs:: || Analysis and usage of the strong::@inputs:: and strong::@outputs:: macros
 ## link::Tutorials/JC_05_Constructor_Perform:: || Analysis and usage of the strong::@constructor:: and strong::@perform:: macros
-## link::Tutorials/JC_06_Data:: || Analysis and usage of the strong::Data:: DataType
-## link::Tutorials/JC_07_Buffer:: || Analysis and usage of the strong::Buffer:: DataType
+## link::Tutorials/JC_06_Data:: || Analysis and usage of the strong::Data:: type
+## link::Tutorials/JC_07_Buffer:: || Analysis and usage of the strong::Buffer:: type
+## link::Tutorials/JC_08_Custom_Types:: || How to use custom Type(s)
+## link::Tutorials/JC_09_Examples_1:: || Insight on the Examples folder
+## link::Tutorials/JC_10_Examples_2:: || Insight on the Examples folder
 ::

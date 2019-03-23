@@ -5,6 +5,23 @@ RELATED:: Classes/Julia, Overviews/JuliaCollider
 
 DESCRIPTION::
 
+note::
+An emphasis::autowatch:: feature will be added, in order to automatically recompile link::Classes/JuliaDef::(s).
+::
+
+Since a link::Classes/JuliaDef:: is just a client side view on a Julia compiled file on the server, two strong::JuliaDefs:: pointing at the same source code are, effectively, the same. Recompiling one, will result in the effects of the recompilation to be viewed on all the homonyms aswell.
+
+code::
+h = JuliaDef(s, p);
+
+//If changing the source code and recompiling here, effects will also be viewed on the j JuliaDef.
+h.recompile;
+::
+
+warning::
+On a multiple clients setup, recompiling a link::Classes/JuliaDef:: will only reflect its changes on the scope of the single client. While the code on the server gets updated, other clients might still be using older defined link::Classes/JuliaDef::(s), which, perhaps, might contain wrong informations on inputs/outputs counting. Use the strong::update:: method in such cases.
+::
+
 
 CLASSMETHODS::
 

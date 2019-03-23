@@ -3,3 +3,35 @@ summary:: Analysis of the JuliaCollider syntax
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
+strong::JuliaCollider:: code strongly relies on Julia's metaprogramming capabilities. By using macros, marked with the strong::@:: symbol, is in fact possible to define a custom language, with custom parsing and compilation features.
+
+But what does strong::JuliaCollider:: code look like? Here is a very basic example of a computed sine wave oscillator, contained in the Examples folder under the name of emphasis::"SineWave.jl":: :
+
+image::typical_JC_file.png::
+
+Here is a brief list of what this strong::JuliaCollider:: code defines:
+
+NUMBEREDLIST::
+##An strong::@object:: named emphasis::Sine::.
+##A series of properties for the emphasis::Sine:: strong::@object:: (number of strong::@inputs::/strong::@outputs::, definition of member variables (like emphasis::Phasor::), etc...).
+##A strong::@constructor:: macro, which will return a strong::@new:: emphasis::Sine:: object with an instance of emphasis::Phasor::, named emphasis::phasor:: as member variable.
+##A strong::@perform:: macro, which defines the actual audio code that will be performed. The strong::@sample:: macro defines the inner audio loop.
+::
+
+section:: The @object macro
+
+note::
+Each strong::JuliaCollider:: file strong::MUST:: only contain a single strong::@object:: description.
+::
+
+Every strong::JuliaCollider:: file describes the features of an audio object, wrapped around the strong::@object:: macro.
+
+This macro takes two arguments:
+NUMBEREDLIST::
+##The name of the strong::@object:: .
+##The body of the object, wrapped around the strong::begin::/strong::end:: syntax.
+::
+
+The body of the strong::@object::, then, will define every aspect of the audio code, from the data structures it will be using down to the actual audio loop code. The declaration of custom data types - as is the emphasis::mutable struct Phasor:: in the picture at the top - or functions can happen at any point in the body of the strong::@object::, but always before they're used. A convenient position would be right before the strong::@constructor:: macro, which will be analyzed in link::Tutorials/JC_05_Constructor_Perform::.
+
+strong::NEXT:: : link::Tutorials/JC_04_Inputs_Outputs::

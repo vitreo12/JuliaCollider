@@ -3,3 +3,18 @@ summary:: Introduction to some key concepts of the Julia syntax
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
+This tutorial will look into some basic concepts of the Julia syntax needed to write correct and performant JuliaCollider code. To follow the tutorial, it is suggested to download a precompiled binary from https://julialang.org/downloads/, and to use it in REPL mode on your terminal.
+
+note::
+emphasis::JuliaCollider:: uses a custom build of Julia, and some of Julia features are not supported (e.g. emphasis::Packages::).
+::
+
+section:: Variables and types
+
+section:: Functions
+
+section:: Multiple dispatch
+
+For JuliaCollider to compile fast code, types should always be typed in.
+
+strong::NEXT:: : link::Tutorials/JC_03_JuliaCollider_Syntax::

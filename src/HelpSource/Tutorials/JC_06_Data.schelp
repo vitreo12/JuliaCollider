@@ -1,5 +1,16 @@
-title:: JuliaCollider 06: The Data DataType
-summary:: Analysis and usage of the Data DataType
+title:: JuliaCollider 06: The Data type
+summary:: Analysis and usage of the Data type
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
+The emphasis::Data:: type is a special emphasis::JuliaCollider:: type which allows to allocate memory in the strong::@constructor:: macro to be used in the strong::@perform:: macro.
+
+warning::
+emphasis::Data:: is the only safe way of allocating memory in emphasis::JuliaCollider::, as any standard emphasis::Julia:: memory allocation methods (Vector, Array, etc...) must strong::never:: be used: they would cause memory leaks.
+::
+
+warning::
+emphasis::Data:: must strong::always:: be initialized in the strong::@constructor:: macro, as its lifetime is linked to the one of the strong::@object::. Memory allocated in the strong::@perform:: macro will cause memory to grow out of bounds, causing emphasis::JuliaCollider:: (and perhaps, your PC) to crash.
+::
+
+NOTE, JULIA COUNTS FROM 1.
