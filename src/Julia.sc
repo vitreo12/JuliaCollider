@@ -1,7 +1,9 @@
 JuliaDef {
-	/* Only define getters  for variables to be accessed at Julia UGen instantiation */
-	var srvr;
-	var file_path = "";
+	/* Identity dictionary that will store single JuliaDefs per @object */
+	classvar julia_defs_on_server;
+
+	var <srvr;
+	var <file_path = "";
 	var <name = "@No_Name";
 	var <inputs = -1;
 	var <input_names;
@@ -20,10 +22,21 @@ JuliaDef {
 		^this.newJuliaDef(server, path);
 	}
 
+	/* This is initialized at interpreter boot, and re-initialized at each Server.bootJulia.
+	However, not all clients will be updated, but only the calling one...*/
+	*initClass {
+		julia_defs_on_server = IdentityDictionary(1000);
+	}
+
 	newJuliaDef {
 		arg server, path;
 
 		var obj_name, ins, outs, srvr_id, condition, osc_unique_id, osc_func;
+
+		//Empty constructor used in retrieve function
+		if(path == "__NEW_JULIADEF__", {
+			^this;
+		});
 
 		if((server.class == Server).not, {
 			("ERROR: JuliaDef: first argument is not a Server.").postln;
@@ -44,7 +57,6 @@ JuliaDef {
 			("ERROR: JuliaDef: second argument is an empty String.").postln;
 			^this;
 		});
-
 
 		if((File.existsCaseSensitive(path)).not, {
 			("ERROR: JuliaDef: path: \"" ++ path ++ "\" does not exist.").postln;
@@ -108,6 +120,9 @@ JuliaDef {
 			//Add file_path only on positive response of server (inputs > -1)
 			if(inputs > -1, {file_path = path;});
 
+			/* Assign this newly created JuliaDef to the IdentityDictionary */
+			julia_defs_on_server.put(name.asSymbol, this);
+
 			//Sync server right after variables assignment
 			server.sync;
 
@@ -116,16 +131,30 @@ JuliaDef {
 		}
 	}
 
+	*getJuliaDef{
+		arg julia_def_name;
+
+		//Index the JuliaDef from server.
+		^julia_defs_on_server.at(julia_def_name.asSymbol);
+	}
+
 	query {
+		var julia_def;
+
 		if(name == "@No_Name", {
 			("Warning: Empty JuliaDef").postln;
+			^this;
 		});
-		("*** Julia @object: " ++ name ++ " ***").postln;
-		("*** Server: " ++ srvr ++ " ***").postln;
-		("*** ID: " ++ server_id ++ " ***").postln;
-		("*** Inputs: " ++ inputs ++ " ***").postln;
-		("*** Outputs: " ++ outputs ++ " ***").postln;
-		("*** File Path: " ++ file_path ++ " ***").postln;
+
+		/* Always get the JuliaDef from the IdentityDictionary, as it could have been updated by another JuliaDef */
+		julia_def = JuliaDef.getJuliaDef(name);
+
+		("*** Julia @object: " ++ julia_def.name ++ " ***").postln;
+		("*** Server: " ++ julia_def.srvr ++ " ***").postln;
+		("*** ID: " ++ julia_def.server_id ++ " ***").postln;
+		("*** Inputs: " ++ julia_def.inputs ++ " ***").postln;
+		("*** Outputs: " ++ julia_def.outputs ++ " ***").postln;
+		("*** File Path: " ++ julia_def.file_path ++ " ***").postln;
 	}
 
 	edit {
@@ -139,6 +168,8 @@ JuliaDef {
 		julia_object_id = server_id;
 
 		server.sendMsg(\cmd, "/julia_free", julia_object_id);
+
+		julia_defs_on_server.removeAt(name.asSymbol);
 
 		//Reset state anyway, no need for response from the server.
 		server_id = -1;
@@ -168,15 +199,39 @@ JuliaDef {
 		});
 	}
 
+	/* Update this JuliaDef if it has been recompiled by another client. Retrieve it from the server directly. */
+	update {
+		if(name != "@No_Name", {
+			this.getCompiledJuliaDef(srvr, name);
+		}, {
+			"WARNING: Invalid JuliaDef to update".postln;
+		});
+	}
+
 	/* Retrieve a JuliaDef from server by name, and assign it to a new JuliaDef, returning it */
 	*retrieve {
 		arg server, obj_name;
-		^this.new().getCompiledJuliaDef(server, obj_name);
+		^this.new(Server.default, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name);
 	}
 
 	getCompiledJuliaDef {
 		arg server, obj_name;
 		var path, ins, outs, srvr_id, condition, osc_unique_id, osc_func;
+
+		if((server.class == Server).not, {
+			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			^this;
+		});
+
+		if((server.serverRunning).not, {
+			("ERROR: JuliaDef: Server is not running.").postln;
+			^this;
+		});
+
+		if((obj_name.class == Symbol).not, {
+			("ERROR: JuliaDef: second argument is not a Symbol.").postln;
+			^this;
+		});
 
 		srvr = server ?? Server.default;
 
@@ -232,6 +287,9 @@ JuliaDef {
 			//Assign name, the opposite as newJuliaDef.
 			if(inputs > -1, {name = obj_name;});
 
+			/* Assign this newly created JuliaDef to the IdentityDictionary */
+			julia_defs_on_server.put(name.asSymbol, this);
+
 			//Sync server right after variables assignment
 			server.sync;
 
@@ -244,6 +302,16 @@ JuliaDef {
 	*getCompiledJuliaDefs {
 		arg server;
 		var osc_unique_id, condition, osc_func, return_array;
+
+		if((server.class == Server).not, {
+			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			^this;
+		});
+
+		if((server.serverRunning).not, {
+			("ERROR: JuliaDef: Server is not running.").postln;
+			^this;
+		});
 
 		return_array = List.newClear();
 
@@ -270,7 +338,7 @@ JuliaDef {
 						msg_unpacked.do({
 							arg item, i;
 							if(i > 1, {
-								return_array.add(item);
+								return_array.add(item.asSymbol);
 							});
 						});
 
@@ -336,7 +404,7 @@ JuliaGC {
 
 Julia : MultiOutUGen {
 	*ar { |... args|
-		var new_args, name, server_id, inputs, outputs, zero_output;
+		var new_args, name, server_id, inputs, outputs, julia_def;
 
 		if((args.size == 0), {
 			Error("Julia: no arguments provided.").throw;
@@ -348,11 +416,15 @@ Julia : MultiOutUGen {
 			Error("Julia: first argument is not a JuliaDef.").throw
 		});
 
-		//Unpack JuliaDef
+		//Get the name of the JuliaDef
 		name = args[0].name;
-		server_id = args[0].server_id;
-		inputs = args[0].inputs;
-		outputs = args[0].outputs;
+
+		/* Unpack JuliaDef from the IdentityDictionary, to pick up eventual changes made by other JuliaDefs */
+		julia_def = JuliaDef.getJuliaDef(name);
+
+		server_id =julia_def.server_id;
+		inputs = julia_def.inputs;
+		outputs = julia_def.outputs;
 
 		//Check validity of JuliaDef
 		if(((name == "@No_Name") || (inputs < 0) || (outputs < 0) || (server_id < 0)), {
@@ -425,6 +497,8 @@ Julia : MultiOutUGen {
 			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
 			pool_size = 131072;
 		});
+
+		JuliaDef.initClass;
 
 		Routine.run {
 			pool_size.postln;
