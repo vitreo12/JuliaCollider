@@ -1,79 +1,53 @@
-@object Sine begin
-    @inputs 2
+@object Delay begin
+    @inputs 4
     @outputs 1
-    
-    #Declaration of structs (possibly, include() calls aswell)
+
     mutable struct Phasor
-        p::Float32
+        p::Int32
         function Phasor()
-            return new(0.0)
+            return new(0)
         end
     end
 
-    struct RecursiveData
-        another_data::Data{Float32, 1}
-        another_buffer::Buffer
-    end
-
-    #initialization of variables
     @constructor begin
-        phasor::Phasor = Phasor()
+        delay_length::Int32 = trunc(@in0(2) * @sampleRate)
+        delay_length = delay_length < 1 ? 1 : delay_length
 
-        data::Data{Float32} = Data(Float32, Int32(100))
+        delay_length_pow::Int32 = nextpow(2, delay_length)
+        delay_mask::Int32 = delay_length_pow - 1
 
-        buffer::Buffer = Buffer(2)
+        delay_data::Data = Data(Float32, delay_length_pow) 
 
-        recursive_data::RecursiveData = RecursiveData(Data(Float32, 4410), Buffer(2))
-
-        #println(buffer)
-        #println(buffer[Int32(1) + Int32(floor(0.5 * length(buffer)))])
-
-        #__get_shared_buf__(buffer, Float32(0.0))
-
-        #println(buffer)
-
-        #Must always be last.
-        @new(phasor, data, buffer, recursive_data)
-    end
-
-    function calc_cos(sample::Float32)
-        return cos(sample)
+        delay_phasor::Phasor = Phasor()
+        
+        @new(delay_data, delay_mask, delay_length, delay_phasor)
     end
 
     @perform begin
-        sampleRate::Float32 = Float32(@sampleRate())
+        feedback::Float32 = @in0(4)
+        feedback = feedback > 0.98 ? 0.98 : feedback
 
-        data_length::Int32 = Int32(length(data))
+        delay_time::Int32 = Int32(trunc(@in0(3) * @sampleRate))
+        delay_time > delay_length ? delay_length : delay_time
 
-        #frequency_kr::Float32 = @in0(1)
-
+        phase::Int32 = delay_phasor.p
+        
         @sample begin
-            phase::Float32 = phasor.p #equivalent to __unit__.phasor.p
-            
-            frequency::Float32 = @in(1)
-            
-            if(phase >= 1.0)
-                phase = 0.0
-            end
-            
-            out_value::Float32 = calc_cos(Float32(phase * 2pi))
-            
-            @out(1) = buffer[Int32(1) + Int32(floor(phase * length(buffer)))] + recursive_data.another_buffer[Int32(1) + Int32(floor(mod((phase * 2), 1.0) * length(recursive_data.another_buffer)))]
-            
-            #buffer[Int32(1) + Int32(floor(phase * length(buffer)))]
-            
-            #(phase * 2) - 1
+            input::Float32 = @in(1)
 
-            phase += abs(frequency) / (sampleRate - 1)
-            
-            data_index::Int32 = mod(@sample_index, data_length)
-            if(data_index == 0)
-                data_index = 1
-            end
+            #REMEMBER: Julia arrays index starts from 1
+            index_value::Int32 = ((phase - delay_time) & delay_mask) + 1
+        
+            delay_value::Float32 = delay_data[index_value]
 
-            data[data_index] = out_value
-            
-            phasor.p = phase
+            @out(1) = delay_value
+
+            #REMEMBER: Julia arrays index starts from 1
+            delay_data[phase + 1] = input + (delay_value * feedback)
+
+            phase = (phase + 1) & delay_mask
         end
+
+        delay_phasor.p = phase
     end
 end

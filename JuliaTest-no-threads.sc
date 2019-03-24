@@ -34,6 +34,13 @@ c.query;
 c.recompile;
 c.free;
 
+d = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SimpleDelay.jl");
+
+d.edit;
+d.query;
+d.recompile;
+d.free;
+
 10.do{a.recompile};
 
 (
@@ -62,6 +69,12 @@ Routine.run{
 50.do{{Julia.ar(c, DC.ar(100)) / 50}.play};
 
 {SinOsc.ar(DC.ar(440))}.play;
+
+
+{Julia.ar(d, LFSaw.ar(1), DC.ar(1.0), DC.ar(0.02), DC.ar(0.9))}.play
+
+{DelayN.ar(LFSaw.ar(1), DC.ar(1.0), DC.ar(0.2))}.play
+
 
 //2
 {Julia.ar(a, Julia.ar(a, DC.ar(1)) * 440) * Julia.ar(a, DC.ar(220))}.play;
