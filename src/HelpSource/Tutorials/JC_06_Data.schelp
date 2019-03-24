@@ -3,7 +3,7 @@ summary:: Analysis and usage of the Data type
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
-The emphasis::Data:: type is a special emphasis::JuliaCollider:: type which allows to allocate memory in the strong::@constructor:: macro to be used in the strong::@perform:: macro.
+emphasis::Data:: is a special emphasis::JuliaCollider:: type which allows to allocate memory in the strong::@constructor:: macro to be used in the strong::@perform:: macro.
 
 warning::
 emphasis::Data:: is the only safe way of allocating memory in emphasis::JuliaCollider::, as any standard emphasis::Julia:: memory allocation methods (Vector, Array, etc...) must strong::never:: be used: they would cause memory leaks.
@@ -13,4 +13,20 @@ warning::
 emphasis::Data:: must strong::always:: be initialized in the strong::@constructor:: macro, as its lifetime is linked to the one of the strong::@object::. Memory allocated in the strong::@perform:: macro will cause memory to grow out of bounds, causing emphasis::JuliaCollider:: (and perhaps, your PC) to crash.
 ::
 
-NOTE, JULIA COUNTS FROM 1.
+image::Delay.png::
+
+section:: Data in @constructor
+
+section:: Data in @perform
+
+note::
+Julia array-indexing starts counting from 1. A standard [emphasis::0 : length-1::] interval, in Julia, would be written as a [emphasis::1 : length::] interval.
+::
+
+note::
+If indexing out of bounds, the result will be 0
+::
+
+warning::
+The compilation of the code will use -1/1 uniform distribution for inputs, so always remember to boundscheck your variables before using them to index a Data.
+::
