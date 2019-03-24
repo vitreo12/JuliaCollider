@@ -5,6 +5,7 @@
 #include <string.h>
 #include <thread>
 #include <chrono>
+#include <random>
 
 #include "julia.h"
 #include "SC_PlugIn.hpp"
@@ -1180,6 +1181,7 @@ class JuliaObjectCompiler
             //object that will be created in perform and passed in destructor and ugen_ref, without creating new ones...
             jl_value_t* ugen_object;
             jl_value_t* ins;
+            float** ins_float;
             jl_value_t* outs;
             jl_value_t* ugen_ref_object;
             jl_value_t* destructor_fun;
@@ -1189,11 +1191,11 @@ class JuliaObjectCompiler
 
             //jl_get_ptls_states()->world_age = jl_get_world_counter();
             /* These functions will return false if anything goes wrong. */
-            if(precompile_constructor(evaluated_module, julia_object))
+            if(precompile_constructor(evaluated_module, &ugen_object, &ins, &ins_float, julia_object))
             {
                 //jl_get_ptls_states()->world_age = jl_get_world_counter();
                 //printf("CONSTRUCTOR DONE\n");
-                if(precompile_perform(evaluated_module, &ugen_object, &ins, &outs, julia_object))
+                if(precompile_perform(evaluated_module, &ugen_object, &ins, &ins_float, &outs, julia_object))
                 {
                     //jl_get_ptls_states()->world_age = jl_get_world_counter();
                     //printf("PERFORM DONE\n");
@@ -1227,54 +1229,13 @@ class JuliaObjectCompiler
             return precompile_state;
         }
 
-        inline bool precompile_constructor(jl_module_t* evaluated_module, JuliaObject* julia_object)
+        inline bool precompile_constructor(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, float*** ins_float, JuliaObject* julia_object)
         {
-            jl_function_t* ugen_constructor = jl_get_function(evaluated_module, "__constructor__");
-            if(!ugen_constructor)
-            {
-                printf("ERROR: Invalid __constructor__ function\n");
-                return false;
-            }
-            
-            /* COMPILATION */
-            jl_method_instance_t* compiled_constructor = jl_lookup_generic_and_compile_SC(&ugen_constructor, 1);
+            size_t constructor_nargs = 3;
+            jl_value_t* constructor_args[constructor_nargs];
 
-            if(!compiled_constructor)
-            {
-                printf("ERROR: Could not compile __constructor__ function\n");
-                return false;
-            }
-
-            julia_object->constructor_fun = ugen_constructor;
-            julia_object->constructor_instance = compiled_constructor;
-            
-            return true;
-        }
-
-        inline bool precompile_perform(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, jl_value_t** outs, JuliaObject* julia_object)
-        {
-            /* ARRAY CONSTRUCTION */
-            size_t perform_nargs = 6;
-            jl_value_t* perform_args[perform_nargs];
-
-            /* FUNCTION = perform_args[0] */
-            jl_function_t* perform_fun = jl_get_function(evaluated_module, "__perform__");
-            if(!perform_fun)
-            {
-                printf("ERROR: Invalid __perform__ function\n");
-                return false;
-            }
-
-            /* OBJECT CONSTRUCTION = perform_args[1] */
-            jl_function_t* ugen_constructor = jl_get_function(evaluated_module, "__constructor__");
-            if(!ugen_constructor)
-            {
-                printf("ERROR: Invalid __constructor__ function\n");
-                return false;
-            }
-            
-            jl_value_t* ugen_object_temp = jl_call0(ugen_constructor);
-            if(!ugen_object_temp)
+            jl_function_t* constructor_fun = jl_get_function(evaluated_module, "__constructor__");
+            if(!constructor_fun)
             {
                 printf("ERROR: Invalid __constructor__ function\n");
                 return false;
@@ -1285,11 +1246,9 @@ class JuliaObjectCompiler
             jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
             jl_method_instance_t* set_index_audio_vector_instance;
 
-            /* INS / OUTS = perform_args[2]/[3] */
             int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
-            int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
-            int buffer_size = 16; //Try compiling with a 16 samples period.
-            
+            int buffer_size = 4; //Try compiling with a 4 samples period.
+
             //ins::Vector{Vector{Float32}}
             jl_value_t* ins_temp =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_inputs);
             if(!ins_temp)
@@ -1302,10 +1261,12 @@ class JuliaObjectCompiler
             jl_value_t* ins_1d[num_inputs];
 
             //Dummy float** in()
-            float* dummy_ins[num_inputs];
+            float** dummy_ins = (float**)malloc(num_inputs * sizeof(float*));
 
             //Initialize seed for random num generation in dummy_ins
-            srand(time(NULL));
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_real_distribution<float> rand_vals(-1.0, 1.0);
 
             for(int i = 0; i < num_inputs; i++)
             {
@@ -1313,17 +1274,26 @@ class JuliaObjectCompiler
                 if(!dummy_ins[i])
                 {
                     printf("ERROR: Could not allocate memory for inputs \n");
+                    for(int y = 0; y < i; y++)
+                        free(dummy_ins[y]);
+                    free(dummy_ins);
                     return false;
                 }
 
                 //Emulate some sort of (-1 / 1) random float data as Input 
                 for(int y = 0; y < buffer_size; y++)
-                    dummy_ins[i][y] = (float)((((float)(rand() / RAND_MAX)) * 2.0) - 1.0);
+                {
+                    dummy_ins[i][y] = rand_vals(gen);
+                    printf("%f\n", dummy_ins[i][y]);
+                }
                 
                 ins_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_ins[i], buffer_size, 0);
                 if(!ins_1d[i])
                 {
                     printf("ERROR: Could not create 1d vectors (inputs)\n");
+                    for(int y = 0; y < i; y++)
+                        free(dummy_ins[y]);
+                    free(dummy_ins);
                     return false;
                 }
 
@@ -1339,7 +1309,9 @@ class JuliaObjectCompiler
                     set_index_audio_vector_instance = jl_lookup_generic_and_compile_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
                     if(!set_index_audio_vector_instance)
                     {
-                        printf("ERROR: Could not compile set_index_audio_vector function\n");
+                        for(int y = 0; y < i; y++)
+                            free(dummy_ins[y]);
+                        free(dummy_ins);
                         return false;
                     }
                 }
@@ -1349,15 +1321,98 @@ class JuliaObjectCompiler
                 if(!set_index_success)
                 {
                     printf("ERROR: Could not instantiate set_index_audio_vector function (inputs)\n");
+                    for(int y = 0; y < i; y++)
+                        free(dummy_ins[y]);
+                    free(dummy_ins);
                     return false;
                 }
             }
+
+            constructor_args[0] = constructor_fun;
+            constructor_args[1] = ins_temp;
+            constructor_args[2] = julia_global->get_scsynth();
+            
+            /* COMPILATION */
+            jl_method_instance_t* constructor_instance = jl_lookup_generic_and_compile_SC(constructor_args, constructor_nargs);
+            if(!constructor_instance)
+            {
+                printf("ERROR: Could not compile __constructor__ function\n");
+                for(int i = 0; i < num_inputs; i++)
+                    free(dummy_ins[i]);
+                free(dummy_ins);
+                return false;
+            }
+
+            /* Build an object */
+            jl_value_t* ugen_object_temp = jl_invoke_already_compiled_SC(constructor_instance, constructor_args, constructor_nargs);
+            if(!ugen_object_temp)
+            {
+                printf("ERROR: Could not construct a __UGen__ object\n");
+                for(int i = 0; i < num_inputs; i++)
+                    free(dummy_ins[i]);
+                free(dummy_ins);
+                return false;
+            }
+
+            ugen_object[0] = ugen_object_temp;
+            ins[0] = ins_temp;
+            ins_float[0] = dummy_ins;
+
+            julia_object->constructor_fun = constructor_fun;
+            julia_object->constructor_instance = constructor_instance;
+            julia_object->set_index_audio_vector_instance = set_index_audio_vector_instance;
+            
+            return true;
+        }
+
+        inline bool precompile_perform(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, float*** ins_float, jl_value_t** outs, JuliaObject* julia_object)
+        {
+            float** dummy_ins = ins_float[0];
+
+            /* INS / OUTS = perform_args[2]/[3] */
+            int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
+            int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
+            int buffer_size = 4; //Try compiling with a 4 samples period.
+
+            /* ARRAY CONSTRUCTION */
+            size_t perform_nargs = 6;
+            jl_value_t* perform_args[perform_nargs];
+
+            /* FUNCTION = perform_args[0] */
+            jl_function_t* perform_fun = jl_get_function(evaluated_module, "__perform__");
+            if(!perform_fun)
+            {
+                printf("ERROR: Invalid __perform__ function\n");
+                for(int i = 0; i < num_inputs; i++)
+                    free(dummy_ins[i]);
+                free(dummy_ins);
+                return false;
+            }
+
+            /* OBJECT CONSTRUCTION = perform_args[1] */
+            jl_function_t* constructor_fun = jl_get_function(evaluated_module, "__constructor__");
+            if(!constructor_fun)
+            {
+                printf("ERROR: Invalid __constructor__ function\n");
+                for(int i = 0; i < num_inputs; i++)
+                    free(dummy_ins[i]);
+                free(dummy_ins);
+                return false;
+            }
+
+            /* SET INDEX AUDIO VECTOR */
+            size_t nargs_set_index_audio_vector = 4;
+            jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
+            //jl_method_instance_t* set_index_audio_vector_instance;
 
             //outs::Vector{Vector{Float32}}
             jl_value_t* outs_temp = (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_outputs);
             if(!outs_temp)
             {
                 printf("ERROR: Could not allocate memory for outputs \n");
+                for(int i = 0; i < num_inputs; i++)
+                    free(dummy_ins[i]);
+                free(dummy_ins);
                 return false;
             }
 
@@ -1373,6 +1428,14 @@ class JuliaObjectCompiler
                 if(!dummy_outs[i])
                 {
                     printf("ERROR: Could not allocate memory for outs \n");
+
+                    for(int y = 0; y < num_inputs; y++)
+                        free(dummy_ins[y]);
+                    free(dummy_ins);
+
+                    for(int z = 0; z < i; z++)
+                        free(dummy_outs[z]);
+
                     return false;
                 }
 
@@ -1383,6 +1446,14 @@ class JuliaObjectCompiler
                 if(!outs_1d[i])
                 {
                     printf("ERROR: Could not create 1d vectors (outputs)\n");
+                    
+                    for(int y = 0; y < num_inputs; y++)
+                        free(dummy_ins[y]);
+                    free(dummy_ins);
+
+                    for(int z = 0; z < i; z++)
+                        free(dummy_outs[z]);
+
                     return false;
                 }
 
@@ -1397,14 +1468,22 @@ class JuliaObjectCompiler
                 if(!set_index_success)
                 {
                     printf("ERROR: Could not instantiate set_index_audio_vector function (outputs)\n");
+
+                    for(int y = 0; y < num_inputs; y++)
+                        free(dummy_ins[y]);
+                    free(dummy_ins);
+
+                    for(int z = 0; z < i; z++)
+                        free(dummy_outs[z]);
+
                     return false;
                 }
             }
 
             /* ASSIGN TO ARRAY */
             perform_args[0] = perform_fun;
-            perform_args[1] = ugen_object_temp;
-            perform_args[2] = ins_temp;  //__ins__
+            perform_args[1] = ugen_object[0];
+            perform_args[2] = ins[0];  //__ins__
             perform_args[3] = outs_temp; //__outs__
             perform_args[4] = jl_box_int32(buffer_size); //__buffer_size__ 
             perform_args[5] = julia_global->get_scsynth(); //__SCSynth__
@@ -1414,6 +1493,8 @@ class JuliaObjectCompiler
 
             for(int i = 0; i < num_inputs; i++)
                 free(dummy_ins[i]);
+
+            free(dummy_ins);
 
             for(int i = 0; i < num_outputs; i++)
                 free(dummy_outs[i]);
@@ -1425,14 +1506,11 @@ class JuliaObjectCompiler
                 return false;
             }
 
-            ugen_object[0] = ugen_object_temp;
-            ins[0] = ins_temp;
             outs[0] = outs_temp;
 
             //successful compilation...
             julia_object->perform_fun = perform_fun;
             julia_object->perform_instance = perform_instance;
-            julia_object->set_index_audio_vector_instance = set_index_audio_vector_instance;
 
             return true;
         }

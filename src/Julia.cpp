@@ -8,8 +8,8 @@ public:
         if(!julia_global_state->is_initialized())
         {
             Print("WARNING: Julia hasn't been booted correctly \n");
-            set_calc_function<Julia, &Julia::output_silence>();
             valid = false;
+            set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
 
@@ -43,6 +43,22 @@ public:
             return;
         }
 
+        if(real_num_inputs != julia_object->num_inputs)
+        {
+            Print("ERROR: Input number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numInputs(), julia_object->num_inputs);
+            valid = false;
+            set_calc_function<Julia, &Julia::output_silence>();
+            return;
+        }
+
+        if(numOutputs() != julia_object->num_outputs)
+        {
+            Print("ERROR: Output number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numOutputs(), julia_object->num_outputs);
+            valid = false;
+            set_calc_function<Julia, &Julia::output_silence>();
+            return;
+        }
+
         bool gc_state = julia_gc_barrier->RTTrylock();
         printf("GC_STATE: %d\n", gc_state);
         if(!gc_state) 
@@ -61,10 +77,11 @@ public:
             return;
         }
 
-        bool successful_allocation = allocate_julia_args();
+        bool successful_allocation = allocate_args_costructor_perform();
         if(!successful_allocation)
         {
             Print("ERROR: Could not allocate UGen \n");
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -75,6 +92,7 @@ public:
         if(!succesful_destructor)
         {
             Print("ERROR: Could retrieve UGen destructor \n");
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -85,6 +103,7 @@ public:
         if(!succesful_added_ugen_ref)
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -112,17 +131,13 @@ public:
 
         if(valid)
         {
-            /* Any Julia code here (destructor functon included) is WRONG, as I have no way of 
-            making sure that the GC won't run as this object, and with it, and these last Julia calls 
-            are running. What I can do is check if the GC is performing. If it is, have another IdDict in the GC class
-            where I can push these Julia object and that will run these destructor calls at the before next GC collection */
             bool gc_state = julia_gc_barrier->RTTrylock();
             if(!gc_state)
             {
                 /* GC PERFORMING */
-
                 printf("WARNING: GC locked: posting __UGenRef__ destruction to gc_array \n");
                 
+                /* This is not thread-safe for supernova */
                 for(int i = 0; i < gc_array_num; i++)
                 {
                     jl_value_t* this_ugen_ref = gc_array[i];
@@ -142,9 +157,9 @@ public:
             if(!compiler_state)
             {
                 /* GC AND COMPILER PERFORMING */
-
                 printf("WARNING: Compiler and GC locked: posting __UGenRef__ destruction to gc_array \n");
 
+                /* This is not thread-safe for supernova */
                 for(int i = 0; i < gc_array_num; i++)
                 {
                     jl_value_t* this_ugen_ref = gc_array[i];
@@ -161,13 +176,9 @@ public:
                 return;
             }
 
-            /* I know that, even if julia_object was removed from julia_objects_array, destructor_fun and instance and ugen_object
-            are kept alive in __UGenRef__ */
+            /* ACQUIRED LOCKS HERE */
             perform_destructor();
 
-            //This call can't be concurrent to GC collection. If it is, the __UGenRef__ for this UGen won't be deleted
-            //from the object_id_dict(), as the call would be concurrent to the locking of the GC. That __UGenRef__ would
-            //be living forever, wasting memory.
             remove_ugen_ref_from_global_object_id_dict();
 
             julia_gc_barrier->Unlock();
@@ -185,6 +196,7 @@ private:
     bool print_once_outputs = false;
 
     //If unique_id = -1 or if sending a JuliaDef that's not valid on server side.
+    /* SHOULD INVERT VALID TO ONLY SET IT TO TRUE WHEN NEEDED */
     bool valid = true;
 
     bool just_reallocated = false;
@@ -230,51 +242,8 @@ private:
     }
 
     /* JUST ONCE */
-    inline bool allocate_julia_args()
+    inline bool allocate_args_costructor_perform()
     {      
-        /* Create __UGen__ for this julia_object */
-        jl_function_t* ugen_constructor_fun = julia_object->constructor_fun;
-        if(!ugen_constructor_fun)
-        {
-            Print("ERROR: Invalid __constructor__ function \n");
-            return false;
-        }
-
-        jl_method_instance_t* ugen_constructor_instance = julia_object->constructor_instance;
-        if(!ugen_constructor_instance)
-        {
-            Print("ERROR: Invalid __constructor__ instance \n");
-            return false;
-        }
-        
-        ugen_object = jl_invoke_already_compiled_SC(ugen_constructor_instance, &ugen_constructor_fun, 1);
-        if(!ugen_object)
-        {
-            Print("ERROR: Invalid __UGen__ object \n");
-            return false;
-        }
-
-        perform_fun = julia_object->perform_fun;
-        if(!perform_fun)
-        {
-            Print("ERROR: Invalid __perform__ function \n");
-            return false;
-        }
-
-        jl_value_t* buf_size = jl_box_int32(bufferSize());
-        if(!buf_size)
-        {
-            Print("ERROR: Invalid __buf_size__ argument \n");
-            return false;
-        }
-
-        perform_instance = julia_object->perform_instance;
-        if(!perform_instance)
-        {
-            Print("ERROR: Invalid __perform__ method instance \n");
-            return false;
-        }
-
         /* ARGS MEMORY */
         alloc_args();
         if(!args)
@@ -292,6 +261,7 @@ private:
         if(!ins_vector || !ins)
         {
             free_args();
+            RTFree(mWorld, ins);
             Print("WARNING: Could not allocate memory for inputs \n");
             return false;
         }
@@ -318,6 +288,7 @@ private:
         if(!outs || !outs_vector)
         {
             free_args();
+            RTFree(mWorld, ins);
             RTFree(mWorld, outs);
             Print("WARNING: Could not allocate memory for outputs \n");
             return false;
@@ -334,6 +305,80 @@ private:
             args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
 
             jl_invoke_already_compiled_SC(julia_object->set_index_audio_vector_instance, args_set_index_audio_vector, nargs_set_index_audio_vector);
+        }
+
+        /* CONSTRUCTOR */
+        jl_function_t* constructor_fun = julia_object->constructor_fun;
+        if(!constructor_fun)
+        {
+            free_args();
+            RTFree(mWorld, ins);
+            RTFree(mWorld, outs);
+            Print("ERROR: Invalid __constructor__ function \n");
+            return false;
+        }
+
+        jl_method_instance_t* constructor_instance = julia_object->constructor_instance;
+        if(!constructor_instance)
+        {
+            free_args();
+            RTFree(mWorld, ins);
+            RTFree(mWorld, outs);
+            Print("ERROR: Invalid __constructor__ instance \n");
+            return false;
+        }
+
+        /* Copy data inside the vector to be seen from constructor */
+        for(int i = 0; i < (real_num_inputs); i++) //in(0) is unique_id
+            ((jl_array_t*)(ins[i]))->data = (float*)in(i + 1); //i + 1 = correct SC buffer (excluding unique_id at in(0))
+
+        size_t constructor_nargs = 3;
+        jl_value_t* constructor_args[constructor_nargs];
+
+        constructor_args[0] = constructor_fun;
+        constructor_args[1] = ins_vector;
+        constructor_args[2] = julia_global_state->get_scsynth();
+        
+        /* Create __UGen__ for this julia_object */
+        ugen_object = jl_invoke_already_compiled_SC(constructor_instance, constructor_args, constructor_nargs);
+        if(!ugen_object)
+        {
+            free_args();
+            RTFree(mWorld, ins);
+            RTFree(mWorld, outs);
+            Print("ERROR: Invalid __UGen__ object \n");
+            return false;
+        }
+
+        /* PERFORM FUNCTION */
+        perform_fun = julia_object->perform_fun;
+        if(!perform_fun)
+        {
+            free_args();
+            RTFree(mWorld, ins);
+            RTFree(mWorld, outs);
+            Print("ERROR: Invalid __perform__ function \n");
+            return false;
+        }
+
+        jl_value_t* buf_size = jl_box_int32(bufferSize());
+        if(!buf_size)
+        {
+            free_args();
+            RTFree(mWorld, ins);
+            RTFree(mWorld, outs);
+            Print("ERROR: Invalid __buf_size__ argument \n");
+            return false;
+        }
+
+        perform_instance = julia_object->perform_instance;
+        if(!perform_instance)
+        {
+            free_args();
+            RTFree(mWorld, ins);
+            RTFree(mWorld, outs);
+            Print("ERROR: Invalid __perform__ method instance \n");
+            return false;
         }
 
         /* ASSIGN TO ARRAY */
@@ -499,10 +544,11 @@ private:
         //GC lock acquired! Array lock has already been released in julia_objects_array->get_julia_object()
         Print("*** RT Lock aquired!! ***\n");
 
-        bool successful_allocation = allocate_julia_args();
+        bool successful_allocation = allocate_args_costructor_perform();
         if(!successful_allocation)
         {
             Print("ERROR: Could not allocate UGen \n");
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             return;
@@ -512,6 +558,7 @@ private:
         if(!succesful_destructor)
         {
             Print("ERROR: Could retrieve UGen destructor \n");
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -522,6 +569,7 @@ private:
         if(!succesful_added_ugen_ref)
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
+            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             return;
@@ -535,7 +583,8 @@ private:
 
     inline void next_julia_code(int inNumSamples) 
     {
-        if(julia_compiler_barrier->RTTrylock())
+        bool compiler_lock = julia_compiler_barrier->RTTrylock();
+        if(compiler_lock)
         {
             //If function changed, allocate it new object on this cycle
             if(args[0] != julia_object->perform_fun)
@@ -545,11 +594,16 @@ private:
                     //JuliaDef.free()
                     if(valid)
                     {
-                        //They will use previous julia_object functions
+                        //Functions will use previous julia_object functions here
                         perform_destructor();
                         remove_ugen_ref_from_global_object_id_dict();
+                        
+                        //valid = false so that ~Julia() won't call into Julia at all.
                         valid = false;
+                        
+                        //Set silence forever.
                         set_calc_function<Julia, &Julia::output_silence>();
+
                         julia_compiler_barrier->Unlock();
                         return;
                     }
@@ -559,7 +613,7 @@ private:
                     return;
                 }
 
-                //Reaquire GC lock to allocate all objects later...
+                //Acquire GC lock to allocate all objects later
                 bool gc_state = julia_gc_barrier->RTTrylock();
                 if(!gc_state)
                 {
@@ -567,8 +621,6 @@ private:
                     julia_compiler_barrier->Unlock();
                     return;
                 }
-
-                just_reallocated = true;
 
                 /* DESTRUCTOR must always be before the removal of __UGenRef__ from global object id dict */
                 bool succesful_performed_destructor = perform_destructor();
@@ -637,8 +689,8 @@ private:
 
                 args[0] = julia_object->perform_fun;
 
-                jl_function_t* ugen_constructor_fun = julia_object->constructor_fun;
-                if(!ugen_constructor_fun)
+                jl_function_t* constructor_fun = julia_object->constructor_fun;
+                if(!constructor_fun)
                 {
                     //Print("ERROR: Invalid __constructor__ function \n");
                     output_silence(inNumSamples);
@@ -647,8 +699,8 @@ private:
                     return;
                 }
 
-                jl_method_instance_t* ugen_constructor_instance = julia_object->constructor_instance;
-                if(!ugen_constructor_instance)
+                jl_method_instance_t* constructor_instance = julia_object->constructor_instance;
+                if(!constructor_instance)
                 {
                     //Print("ERROR: Invalid __constructor__ instance \n");
                     output_silence(inNumSamples);
@@ -657,10 +709,18 @@ private:
                     return;
                 }
                 
-                ugen_object = jl_invoke_already_compiled_SC(ugen_constructor_instance, &ugen_constructor_fun, 1);
+                /* Should this RTAlloced, just like args?? */
+                size_t constructor_nargs = 3;
+                jl_value_t* constructor_args[constructor_nargs];
+
+                constructor_args[0] = constructor_fun;
+                constructor_args[1] = ins_vector;
+                constructor_args[2] = julia_global_state->get_scsynth();
+                
+                /* Create __UGen__ for this julia_object */
+                ugen_object = jl_invoke_already_compiled_SC(constructor_instance, constructor_args, constructor_nargs);
                 if(!ugen_object)
                 {
-                    //Print("ERROR: Invalid __UGen__ object \n");
                     output_silence(inNumSamples);
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
@@ -690,10 +750,11 @@ private:
                     return;
                 }
 
-
                 //Only unlock GC. Compiler will be unlocked only if object was compiled succesfully
                 julia_gc_barrier->Unlock();
 
+                just_reallocated = true;
+                
                 print_once_inputs = false;
                 print_once_outputs = false;
 
@@ -710,7 +771,7 @@ private:
                 return;
             }
 
-            /* If every recompilation went through correctly, output silence and set false to the reallocation bool..
+            /* If every recompilation went through correctly, output silence and set false to the reallocation bool.
             At next cycle, we'll hear the newly compiled object */
             if(julia_object->compiled)
             {
@@ -733,8 +794,25 @@ private:
 
         /* SETUP INS/OUTS */
         /* Change (void*)data they are pointing at. At setup, it was nullptr */
-        for(int i = 0; i < (real_num_inputs); i++) //in(0) is unique_id
-            ((jl_array_t*)(ins[i]))->data = (float*)in(i + 1); //i + 1 = correct SC buffer (excluding unique_id at in(0))
+        for(int i = 1; i < numInputs(); i++) //Skip first entry, it is the unique_id number
+        {
+            //need to index back, Julia's first buffer will be SC's second one.
+            ((jl_array_t*)(ins[i - 1]))->data = (float*)in(i);
+
+            /*
+            //Is this a SC bug? input and output buffers at the same channel point at the same memory.
+            //It maybe is a conservative memory feature, where same buffer is used for both of them.
+            //However, this gives for granted that input value will be retrieved before output one.
+            for(int y = 0; y < numOutputs(); y++)
+            {
+                if(in(i) == out(y))
+                {
+                    Print("Index: %d\n", i);
+                    Print("SAME BUFFER \n");
+                }
+            }
+            */
+        }
 
         for(int i = 0; i < numOutputs(); i++)
             ((jl_array_t*)(outs[i]))->data = (float*)out(i);    
