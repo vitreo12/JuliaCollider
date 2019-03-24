@@ -12,7 +12,7 @@ s.sendMsg(\cmd, "/julia_query_id_dicts");
 
 s.sendMsg(\cmd, "/julia_test_alloc_pool_safe");
 
-a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SineWave.jl");
+a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
 
 a.edit;
 a.query;
@@ -34,12 +34,28 @@ c.query;
 c.recompile;
 c.free;
 
-d = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SimpleDelay.jl");
+d = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl");
 
 d.edit;
 d.query;
 d.recompile;
 d.free;
+
+h = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");
+
+h.edit;
+h.query;
+h.recompile;
+h.free;
+
+k = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Granulator.jl");
+
+k.edit;
+k.query;
+k.recompile;
+k.free;
+
+{Julia.ar(k, DC.ar(0), DC.ar(1), DC.ar(0.5), DC.ar(0.5), DC.ar(0.5), DC.ar(0.5), DC.ar(0.5), DC.ar(0.6), DC.ar(0.6))}.play
 
 10.do{a.recompile};
 
@@ -70,8 +86,18 @@ Routine.run{
 
 {SinOsc.ar(DC.ar(440))}.play;
 
+(
+{
+	var noise = PinkNoise.ar(EnvGen.kr(Env.perc, Impulse.kr(1)));
+	Julia.ar(d, noise, DC.ar(1.0), DC.ar(0.2), DC.ar(0.9), DC.ar(0.8));
+}.play
+)
 
-{Julia.ar(d, LFSaw.ar(1), DC.ar(1.0), DC.ar(0.02), DC.ar(0.9))}.play
+{Julia.ar(h, SinOsc.ar(1).linlin(-1,1,20,300))}.play
+
+{Saw.ar(-200)}.play
+
+{Julia.ar(d, Saw.ar(500), DC.ar(1.0), LFNoise1.ar(1).linlin(-1,1,0.1, 0.6), DC.ar(0.5), DC.ar(1.0))}.play
 
 {DelayN.ar(LFSaw.ar(1), DC.ar(1.0), DC.ar(0.2))}.play
 

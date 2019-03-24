@@ -1,79 +1,88 @@
-@object Sine begin
-    @inputs 2
-    @outputs 1
+@object Granulator begin
+    @inputs 9 ("audio_buffer", "envelope_buffer", "density", "position", "position_range", "length", "length_range", "pitch", "pitch_range")
+    @outputs 2
     
-    #Declaration of structs (possibly, include() calls aswell)
+    include("$(@__DIR__)/Interpolations.jl")
+
     mutable struct Phasor
-        p::Float32
+        phase::Float32
         function Phasor()
             return new(0.0)
         end
     end
 
-    struct RecursiveData
-        another_data::Data{Float32, 1}
-        another_buffer::Buffer
+    mutable struct GrainArray
+        phasors::Data
+        start_positions::Data
+        end_positions::Data
+        pitches::Data
+        busy::Data
+        function GrainArray(num_grains::Int32)
+            phasors::Data = Data(Float32, num_grains)
+            start_positions::Data = Data(Int32, num_grains)
+            end_positions::Data = Data(Int32, num_grains)
+            pitches::Data = Data(Float32, num_grains)
+            busy::Data = Data(Int32, num_grains)
+            return new(phasors, start_positions, end_positions, pitches, busy)
+        end
     end
 
-    #initialization of variables
+    mutable struct Delta
+        prev_val::Float32
+        function Delta()
+            return new(0.0f0)
+        end
+    end
+
     @constructor begin
+        audio_buffer::Buffer = Buffer(1)
+        envelope_buffer::Buffer = Buffer(2)
+
+        #Maximum of 20 grains per second
+        max_num_grains::Int32 = 20
+        grain_array::GrainArray = GrainArray(max_num_grains)
+        for i = Int32(1) : max_num_grains
+            grain_array.pitches[i] = 1.0f0
+        end
+
         phasor::Phasor = Phasor()
+        one_second_increment::Float32 = 1.0f0 / @sampleRate
+        delta::Delta = Delta()
 
-        data::Data{Float32} = Data(Float32, Int32(100))
-
-        buffer::Buffer = Buffer(2)
-
-        recursive_data::RecursiveData = RecursiveData(Data(Float32, 4410), Buffer(2))
-
-        #println(buffer)
-        #println(buffer[Int32(1) + Int32(floor(0.5 * length(buffer)))])
-
-        #__get_shared_buf__(buffer, Float32(0.0))
-
-        #println(buffer)
-
-        #Must always be last.
-        @new(phasor, data, buffer, recursive_data)
-    end
-
-    function calc_cos(sample::Float32)
-        return cos(sample)
+        @new(audio_buffer, envelope_buffer, max_num_grains, grain_array, phasor, one_second_increment, delta)
     end
 
     @perform begin
-        sampleRate::Float32 = Float32(@sampleRate())
+        phase::Float32 = phasor.phase
 
-        data_length::Int32 = Int32(length(data))
+        #0 to 20
+        density::Float32 = @in0(3)
+        density = density > 0.0 ? density : 0.0
+        density = density < 1.0 ? density : 1.0 
+        density = density * max_num_grains
 
-        #frequency_kr::Float32 = @in0(1)
+        length_audio_buffer::Int32 = length(audio_buffer)
+        nchans_audio_buffer::Int32 = nchans(audio_buffer)
+        length_envelope_buffer::Int32 = length(envelope_buffer)
 
         @sample begin
-            phase::Float32 = phasor.p #equivalent to __unit__.phasor.p
-            
-            frequency::Float32 = @in(1)
-            
-            if(phase >= 1.0)
-                phase = 0.0
-            end
-            
-            out_value::Float32 = calc_cos(Float32(phase * 2pi))
-            
-            @out(1) = buffer[Int32(1) + Int32(floor(phase * length(buffer)))] + recursive_data.another_buffer[Int32(1) + Int32(floor(mod((phase * 2), 1.0) * length(recursive_data.another_buffer)))]
-            
-            #buffer[Int32(1) + Int32(floor(phase * length(buffer)))]
-            
-            #(phase * 2) - 1
+            new_grain::Bool = false
 
-            phase += abs(frequency) / (sampleRate - 1)
-            
-            data_index::Int32 = mod(@sample_index, data_length)
-            if(data_index == 0)
-                data_index = 1
+            if(abs(delta.prev_val - phase) > 0.5)
+                new_grain = true
             end
 
-            data[data_index] = out_value
+            out_value::Float32 = 0.0f0
+            @out(1) = out_value
+
+            phase += (one_second_increment * density)
+            if(phase >= 1.0f0)
+                phase = 0.0f0
+            end
             
-            phasor.p = phase
+            delta.prev_val = phase
         end
+
+        phasor.phase = phase
     end
 end
