@@ -1,4 +1,4 @@
-@object MyPhasor begin
+@object Phasor begin
     @inputs 1
     @outputs 1
     
@@ -13,6 +13,8 @@
     #initialization of variables
     @constructor begin
         phasor::Phasor = Phasor()
+
+        println(@sampleRate)
 
         buffer::Data{Float32} = Data(Float32, Int32(100))
 

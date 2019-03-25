@@ -12,6 +12,7 @@ emphasis::JuliaCollider:: uses a custom build of Julia, and some of Julia featur
 section:: Variables and types
 
 section:: Functions
+Use AbstractFloat or Signed for the functions
 
 section:: Multiple dispatch
 

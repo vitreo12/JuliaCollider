@@ -19,7 +19,7 @@
         delay_length_pow::Int32 = nextpow(2, delay_length)
         delay_mask::Int32 = delay_length_pow - 1
 
-        delay_data::Data = Data(Float32, delay_length_pow) 
+        delay_data::Data{Float32, 1} = Data(Float32, delay_length_pow) 
 
         histories::Histories = Histories()
         
