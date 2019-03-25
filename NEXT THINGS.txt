@@ -3,7 +3,8 @@
 2) More reliable way of deleting old modules when recompiling
 
 3) Implement a @debug macro for places where often the precompilation won't go.
-   (for example, inner loops with conditions).
+   (for example, inner loops and conditions will escape variable checking)
+   Maybe I could just precompile for a longer buffer?
 
 4) Implement a Singal DataType, which will work for both Float32 and Float64
 
