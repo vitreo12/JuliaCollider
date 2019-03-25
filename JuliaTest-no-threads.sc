@@ -48,6 +48,12 @@ h.query;
 h.recompile;
 h.free;
 
+p = Platform.resourceDir +/+ "sounds/a11wlk01.wav";
+b = Buffer.read(s, p);
+b.query
+~hannWindow = Buffer.loadCollection(s, Signal.hanningWindow(1024));
+~hannWindow.plot
+
 k = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Granulator.jl");
 
 k.edit;
@@ -55,7 +61,11 @@ k.query;
 k.recompile;
 k.free;
 
-{Julia.ar(k, DC.ar(0), DC.ar(1), DC.ar(0.5), DC.ar(0.5), DC.ar(0.5), DC.ar(0.5), DC.ar(0.5), DC.ar(0.6), DC.ar(0.6))}.play
+{Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), DC.ar(0.5), DC.ar(1), DC.ar(1), DC.ar(1), DC.ar(0), DC.ar(0.5))}.play
+
+{Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), LFNoise1.ar(1).linlin(-1,1,0,1), DC.ar(0), DC.ar(0.5), DC.ar(1), DC.ar(0), DC.ar(0.5))}.play
+
+s.scope
 
 10.do{a.recompile};
 

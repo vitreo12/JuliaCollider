@@ -1,11 +1,18 @@
 1) Finish JuliaDef SC interface (autowatch, precompile into sysimg, etc...)
 
-2) Implement input_names and output_names in JuliaDef
+2) More reliable way of deleting old modules when recompiling
 
-3) Implement JuliaDefProxy
+3) Implement a @debug macro for places where often the precompilation won't go.
+   (for example, inner loops with conditions).
 
-4) Implement the Done action
+4) Implement a Singal DataType, which will work for both Float32 and Float64
 
-5) Make @out(i) / @in(i) working
+5) Implement input_names and output_names in JuliaDef
 
-6) Revert SC_Julia.cpp to SC_Julia.c
+6) Implement JuliaDefProxy
+
+7) Implement the Done action
+
+8) Make @out(i) / @in(i) working
+
+9) Revert SC_Julia.cpp to SC_Julia.c
