@@ -33,8 +33,8 @@
         audio_buffer::Buffer = Buffer(1)
         envelope_buffer::Buffer = Buffer(2)
 
-        #Maximum of 20 grains per second
-        max_num_grains::Int32 = 20
+        #Maximum of 60 grains per second
+        max_num_grains::Int32 = 60
         grain_array::GrainArray = GrainArray(max_num_grains)
         for i = Int32(1) : max_num_grains
             grain_array.phase[i] = 0.0f0
@@ -51,25 +51,33 @@
     end
 
     function new_rand_val_phasor(one_over_sampleRate::Float32)
-        return Float32(abs(randn(Float32)) * one_over_sampleRate * 1.5f0)
+        return Float32(rand(Float32) * one_over_sampleRate * 1.5f0)
     end
 
     function trigger_new_grain(grain_array::GrainArray, max_num_grains::Int32, length_audio_buffer::Int32, position_samples::Int32, position_range_samples::Int32, length_samples::Int32, length_range_samples::Int32, pitch_shift::Float32, pitch_shift_range::Float32)
         for i = Int32(1) : max_num_grains
             if(grain_array.busy[i] == Int32(0))
-                grain_array.busy[i] = Int32(1)
-                grain_array.phase[i] = 0.0f0
-
+                
                 #Convert pitch to linear scale 2^(semitone / 12)
-                grain_pitch::Float32 = Float32(2^((pitch_shift + (randn(Float32) * pitch_shift_range)) / 12))
+                grain_pitch_range::Float32 = ((rand(Float32) * 2.0f0) - 1.0f0) * pitch_shift_range
+                grain_pitch::Float32 = Float32(2^((pitch_shift + grain_pitch_range / 12)))
 
-                grain_position::Int32 = trunc(position_samples + (randn(Float32) * position_range_samples))
+                grain_length_range::Float32 = ((rand(Float32) * 2.0f0) - 1.0f0) * length_range_samples
+                grain_length::Int32 = trunc(length_samples + grain_length_range)
+
+                grain_position_range::Float32 = ((rand(Float32) * 2.0f0) - 1.0f0) * position_range_samples
+                grain_position::Int32 = trunc(position_samples + grain_position_range)
+
                 grain_position = grain_position > 0 ? grain_position : 0
                 grain_position = grain_position < length_audio_buffer ? grain_position : length_audio_buffer
-
-                grain_length::Int32 = trunc(length_samples + (randn(Float32) * length_range_samples))
+                
                 if((grain_position + grain_length) > length_audio_buffer)
-                    grain_length = length_audio_buffer - grain_position - 2 #-2 for linear interpolation (Julia counts from 1, that's why not -1)
+                    grain_length = (length_audio_buffer -2) - grain_position #-2 leaves space for linear interpolation (-2 because Julia counts from 1)
+                end
+
+                #EDGE CASE: the grain is either of the length of the buffer, or length of the buffer -1 or length of the buffer -2. Skip iteration
+                if(grain_length <= 0)
+                    continue
                 end
 
                 #Calculate phase increment with pitch
@@ -78,7 +86,13 @@
                 grain_array.length_samples[i] = grain_length
                 grain_array.phase_length_increment[i] = grain_phase_length_increment
                 grain_array.start_position[i] = grain_position
-                break
+
+                #Reset phase
+                grain_array.phase[i] = 0.0f0
+
+                #Set to busy
+                grain_array.busy[i] = Int32(1)
+                return
             end
         end
     end
@@ -156,9 +170,7 @@
             
             #Advance all active grains
             for i = Int32(1) : max_num_grains
-                #grain_array_busy::Data{Int32, 1} = grain_array.busy
                 if(grain_array.busy[i] == Int32(1))
-                    
                     #Retrieve values for current grain
                     phase_grain::Float32 = grain_array.phase[i]
                     start_pos_grain::Int32 = grain_array.start_position[i]
