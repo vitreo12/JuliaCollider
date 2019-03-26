@@ -2093,6 +2093,9 @@ std::thread perform_gc_thread;
 std::atomic<bool> perform_gc_thread_run;
 int gc_count = 0;
 
+/* Active Julia UGen counter */
+std::atomic<unsigned int>active_julia_ugens{0};
+
 /* For edge cases only where GC is performing at a UGen destructor */
 std::atomic<bool>gc_array_needs_emptying{false};
 int gc_array_num = 1000; //Maximum of 1000 concurrent UGens to delete. Should be enough
@@ -2109,13 +2112,13 @@ WAS CORRUPTED AND UNRECOGNIZED BY JULIA. FOR NOW, I SHOULD HAVE AN EXCLUSIVE ACC
 EITHER THE RT THREAD OR NRT THREAD CAN RUN. GC CANNOT HAPPEN AT THE SAME TIME OF RT THREAD.
 IF WANTING A THREAD-SAFE ALLOCATOR, LOOK INTO supernova's simple_pool CLASS
 */
-inline void perform_gc(int full)
+inline void perform_gc(int full, bool already_has_lock = false)
 {
-    julia_gc_barrier->NRTSpinlock();
+    printf("ALREADY HAS LOCK? %d\n", already_has_lock);
 
-    /*
-     
-    */
+    if(!already_has_lock)
+        julia_gc_barrier->NRTSpinlock();
+
     if(gc_array_needs_emptying)
     {
         for(int i = 0; i < gc_array_num; i++)
@@ -2130,12 +2133,11 @@ inline void perform_gc(int full)
                 int32_t delete_index_nargs = 3;
                 jl_value_t* delete_index_args[delete_index_nargs];
 
-                /* Quite inefficient (I can't use julia_object->delete_index_ugen_ref_fun), but it should not mess up with World Age in RT thread. */
                 delete_index_args[0] = julia_global_state->get_delete_index_fun();
                 delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
                 delete_index_args[2] = this_ugen_ref;
 
-                /* This jl_lookup_generic_and_compile_return_value_SC() function has JL_TRY and JL_CATCH blocks. I should get rid of those */
+                /* Should I simply run the destructor instead?.. Well, it depends if Data is a mutable struct with finalizer or not. */
                 jl_value_t* delete_index_successful = jl_lookup_generic_and_compile_return_value_SC(delete_index_args, delete_index_nargs);
                 if(!delete_index_successful)
                     Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
@@ -2163,15 +2165,25 @@ inline void perform_gc(int full)
         jl_gc_enable(0);
     }
 
-    julia_gc_barrier->Unlock();
+    if(!already_has_lock)
+        julia_gc_barrier->Unlock();
 }
 
+/* NRT thread */
 inline bool julia_perform_gc(World* world, void* cmd)
 {
-    printf("*** GC (NRT) Thread ID: %d ***\n", std::this_thread::get_id());
-    
     if(julia_global_state->is_initialized())
-        perform_gc(1);
+    {
+        /* Same thread (NRT) as any call to "/julia_load", 
+        so there is no need to catch the lock on the compiler */
+        julia_gc_barrier->NRTSpinlock();
+
+        //If no Julia UGen is active
+        if(!active_julia_ugens.load())
+            perform_gc(1, true);
+
+        julia_gc_barrier->Unlock(); 
+    }
     else
         printf("WARNING: Julia hasn't been booted correctly \n");
     
@@ -2200,16 +2212,15 @@ inline void perform_gc_on_NRT_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
     {
-        //Perform only if compiler is not working.
+        //Send the async command only if compiler is not busy (so it doesn't stack up calls)
         if(julia_compiler_barrier->RTTrylock())
         {
-            //printf("*** My Thread ID: %d ***\n", std::this_thread::get_id());
             JuliaGC(inWorld, nullptr, nullptr, nullptr);
             julia_compiler_barrier->Unlock();
         }
 
         //Run every 10 seconds. Should probably set it to something higher for a full sweep (like once a minute), 
-        //And a perform_gc(0) every 30 seconds
+        //and a perform_gc(0) every 30 seconds
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
@@ -2250,8 +2261,8 @@ inline bool julia_boot(World* inWorld, void* cmd)
             perform_gc(1);
 
             //Setup thread for GC collection every 10 seconds. This thread will call into the NRT thread async mechanism
-            //perform_gc_thread_run.store(true);
-            //perform_gc_thread = std::thread(perform_gc_on_NRT_thread, inWorld);
+            perform_gc_thread_run.store(true);
+            perform_gc_thread = std::thread(perform_gc_on_NRT_thread, inWorld);
         }
     }
     else
@@ -2507,8 +2518,8 @@ inline bool julia_quit(World* world, void* cmd)
     
     if(julia_global_state->is_initialized())
     {        
-        //perform_gc_thread_run.store(false);
-        //perform_gc_thread.join();
+        perform_gc_thread_run.store(false);
+        perform_gc_thread.join();
 
         delete julia_objects_array;
 

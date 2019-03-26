@@ -4,11 +4,13 @@ struct Julia : public SCUnit
 {
 public:
     Julia() 
-    {    
+    {   
+        //It should have a more refined mechanism, linked to actual constructors and destructors.
+        active_julia_ugens++;
+
         if(!julia_global_state->is_initialized())
         {
             Print("WARNING: Julia hasn't been booted correctly \n");
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
@@ -21,7 +23,6 @@ public:
         if(unique_id < 0)
         {
             Print("WARNING: Invalid unique id \n");
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
         }
         
@@ -31,7 +32,6 @@ public:
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
             printf("WARNING: Invalid unique id \n");
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
@@ -46,7 +46,6 @@ public:
         if(real_num_inputs != julia_object->num_inputs)
         {
             Print("ERROR: Input number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numInputs(), julia_object->num_inputs);
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
@@ -54,22 +53,21 @@ public:
         if(numOutputs() != julia_object->num_outputs)
         {
             Print("ERROR: Output number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numOutputs(), julia_object->num_outputs);
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             return;
         }
 
-        bool gc_state = julia_gc_barrier->RTTrylock();
-        printf("GC_STATE: %d\n", gc_state);
-        if(!gc_state) 
+        bool gc_lock = julia_gc_barrier->RTTrylock();
+        printf("gc_lock: %d\n", gc_lock);
+        if(!gc_lock) 
         {
             Print("WARNING: Julia's GC is running. Object creation deferred.\n");
             set_calc_function<Julia, &Julia::next_NRT_busy>();  
             return;
         }
 
-        bool compiler_state = julia_compiler_barrier->RTTrylock();
-        if(!compiler_state)
+        bool compiler_lock = julia_compiler_barrier->RTTrylock();
+        if(!compiler_lock)
         {
             Print("WARNING: Julia's compiler is running. Object creation deferred.\n");
             set_calc_function<Julia, &Julia::next_NRT_busy>(); 
@@ -81,7 +79,6 @@ public:
         if(!successful_allocation)
         {
             Print("ERROR: Could not allocate UGen \n");
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -92,7 +89,6 @@ public:
         if(!succesful_destructor)
         {
             Print("ERROR: Could retrieve UGen destructor \n");
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -103,17 +99,18 @@ public:
         if(!succesful_added_ugen_ref)
         {
             Print("ERROR: Could not allocate __UGenRef__ \n");
-            valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
             return;
         }
 
-        //Unlock the gc barrier
+        //Unlock both gc and compiler barriers
         julia_gc_barrier->Unlock();
-
         julia_compiler_barrier->Unlock();
+
+        //set validity
+        valid = true;
         
         //set_calc_function already does one sample of audio.
         set_calc_function<Julia, &Julia::next_julia_code>();
@@ -121,6 +118,9 @@ public:
 
     ~Julia() 
     {
+        //It should have a more refined mechanism, linked to actual constructors and destructors.
+        active_julia_ugens--;
+
         if(args)
             free_args();
 
@@ -131,8 +131,8 @@ public:
 
         if(valid)
         {
-            bool gc_state = julia_gc_barrier->RTTrylock();
-            if(!gc_state)
+            bool gc_lock = julia_gc_barrier->RTTrylock();
+            if(!gc_lock)
             {
                 /* GC PERFORMING */
                 printf("WARNING: GC locked: posting __UGenRef__ destruction to gc_array \n");
@@ -153,8 +153,8 @@ public:
                 return;
             }
             
-            bool compiler_state = julia_compiler_barrier->RTTrylock();
-            if(!compiler_state)
+            bool compiler_lock = julia_compiler_barrier->RTTrylock();
+            if(!compiler_lock)
             {
                 /* GC AND COMPILER PERFORMING */
                 printf("WARNING: Compiler and GC locked: posting __UGenRef__ destruction to gc_array \n");
@@ -199,7 +199,7 @@ private:
 
     //If unique_id = -1 or if sending a JuliaDef that's not valid on server side.
     /* SHOULD INVERT VALID TO ONLY SET IT TO TRUE WHEN NEEDED */
-    bool valid = true;
+    bool valid = false;
 
     bool just_reallocated = false;
 
@@ -500,8 +500,6 @@ private:
 
     inline bool perform_destructor()
     {
-        printf("PERFORMING DESTRUCTOR \n");
-
         int32_t destructor_nargs = 2;
         jl_value_t* destructor_args[destructor_nargs];
         destructor_args[0] = destructor_fun;
@@ -535,9 +533,9 @@ private:
             return;
         }
         
-        /* if(!gc_state), next_NRT_busy will run again at next audio buffer */
-        bool gc_state = julia_gc_barrier->RTTrylock();
-        if(!gc_state) 
+        /* if(!gc_lock), next_NRT_busy will run again at next audio buffer */
+        bool gc_lock = julia_gc_barrier->RTTrylock();
+        if(!gc_lock) 
         {
             Print("WARNING: Julia's GC is running. Object creation deferred.\n");
             return;
@@ -579,6 +577,9 @@ private:
 
         julia_gc_barrier->Unlock();
 
+        //set validity
+        valid = true;
+
         //Assign directly, without first sample ????
         mCalcFunc = make_calc_function<Julia, &Julia::next_julia_code>();
     }
@@ -588,9 +589,18 @@ private:
         bool compiler_lock = julia_compiler_barrier->RTTrylock();
         if(compiler_lock)
         {
-            //If function changed, allocate it new object on this cycle
+            //If function changed, allocate it new object on this cycle (if it is compiled)
             if(args[0] != julia_object->perform_fun)
             {
+                //Acquire GC lock to allocate all objects later
+                bool gc_lock = julia_gc_barrier->RTTrylock();
+                if(!gc_lock)
+                {
+                    output_silence(inNumSamples);
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+
                 if(!julia_object->compiled)
                 {
                     //JuliaDef.free()
@@ -606,20 +616,14 @@ private:
                         //Set silence forever.
                         set_calc_function<Julia, &Julia::output_silence>();
 
+                        julia_gc_barrier->Unlock();
                         julia_compiler_barrier->Unlock();
                         return;
                     }
                     
                     output_silence(inNumSamples);
-                    julia_compiler_barrier->Unlock();
-                    return;
-                }
 
-                //Acquire GC lock to allocate all objects later
-                bool gc_state = julia_gc_barrier->RTTrylock();
-                if(!gc_state)
-                {
-                    output_silence(inNumSamples);
+                    julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
                 }
@@ -630,6 +634,7 @@ private:
                 {
                     //Print("ERROR: Invalid __constructor__ instance \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
@@ -640,6 +645,7 @@ private:
                 {
                     //Print("ERROR: Invalid __constructor__ instance \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
@@ -654,6 +660,7 @@ private:
                         print_once_inputs = true;
                     }
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_compiler_barrier->Unlock();
                     julia_gc_barrier->Unlock();
                     return;
@@ -670,6 +677,7 @@ private:
                         print_once_outputs = true;
                     }
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_compiler_barrier->Unlock();
                     julia_gc_barrier->Unlock();
                     return;
@@ -684,6 +692,7 @@ private:
                 {
                     //Print("ERROR: Invalid __perform__ method instance \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_compiler_barrier->Unlock();
                     julia_gc_barrier->Unlock();
                     return;
@@ -696,6 +705,7 @@ private:
                 {
                     //Print("ERROR: Invalid __constructor__ function \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_compiler_barrier->Unlock();
                     julia_gc_barrier->Unlock();
                     return;
@@ -706,12 +716,13 @@ private:
                 {
                     //Print("ERROR: Invalid __constructor__ instance \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
                 }
                 
-                /* Should this RTAlloced, just like args?? */
+                /* Should this be RTAlloced, just like args?? */
                 size_t constructor_nargs = 3;
                 jl_value_t* constructor_args[constructor_nargs];
 
@@ -724,6 +735,7 @@ private:
                 if(!ugen_object)
                 {
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
@@ -737,6 +749,7 @@ private:
                 {
                     //Print("ERROR: Invalid __UGen__ object \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
@@ -747,6 +760,7 @@ private:
                 {
                     //Print("ERROR: Invalid __UGen__ object \n");
                     output_silence(inNumSamples);
+                    valid = false;
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
@@ -765,8 +779,7 @@ private:
             }
 
             /* ACTUAL DSP CALCULATIONS */
-            //If object's not been reallocated on this buffer cycle, execute it.
-            //Otherwise, wait next buffer cycle to spread calculations
+            /* It will be executed from one cycle later than recompilation */
             if(!just_reallocated)
             {
                 julia_instance(inNumSamples);
@@ -774,16 +787,19 @@ private:
                 return;
             }
 
-            /* If every recompilation went through correctly, output silence and set false to the reallocation bool.
+            /* If the recompilation went through correctly, output silence and set false to the reallocation bool.
             At next cycle, we'll hear the newly compiled object */
             if(julia_object->compiled)
             {
                 output_silence(inNumSamples);
                 just_reallocated = false;
-                //valid = true;
+                valid = true;
                 julia_compiler_barrier->Unlock();
                 return;
             }
+
+            /* If any failed, unlock it anyway */
+            julia_compiler_barrier->Unlock();
         }
 
         //If compiler is busy, output silence
