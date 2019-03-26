@@ -9,7 +9,7 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
-include_directories(${JULIA_PATH}/include/julia)
+include_directories(${JULIA_BUILD_PATH}/include/julia)
 ###############
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
@@ -101,14 +101,14 @@ endif()
 add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolSafe.cpp" "src/JuliaAtomicBarrier.cpp" "src/SCBuffer.cpp")
 
 #JULIA LINKER FLAGS.
-#-L'${JULIA_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
+#-L'${JULIA_BUILD_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
 #-ldl needed for <dlfcn.h>
 #-lboost_system needed to send OSC messages from
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia -lboost_system")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia -lboost_system")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -lboost_system -ldl")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -lboost_system -ldl")
 endif()
 ###########################################
 
