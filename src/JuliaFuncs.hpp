@@ -436,11 +436,11 @@ class JuliaPath
                 return;
             }
             
-            char buffer[128];
+            //Maximum of 2048 characters.. It should be enough
+            char buffer[2048];
             while(!feof(pipe)) 
             {
-                //get the text out 128 characters at a time...
-                while(fgets(buffer, 128, pipe) != NULL)
+                while(fgets(buffer, 2048, pipe) != NULL)
                     julia_folder_path += buffer;
             }
 
@@ -448,7 +448,6 @@ class JuliaPath
 
             julia_sysimg_path = julia_folder_path;
             julia_sysimg_path.append(julia_path_to_sysimg);
-
 
             julia_stdlib_path = julia_folder_path;
             julia_stdlib_path.append(julia_path_to_stdlib);
@@ -1247,7 +1246,7 @@ class JuliaObjectCompiler
             jl_method_instance_t* set_index_audio_vector_instance;
 
             int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
-            int buffer_size = 4; //Try compiling with a 4 samples period.
+            int buffer_size = 8; //Try compiling with a 8 samples period.
 
             //ins::Vector{Vector{Float32}}
             jl_value_t* ins_temp =  (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_inputs);
@@ -1372,7 +1371,7 @@ class JuliaObjectCompiler
             /* INS / OUTS = perform_args[2]/[3] */
             int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
             int num_outputs = jl_unbox_int32(jl_get_global_SC(evaluated_module, "__outputs__"));
-            int buffer_size = 4; //Try compiling with a 4 samples period.
+            int buffer_size = 8; //Try compiling with a 8 samples period.
 
             /* ARRAY CONSTRUCTION */
             size_t perform_nargs = 6;

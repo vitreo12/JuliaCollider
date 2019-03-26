@@ -3,8 +3,6 @@
 void AtomicBarrier::Spinlock()
 {
     bool expected_val = false;
-    //Spinlock. Wait ad-infinitum until the RT thread has set barrier to false.
-    //SHOULD IT BE compare_exchange_strong for extra sureness???
     while(!barrier.compare_exchange_weak(expected_val, true))
         expected_val = false; //reset expected_val to false as it's been changed in compare_exchange_weak to true
 }

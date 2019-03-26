@@ -20,10 +20,10 @@ a.recompile;
 a.free;
 
 //It's async.
-d = JuliaDef.getCompiledJuliaDefs(s);
+v = JuliaDef.getCompiledJuliaDefs(s);
 
 //Now t will follow "Sine". Recompiling one will recompile the other.
-t = JuliaDef.retrieve(s, d[0]);
+t = JuliaDef.retrieve(s, v[0]);
 t.recompile;
 t.query;
 
@@ -61,7 +61,7 @@ k.query;
 k.recompile;
 k.free;
 
-{Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), DC.ar(0.5), DC.ar(1), DC.ar(1), DC.ar(1), DC.ar(0), DC.ar(0.5))}.play
+{Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(0.5), DC.ar(0.5), DC.ar(1), DC.ar(0.5), DC.ar(0.1), DC.ar(0), DC.ar(0.1))}.play
 
 {Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), LFNoise1.ar(1).linlin(-1,1,0,1), DC.ar(0), DC.ar(0.5), DC.ar(1), DC.ar(0), DC.ar(0.5))}.play
 
