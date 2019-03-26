@@ -2,6 +2,9 @@ set(FILENAME "Julia.cpp")
 cmake_minimum_required (VERSION 2.8)
 get_filename_component(PROJECT ${FILENAME} NAME_WE)
 message(STATUS "Project name is ${PROJECT}")
+
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.10" CACHE STRING "Minimum OS X deployment version")
+
 project (${PROJECT})
 
 include_directories(${SC_PATH}/include/plugin_interface)
@@ -106,9 +109,9 @@ add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolSafe.cpp" "src/
 #-lboost_system needed to send OSC messages from
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia -lboost_system")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -lboost_system -ldl")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -ldl")
 endif()
 ###########################################
 

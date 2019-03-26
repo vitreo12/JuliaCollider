@@ -28,6 +28,7 @@ fi
 echo "SuperCollider Extensions folder path : $SC_EXTENSIONS_PATH"
 
 #First, build julia.
+#MAYBE CAN SET THE -MARCH and -JULIA_CPU_TARGET flags here when it's building instead of Make.user??
 cd $JULIA_PATH
 make -j $CORES
 
