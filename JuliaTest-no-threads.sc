@@ -65,6 +65,11 @@ k.free;
 
 {Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), LFNoise1.ar(1).linlin(-1,1,0,1), DC.ar(0), DC.ar(0.5), DC.ar(1), DC.ar(0), DC.ar(0.5))}.play
 
+
+m = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/KrajeskiMoog.jl");
+
+{Julia.ar(m, Saw.ar(50), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9), DC.ar(1.0))}.play;
+
 s.scope
 
 10.do{a.recompile};
@@ -154,38 +159,17 @@ s.bind({
 /***********************************************************/
 t = Server.new(\server2, NetAddr("127.0.0.1", 57111));
 
-t.options.memSize = 131072;
-
 t.bootWithJulia;
 
 t.quitWithJulia;
 
-b = JuliaDef(t, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl");
+r = JuliaDef(t, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl");
 
-b.query;
-
-10.do{b = JuliaDef(t, "/Users/francescocameli/Library/Application Support/SuperCollider/Extensions/Julia/julia/JuliaObjects/SineWave.jl")};
-
-//1
-{Julia.ar(b, DC.ar(440))}.play(t);
-
-{SinOsc.ar(DC.ar(440))}.play(t);
-
-//2
-{Julia.ar(b, Julia.ar(b, DC.ar(1)) * 440) * Julia.ar(b, DC.ar(220))}.play(t);
-
-{SinOsc.ar(SinOsc.ar(DC.ar(1)) * 440) * SinOsc.ar(DC.ar(220))}.play(t);
-
-{LFSaw.ar(LFSaw.ar(DC.ar(1)) * 440) * LFSaw.ar(DC.ar(220))}.play(t);
-
-//3
-{Julia.ar(b, Julia.ar(b, DC.ar(1)) * 440)}.play(t);
-
-{LFSaw.ar(LFSaw.ar(1) * 440)}.play(t);
+r.query
 
 (
-t.bind({
-	{Julia.ar(b, DC.ar(440))}.play;
-	t.sendMsg(\cmd, "/julia_GC");
-});
+{
+	var noise = PinkNoise.ar(EnvGen.kr(Env.perc, Impulse.kr(1)));
+	Julia.ar(r, noise, DC.ar(1.0), DC.ar(0.2), DC.ar(0.9), DC.ar(0.8));
+}.play(t)
 )
