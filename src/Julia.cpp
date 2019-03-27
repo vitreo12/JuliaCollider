@@ -5,8 +5,9 @@ struct Julia : public SCUnit
 public:
     Julia() 
     {   
-        //It should have a more refined mechanism, linked to actual constructors and destructors.
+        //It should have a more refined mechanism, linked to actual constructors and destructors of Julia code.
         active_julia_ugens++;
+        //
 
         if(!julia_global_state->is_initialized())
         {
@@ -24,37 +25,6 @@ public:
         {
             Print("WARNING: Invalid unique id \n");
             set_calc_function<Julia, &Julia::output_silence>();
-        }
-        
-        //Print("UNIQUE ID: %i\n", julia_object_unique_id);
-
-        JuliaObjectsArrayState array_state = retrieve_julia_object();
-        if(array_state == JuliaObjectsArrayState::Invalid)
-        {
-            printf("WARNING: Invalid unique id \n");
-            set_calc_function<Julia, &Julia::output_silence>();
-            return;
-        }
-
-        if(array_state == JuliaObjectsArrayState::Busy)
-        {
-            Print("WARNING: JuliaObjectArray is resizing. Object creation deferred.\n");
-            set_calc_function<Julia, &Julia::next_NRT_busy>();  
-            return;
-        }
-
-        if(real_num_inputs != julia_object->num_inputs)
-        {
-            Print("ERROR: Input number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numInputs(), julia_object->num_inputs);
-            set_calc_function<Julia, &Julia::output_silence>();
-            return;
-        }
-
-        if(numOutputs() != julia_object->num_outputs)
-        {
-            Print("ERROR: Output number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numOutputs(), julia_object->num_outputs);
-            set_calc_function<Julia, &Julia::output_silence>();
-            return;
         }
 
         bool gc_lock = julia_gc_barrier->RTTrylock();
@@ -75,6 +45,44 @@ public:
             return;
         }
 
+        /* THIS will change the pointer of julia_object* */
+        JuliaObjectsArrayState array_state = retrieve_julia_object();
+        if(array_state == JuliaObjectsArrayState::Invalid)
+        {
+            printf("WARNING: Invalid unique id \n");
+            set_calc_function<Julia, &Julia::output_silence>();
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+
+        if(array_state == JuliaObjectsArrayState::Busy) //Future work...
+        {
+            Print("WARNING: JuliaObjectArray is resizing. Object creation deferred.\n");
+            set_calc_function<Julia, &Julia::next_NRT_busy>();  
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+
+        if(real_num_inputs != julia_object->num_inputs)
+        {
+            Print("ERROR: Input number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numInputs(), julia_object->num_inputs);
+            set_calc_function<Julia, &Julia::output_silence>();
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+
+        if(numOutputs() != julia_object->num_outputs)
+        {
+            Print("ERROR: Output number mismatch. Have %d, expected %d. Run update method on JuliaDef\n", numOutputs(), julia_object->num_outputs);
+            set_calc_function<Julia, &Julia::output_silence>();
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+
         bool successful_allocation = allocate_args_costructor_perform();
         if(!successful_allocation)
         {
@@ -88,7 +96,7 @@ public:
         bool succesful_destructor = get_destructor();
         if(!succesful_destructor)
         {
-            Print("ERROR: Could retrieve UGen destructor \n");
+            Print("ERROR: Could not retrieve UGen destructor \n");
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -105,32 +113,40 @@ public:
             return;
         }
 
+        //set validity
+        valid = true;
+
         //Unlock both gc and compiler barriers
         julia_gc_barrier->Unlock();
         julia_compiler_barrier->Unlock();
-
-        //set validity
-        valid = true;
         
-        //set_calc_function already does one sample of audio.
+        //set_calc_function already does one sample of audio. Set it
+        //after unlocking so that Julia code will be run once (otherwise lock would
+        //still be maintained)
         set_calc_function<Julia, &Julia::next_julia_code>();
     }
 
     ~Julia() 
     {
-        //It should have a more refined mechanism, linked to actual constructors and destructors.
+        //It should have a more refined mechanism, linked to actual constructors and destructors of Julia code.
         active_julia_ugens--;
+        //
 
         if(args)
             free_args();
 
-        if(ins && outs)
-            free_ins_outs();
+        if(ins)
+            free_ins();
+        
+        if(outs)
+            free_outs();
 
         Print("IS VALID? %d\n", valid);
 
         if(valid)
         {
+            //Check if GC/compiler are currently performing. If it is, post the UGen ref to an array
+            //that will be consumed on next GC.
             bool gc_lock = julia_gc_barrier->RTTrylock();
             if(!gc_lock)
             {
@@ -173,10 +189,12 @@ public:
                 gc_array_needs_emptying = true;
                 
                 julia_gc_barrier->Unlock();
+
                 return;
             }
 
-            /* ACQUIRED LOCKS HERE */
+            Print("*** RT Locks aquired!! ***\n");
+
             perform_destructor();
 
             remove_ugen_ref_from_global_object_id_dict();
@@ -237,9 +255,13 @@ private:
         RTFree(mWorld, args);
     }
 
-    inline void free_ins_outs()
+    inline void free_ins()
     {
         RTFree(mWorld, ins);
+    }
+
+    inline void free_outs()
+    {
         RTFree(mWorld, outs);
     }
 
@@ -517,22 +539,6 @@ private:
         /* Output silence */
         output_silence(inNumSamples);
 
-        /* if(!array_state), next_NRT_busy will run again at next audio buffer */
-        JuliaObjectsArrayState array_state = retrieve_julia_object();
-        if(array_state == JuliaObjectsArrayState::Invalid)
-        {
-            printf("WARNING: Invalid unique id \n");
-            valid = false;
-            set_calc_function<Julia, &Julia::output_silence>();
-            return;
-        }
-        
-        if(array_state == JuliaObjectsArrayState::Busy)
-        {
-            Print("WARNING: JuliaObjectArray is resizing. Object creation deferred.\n");
-            return;
-        }
-        
         /* if(!gc_lock), next_NRT_busy will run again at next audio buffer */
         bool gc_lock = julia_gc_barrier->RTTrylock();
         if(!gc_lock) 
@@ -541,9 +547,38 @@ private:
             return;
         }
 
-        //GC lock acquired! Array lock has already been released in julia_objects_array->get_julia_object()
-        Print("*** RT Lock aquired!! ***\n");
+        /* if(!compiler_lock), next_NRT_busy will run again at next audio buffer */
+        bool compiler_lock = julia_compiler_barrier->RTTrylock();
+        if(!compiler_lock)
+        {
+            Print("WARNING: Julia's compiler is running. Object creation deferred.\n");
+            julia_gc_barrier->Unlock();
+            return;
+        }
 
+        //GC/compiler locks acquired!
+        Print("*** RT Locks aquired!! ***\n");
+
+        /* THIS will change the pointer of julia_object* */
+        JuliaObjectsArrayState array_state = retrieve_julia_object();
+        if(array_state == JuliaObjectsArrayState::Invalid)
+        {
+            printf("WARNING: Invalid unique id \n");
+            valid = false;
+            set_calc_function<Julia, &Julia::output_silence>();
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+        
+        if(array_state == JuliaObjectsArrayState::Busy) //Future work...
+        {
+            Print("WARNING: JuliaObjectArray is resizing. Object creation deferred.\n");
+            julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
+            return;
+        }
+        
         bool successful_allocation = allocate_args_costructor_perform();
         if(!successful_allocation)
         {
@@ -551,6 +586,7 @@ private:
             valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
             return;
         }
 
@@ -572,16 +608,22 @@ private:
             valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
+            julia_compiler_barrier->Unlock();
             return;
         }
-
-        julia_gc_barrier->Unlock();
 
         //set validity
         valid = true;
 
-        //Assign directly, without first sample ????
-        mCalcFunc = make_calc_function<Julia, &Julia::next_julia_code>();
+        //Unlock barriers
+        julia_gc_barrier->Unlock();
+        julia_compiler_barrier->Unlock();
+
+        //Assign directly the next function, without first sample. (check this again)
+        //mCalcFunc = make_calc_function<Julia, &Julia::next_julia_code>();
+
+        //set_calc_function already does one sample of audio.
+        set_calc_function<Julia, &Julia::next_julia_code>();
     }
 
     inline void next_julia_code(int inNumSamples) 
@@ -589,7 +631,8 @@ private:
         bool compiler_lock = julia_compiler_barrier->RTTrylock();
         if(compiler_lock)
         {
-            //If function changed, allocate it new object on this cycle (if it is compiled)
+            //If THIS @object has changed, start the recompilation. Otherwise, it meant that another @object
+            //object was being recompiled.
             if(args[0] != julia_object->perform_fun)
             {
                 //Acquire GC lock to allocate all objects later
@@ -766,7 +809,8 @@ private:
                     return;
                 }
 
-                //Only unlock GC. Compiler will be unlocked only if object was compiled succesfully
+                //Only unlock GC. Compiler lock will be unlocked later, either at
+                //succesful compilation or at exit of the function.
                 julia_gc_barrier->Unlock();
 
                 just_reallocated = true;
@@ -774,8 +818,6 @@ private:
                 print_once_inputs = false;
                 print_once_outputs = false;
                 print_once_exception = false;
-
-                //julia_compiler_barrier->Unlock(); //SHOULD IT BE HERE TOO???
             }
 
             /* ACTUAL DSP CALCULATIONS */
@@ -798,7 +840,8 @@ private:
                 return;
             }
 
-            /* If any failed, unlock it anyway */
+            /* If any of the previous failed, unlock it anyway, and
+            perhaps wait for next cycle for a correctly compiled JuliaDef */
             julia_compiler_barrier->Unlock();
         }
 
@@ -815,7 +858,7 @@ private:
         /* Change (void*)data they are pointing at. At setup, it was nullptr */
         for(int i = 1; i < numInputs(); i++) //Skip first entry, it is the unique_id number
         {
-            //need to index back, Julia's first buffer will be SC's second one.
+            //need to index back, Julia's first buffer will be SC's second one, and so on, skipping unique_id at in(0)
             ((jl_array_t*)(ins[i - 1]))->data = (float*)in(i);
 
             /*
