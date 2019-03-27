@@ -67,8 +67,14 @@ k.free;
 
 
 m = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/KrajeskiMoog.jl");
+m.free
 
 {Julia.ar(m, Saw.ar(50), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9), DC.ar(1.0))}.play;
+
+n = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SVF.jl");
+n.free
+
+{Julia.ar(n, Saw.ar(50), DC.ar(0.0), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(1.0))}.play;
 
 s.scope
 

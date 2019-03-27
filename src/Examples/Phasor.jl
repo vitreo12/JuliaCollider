@@ -1,5 +1,5 @@
 @object Phasor begin
-    @inputs 1
+    @inputs 1 ("frequency")
     @outputs 1
     
     #Declaration of structs (possibly, include() calls aswell)
@@ -14,42 +14,25 @@
     @constructor begin
         phasor::Phasor = Phasor()
 
-        println(@sampleRate)
-
-        buffer::Data{Float32} = Data(Float32, Int32(100))
-
         #Must always be last.
-        @new(phasor, buffer)
+        @new(phasor)
     end
 
     @perform begin
         sampleRate::Float32 = Float32(@sampleRate())
 
-        buf_length::Int32 = Int32(length(buffer))
-
-        #frequency_kr::Float32 = @in0(1)
-
         @sample begin
-            phase::Float32 = phasor.p #equivalent to __unit__.phasor.p
+            phase::Float32 = phasor.p
             
-            frequency::Float32 = @in(1)
+            frequency::Float32 = abs(@in(1))
             
             if(phase >= 1.0)
                 phase = 0.0
             end
             
-            out_value::Float32 = (phase * 2) - 1
-            
-            @out(1) = out_value * 0.2
+            @out(1) = phase
 
-            phase += abs(frequency) / (sampleRate - 1)
-            
-            buffer_index::Int32 = mod(@sample_index, buf_length)
-            if(buffer_index == 0)
-                buffer_index = 1
-            end
-
-            buffer[buffer_index] = out_value
+            phase += frequency / (sampleRate - 1)
             
             phasor.p = phase
         end
