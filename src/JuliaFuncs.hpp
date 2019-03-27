@@ -1930,7 +1930,9 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
             return -1;
         }
 
-        /* RT THREAD. Called when a Julia UGen is created on the server */
+        /* RT THREAD. Called when a Julia UGen is created on the server.
+        No need to run locks here, as RT execution will only happen if compiler barrier
+        is inactive anyway: it's already locked from the Julia.cpp code.*/
         inline JuliaObjectsArrayState get_julia_object(int unique_id, JuliaObject** julia_object)
         {
             //This barrier will be useful when support for resizing the array will be added.
@@ -1944,7 +1946,8 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
                     julia_object[0] = this_julia_object;
                 else
                 {
-                    printf("WARNING: Invalid @object. Perhaps JuliaDef is not valid on server \n");
+                    //JuliaDef compiled for another server.
+                    printf("WARNING: Invalid @object. Perhaps this JuliaDef is not valid on this server \n");
                     //JuliaAtomicBarrier::Unlock();
                     return JuliaObjectsArrayState::Invalid;
                 }
@@ -2091,7 +2094,12 @@ JuliaObjectsArray*  julia_objects_array;
 JuliaAtomicBarrier* julia_gc_barrier;
 std::thread perform_gc_thread;
 std::atomic<bool> perform_gc_thread_run;
-int gc_count = 0;
+//int gc_count = 0;
+
+/* GC and Compiler interaction (they are on two different threads).
+It's been made this way in order to do future works where GC can happen at the same time
+of RT thread, but not RT thread */
+JuliaAtomicBarrier* julia_compiler_gc_barrier;
 
 /* Active Julia UGen counter */
 std::atomic<unsigned int>active_julia_ugens{0};
@@ -2180,7 +2188,7 @@ inline bool julia_perform_gc(World* world, void* cmd)
 
         //If no Julia UGen is active
         if(!active_julia_ugens.load())
-            perform_gc(1, true);
+            perform_gc(1, true); //already acquired GC lock to check for number of active ugens
 
         julia_gc_barrier->Unlock(); 
     }
@@ -2192,31 +2200,42 @@ inline bool julia_perform_gc(World* world, void* cmd)
 
 void julia_gc_cleanup(World* world, void* cmd) {}
 
+/* 
+This could not be executed as an async command from my third thread, as SC must execute all DoAsynchronousCommand on the RT
+thread to perform safe RT allocation. In fact, code was crashing on AllocPool::Alloc, becuase this code was executed on
+my third thread.
+*/
 void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
-/* There is no need to wrap every other NRT call into Julia into a check with the GC call, as all the calls (including GC) happen
-on the NRT thread anyway, and so they are sequentially executed. There is no parallelism at any time, because the third thread I am using
-for scheduling the GC calls, simply calls the function that will post the GC perform functio into the NRT thread FIFO. It's not actually executing
-that function. */
-
-/* 
-THIS THREAD COULD JUST CHECK EVERY 10 SECONDS IF THE global_object_id_dict IS EMPTY, LOCKING GC BEFOREHAND.
-ACTUALLY, I could just have a static global variable that counts the number of active Julia UGens, and simply check
-that value, without checking the id dict size. When value is zero, lock GC, empty gc_array and perform.
-THIS WAY I KNOW I WON'T EVER PERFORM GC WHILE ANY UGEN IS PLAYING, AND NO UGEN WILL EVER BE ALLOCATED WHILE GC IS PERFORMING.
+/*
+Is there the need to wrap all Julia calls also in checks to the gc barrier? Maybe not, 
+as gc barrier already checks if it can lock the compiler, if not, it will just wait. The compiler, on the other hand
+has a spinlock that will just wait for the release of this compiler lock, which might come either from RT thread, or from here 
 */
 inline void perform_gc_on_NRT_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
     {
-        //Send the async command only if compiler is not busy (so it doesn't stack up calls)
-        if(julia_compiler_barrier->RTTrylock())
+        /* This lock is used to schedule things between NRT thread (where compiler operates) and
+        GC thread, which is executed once every certain time (depending on sleep). The interaction between
+        the two should not affect RT thread. */
+        /* It could also be a spinlock here... Depends on the sleep period of the thread */
+        if(julia_compiler_gc_barrier->RTTrylock())
         {
-            JuliaGC(inWorld, nullptr, nullptr, nullptr);
-            julia_compiler_barrier->Unlock();
+            printf("*** MY THREAD ***\n");
+
+            julia_gc_barrier->NRTSpinlock();
+
+            //This won't ever be called together with RT thread...
+            if(!active_julia_ugens.load())
+                perform_gc(1, true); //already acquired GC lock to check for number of active ugens
+
+            julia_gc_barrier->Unlock(); 
+            
+            julia_compiler_gc_barrier->Unlock();
         }
 
         //Run every 10 seconds. Should probably set it to something higher for a full sweep (like once a minute), 
@@ -2244,9 +2263,10 @@ inline bool julia_boot(World* inWorld, void* cmd)
         julia_global_state = new JuliaGlobalState(inWorld, julia_pool_alloc_mem_size);
         if(julia_global_state->is_initialized())
         {
-            julia_gc_barrier       = new JuliaAtomicBarrier();
-            julia_compiler_barrier = new JuliaAtomicBarrier();
-            julia_objects_array    = new JuliaObjectsArray(inWorld, julia_global_state);
+            julia_gc_barrier          = new JuliaAtomicBarrier();
+            julia_compiler_barrier    = new JuliaAtomicBarrier();
+            julia_compiler_gc_barrier = new JuliaAtomicBarrier();
+            julia_objects_array       = new JuliaObjectsArray(inWorld, julia_global_state);
 
             gc_array = (jl_value_t**)malloc(sizeof(jl_value_t*) * gc_array_num);
             if(!gc_array)
@@ -2304,10 +2324,14 @@ bool julia_load(World* world, void* cmd)
 
     if(julia_global_state->is_initialized())
     {
+        //Wait on compiler barrier
         julia_compiler_barrier->NRTSpinlock();
 
-        if(gc_count == 0)
-            perform_gc(1);
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->NRTSpinlock();
+
+        /* if(gc_count == 0)
+            perform_gc(1); */
         
         bool object_created = julia_objects_array->create_julia_object(julia_reply_with_load_path);
         if(!object_created)
@@ -2316,14 +2340,18 @@ bool julia_load(World* world, void* cmd)
             printf("ERROR: Could not create JuliaDef\n");
         }
         
+        //perform gc after each "/jl_load"
         perform_gc(1);
         
         julia_compiler_barrier->Unlock();
 
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->Unlock();
+
         //run extra gc before creating object after every 5 calls
-        gc_count++;
+        /* gc_count++;
         if(gc_count == 5)
-            gc_count = 0;
+            gc_count = 0; */
     }
     else
     {
@@ -2375,6 +2403,9 @@ bool julia_free(World* world, void* cmd)
     if(julia_global_state->is_initialized())
     {
         julia_compiler_barrier->NRTSpinlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->NRTSpinlock();
         
         JuliaObjectId* julia_object_id = (JuliaObjectId*)cmd;
         int object_id = julia_object_id->get_julia_object_id();
@@ -2382,6 +2413,9 @@ bool julia_free(World* world, void* cmd)
         julia_objects_array->delete_julia_object(object_id);
         
         julia_compiler_barrier->Unlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->Unlock();
     }
     return true;
 }
@@ -2424,6 +2458,18 @@ bool julia_get_julia_objects_list(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
     {
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /* DO I REQUIRE LOCKS HERE???? */
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+
         JuliaReply* julia_reply = (JuliaReply*)cmd;
         julia_objects_array->get_julia_objects_list(julia_reply);
     }
@@ -2466,6 +2512,18 @@ bool julia_get_julia_object_by_name(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
     {
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /* DO I REQUIRE LOCKS HERE???? */
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        /*******************************/
+        
         JuliaReplyWithLoadPath* julia_reply = (JuliaReplyWithLoadPath*)cmd;
         julia_objects_array->get_julia_object_by_name(julia_reply);
     }
@@ -2537,6 +2595,8 @@ inline bool julia_quit(World* world, void* cmd)
 
         delete julia_compiler_barrier;
 
+        delete julia_compiler_gc_barrier;
+
         free(gc_array);
     }
 
@@ -2559,10 +2619,16 @@ inline bool julia_query_id_dicts(World* world, void* cmd)
     {
         julia_compiler_barrier->NRTSpinlock();
 
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->NRTSpinlock();
+
         jl_call1(jl_get_function(jl_base_module, "println"), julia_global_state->get_global_def_id_dict().get_id_dict());
         jl_call1(jl_get_function(jl_base_module, "println"), julia_global_state->get_global_object_id_dict().get_id_dict());
         
         julia_compiler_barrier->Unlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->Unlock();
     }
 
     return true;
