@@ -2691,6 +2691,8 @@ inline bool julia_test_alloc_pool_safe(World* world, void* cmd)
     printf("BARRIER: %d\n", alloc_pool_test->get_barrier_value());
 
     delete alloc_pool_test;
+
+    return true;
 }
 
 void JuliaTestAllocPoolSafe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)

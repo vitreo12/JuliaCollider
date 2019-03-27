@@ -1,3 +1,5 @@
+TEST multi channel Data/Buffer.
+
 1) Finish JuliaDef SC interface (autowatch, precompile into sysimg, etc...)
 
 2) More reliable way of deleting old modules when recompiling
