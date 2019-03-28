@@ -25,7 +25,7 @@ The link::Classes/JuliaDef:: class is the client side representation of a compil
 
 code::
 s.bootWithJulia;
-p = Platform.userExtensionDir ++ "/JuliaCollider/Examples/SineWave.jl";
+p = Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl";
 j = JuliaDef(s, p); //Note: the server (and Julia) needs to be booted
 ::
 
