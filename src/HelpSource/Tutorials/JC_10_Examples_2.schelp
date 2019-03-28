@@ -3,3 +3,7 @@ summary:: Insight on the Examples folder
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
+section::Analog Delay
+
+section::Buffer granulator
+

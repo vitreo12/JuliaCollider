@@ -16,6 +16,10 @@ subsection:: The @new macro
 The strong::@new:: macro is used to determine which variables declared in a strong::@constructor:: will be later used in the audio loop, making them available to the scope of the strong::@perform:: macro.
 
 note::
+To be able to store values in the strong::@constructor:: variables, they must be declared as member variables of a "emphasis::mutable struct::". If passing a emphasis::Float32:: variable to strong::@new::, it will be a constant value in strong::@perform::
+::
+
+note::
 Every strong::@constructor:: macro strong::MUST:: always end with a call to the strong::@new:: macro.
 ::
 
@@ -42,7 +46,7 @@ NUMBEREDLIST::
 ##strong::@out:: : This macro takes 1 argument, the output number, and it assigns the value of the equality operation to the selected output. The value could either be a emphasis::Float64:: or a emphasis::Float32::.
 
 note::
-Considering that the server's audio buffers are of type emphasis::Float32::, it is more performant to directly assign a emphasis::Float32::, to prevent any value conversion calculations to be added to the audio loop.
+Considering that the server's audio buffers are of type emphasis::Float32::, it is more performant to directly assign a emphasis::Float32:: value, in order to prevent any value conversion calculations to be added to the audio loop.
 ::
 
 ##strong::@sampleIndex:: This macro returns the current sample index in the audio loop. It goes from 1 to the buffer size. strong::return type:: = emphasis::Int32:: .

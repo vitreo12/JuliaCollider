@@ -4,9 +4,12 @@ CATEGORIES:: JuliaCollider>Classes
 RELATED:: Classes/Julia, Overviews/JuliaCollider
 
 DESCRIPTION::
+A link::Classes/JuliaDef:: represents the client representation of a compiled emphasis::JuliaCollider:: strong::@object:: on the server. Together with link::Classes/Julia::, it is the basic building block of the emphasis::JuliaCollider:: system on SuperCollider side.
 
-note::
-An emphasis::autowatch:: feature will be added, in order to automatically recompile link::Classes/JuliaDef::(s).
+First of all, any calls into emphasis::Julia:: need to happen after that emphasis::JuliaCollider:: has been booted on the server. To do so, simply run the strong::bootJulia:: or strong::bootWithJulia:: function on the link::Classes/Server::.
+
+code::
+s.bootWithJulia;
 ::
 
 Since a link::Classes/JuliaDef:: is just a client side view on a Julia compiled file on the server, two strong::JuliaDefs:: pointing at the same source code are, effectively, the same. Recompiling one, will result in the effects of the recompilation to be viewed on all the homonyms aswell.
@@ -19,11 +22,25 @@ h.recompile;
 ::
 
 warning::
-On a multiple clients setup, recompiling a link::Classes/JuliaDef:: will only reflect its changes on the scope of the single client. While the code on the server gets updated, other clients might still be using older defined link::Classes/JuliaDef::(s), which, perhaps, might contain wrong informations on inputs/outputs counting. Use the strong::update:: method in such cases.
+On a multiple clients / single server setups, recompiling a link::Classes/JuliaDef:: will only reflect its changes on the scope of the single client. While the code on the server will strong::always:: get updated by any call by any client, the clients that did not make a specific call might still be using older defined link::Classes/JuliaDef::(s), which, perhaps, might contain wrong informations on inputs/outputs counting. In such cases, use the strong::update:: method to get the latest link::Classes/JuliaDef:: from the server.
 ::
 
+note::
+An emphasis::autowatch:: feature will be added, in order to automatically recompile link::Classes/JuliaDef::(s).
+::
 
 CLASSMETHODS::
+
+METHOD:: new
+(describe method here)
+
+ARGUMENT:: server
+(describe argument here)
+
+ARGUMENT:: path
+(describe argument here)
+
+returns:: (describe returnvalue here)
 
 METHOD:: retrieve
 (describe method here)
@@ -44,43 +61,10 @@ ARGUMENT:: server
 
 returns:: (describe returnvalue here)
 
-METHOD:: new
-(describe method here)
-
-ARGUMENT:: server
-(describe argument here)
-
-ARGUMENT:: path
-(describe argument here)
-
-returns:: (describe returnvalue here)
-
-
 INSTANCEMETHODS::
-
-METHOD:: outputs
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: output_names
-(describe method here)
-
-returns:: (describe returnvalue here)
 
 METHOD:: edit
 (describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: init
-(describe method here)
-
-ARGUMENT:: server
-(describe argument here)
-
-ARGUMENT:: path
-(describe argument here)
 
 returns:: (describe returnvalue here)
 
@@ -94,46 +78,10 @@ METHOD:: free
 
 returns:: (describe returnvalue here)
 
-METHOD:: precompile
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: input_names
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: inputs
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: compiled
-(describe method here)
-
-returns:: (describe returnvalue here)
-
 METHOD:: query
 (describe method here)
 
 returns:: (describe returnvalue here)
-
-METHOD:: name
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: freeJuliaDef
-(describe method here)
-
-returns:: (describe returnvalue here)
-
-METHOD:: server_id
-(describe method here)
-
-returns:: (describe returnvalue here)
-
 
 EXAMPLES::
 

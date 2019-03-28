@@ -3,3 +3,58 @@ summary:: Analysis and usage of the Buffer type
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
+emphasis::Buffer:: is a special emphasis::JuliaCollider:: type which allows to access the content of a link::Classes/Buffer:: from inside a emphasis::JuliaCollider:: script.
+
+
+note::
+a emphasis::Buffer:: must strong::always:: be declared and initialized in the strong::@constructor:: macro for it to properly work.
+::
+
+section::Buffer in @constructor
+Here is where a emphasis::Buffer:: must be declared and constructed, either directly as a member variable of the strong::@constructor:: macro, or as a member of a fully typed defined emphasis::struct:: or emphasis::mutable struct::.
+
+emphasis::Buffer:: takes one argument:
+NUMBEREDLIST::
+##strong::Input number:: : an integer value to tell emphasis::Buffer:: which input to the link::Classes/Julia:: UGen to use as a link::Classes/Buffer:: input.
+::
+
+image::buffer_constructor.png::
+
+warning::
+In order for the emphasis::JuliaCollider:: parser to catch every emphasis::Buffer:: and allow it to correctly retrieve the right input channel in strong::@perform::, all type inference should be resolved when declaring the emphasis::Buffer::.
+Consider the example:
+image::buffer_unsure_type.png::
+Here, the "emphasis::my_final_recursive_buffer::" field of the "emphasis::mutable struct RecursiveBuffer::" has not been assigned a type, making it possible to store any value (also, making code performing strong::very:: slowly). emphasis::JuliaCollider::'s parser is here not capable of retrieving the "emphasis::my_buffer::" field of the "emphasis::mutable struct FinalRecursiveBuffer::", which is in fact a emphasis::Buffer::. As a result, any access to "emphasis::my_buffer::" in strong::@perform:: will result in errors, as that emphasis::Buffer:: would not be correctly initialized. Also, always remember that every variable (be it a member variable of strong::@constructor:: or not) that stores a emphasis::Buffer:: strong::must:: be declared as such, or the parser will not pick it up and initialize it.
+::
+
+section::Buffer in @perform
+
+note::
+Julia array-indexing starts counting from 1. A standard [emphasis::0 : length-1::] interval, in Julia, would be written as a [emphasis::1 : length::] interval.
+::
+
+note::
+The content of a emphasis::Buffer:: is always a emphasis::Float32::, so you should code your scripts accordingly.
+::
+
+In the strong::@perform:: macro is where a emphasis::Buffer:: can be accessed to store and retrieve values in the audio loop. The syntax for accessing a emphasis::Buffer:: is the same as any emphasis::Julia:: array. Consider the following code:
+
+image::buffer_perform.png::
+
+Here, a new emphasis::Buffer:: at input 1 is declared in the strong::@constructor::, and passed to strong::@perform:: through the strong::@new:: macro, together with a simple counter. Then, in strong::@perform:: the emphasis::Buffer:: is being read out sample by sample and looped around according to an increasing index, depending on the length of the buffer.
+
+A multi-channel emphasis::Buffer:: would be accessed like so, (again, the emphasis::channel:: indexing should start from 1):
+
+image::buffer_multichannel.png::
+
+section::Additional functions for Buffer
+The emphasis::Buffer:: type has some special functions linked to it:
+
+NUMBEREDLIST::
+##strong::length:: : Returns the length of the emphasis::Buffer::.
+##strong::nchans:: : Returns the number of channels of the emphasis::Buffer::.
+##strong::size:: : Returns the total allocated size of the emphasis::Buffer:: (length * nchans).
+::
+
+
+strong::NEXT:: : link::Tutorials/JC_08_Custom_Types_Functions_and_Modules::

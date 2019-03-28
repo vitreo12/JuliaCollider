@@ -20,13 +20,6 @@ s.waitForBoot{
 s.bootWithJulia;
 ::
 
-As with booting, quitting JuliaCollider also requires a special link::Classes/Server:: method. This method is called strong::quitWithJulia::, and it will run JuliaCollider's unloading together with the quitting of the server.
-
-code::
-s.quitWithJulia;
-::
-
-
 section:: The JuliaDef class
 The link::Classes/JuliaDef:: class is the client side representation of a compiled Julia file on the server. Its interface works very similarly to how the link::Classes/Buffer:: class works. To create a new JuliaDef, two arguments are needed: the server and a string path to the Julia file to load on the server. When a valid link::Classes/JuliaDef:: is created, an asynchronous command will build the relative Julia file on the server, making it ready to be used in the link::Classes/Julia:: UGen.
 

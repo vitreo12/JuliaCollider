@@ -3,3 +3,19 @@ summary:: Insight on the Examples folder
 categories:: JuliaCollider>Tutorials
 related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 
+We will now look into some of the Examples that come together with JuliaCollider. These examples give for granted that JuliaCollider is installed in the user extension directory.
+
+section::Phasor and Sine oscillators
+These are two simple oscillators stored in the "Phasor.jl" and "Sine.jl" files.
+
+code::
+a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
+::
+
+section::Saw oscillator
+
+
+section::SVF filter
+
+
+
