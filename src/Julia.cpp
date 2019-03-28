@@ -885,6 +885,9 @@ private:
         "debug" will run here, "perform" will just be used when you know the code 
         is working and is in ready state */
         /* MOREOVER, with supernova, I would need locks here for debugging code */
+        /* One more thing: for the future, when GC will be performed together with the RT thread,
+        I would probably need a GC lock here too, as I am not sure if JL_TRY/CATCH are safe
+        with GC */
         JL_TRY {
             jl_invoke_already_compiled_SC(perform_instance, args, nargs);
             
