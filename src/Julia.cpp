@@ -128,10 +128,6 @@ public:
 
     ~Julia() 
     {
-        //It should have a more refined mechanism, linked to actual constructors and destructors of Julia code.
-        active_julia_ugens--;
-        //
-
         if(args)
             free_args();
 
@@ -164,6 +160,8 @@ public:
                     }
                 }
 
+                active_julia_ugens--;
+
                 gc_array_needs_emptying = true;
 
                 return;
@@ -186,10 +184,12 @@ public:
                     }
                 }
 
+                active_julia_ugens--;
+
                 gc_array_needs_emptying = true;
                 
                 julia_gc_barrier->Unlock();
-
+                
                 return;
             }
 
@@ -202,6 +202,8 @@ public:
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
         }
+
+        active_julia_ugens--;
     }
 
 private:
@@ -924,6 +926,7 @@ private:
     }
 };
 
+/* Load the plugin and the commands on the server */
 PluginLoad(JuliaUGens) 
 {
     ft = inTable;
@@ -932,13 +935,8 @@ PluginLoad(JuliaUGens)
     DefineJuliaCmds();
 }
 
-//Destructor function called when the shared library Julia.so gets unloaded from server (when server is quitted)
-void julia_destructor(void) __attribute__((destructor));
-void julia_destructor(void)
+/* Register an unload function on the server */
+C_LINKAGE SC_API_EXPORT void unload(InterfaceTable *inTable)
 {
-    //Could not run any thread join here, as threads already got dealt with. Just delete the objects
-    /* delete julia_objects_array;
-    delete julia_gc_barrier;
-    delete julia_compiler_barrier;
-    delete julia_global_state; */
+    julia_quit();
 }

@@ -2565,13 +2565,17 @@ void JuliaGetJuliaObjectByName(World *inWorld, void* inUserData, struct sc_msg_i
         printf("WARNING: Julia hasn't been initialized yet\n");
 }
 
-inline bool julia_quit(World* world, void* cmd)
+/* Called when unloading the shared library from the SC server with the void unload(InterfaceTable *inTable) function */
+inline void julia_quit()
 {
-    //If julia has been initialized but global_state failed from whatever reason
+    if(!jl_is_initialized())
+        return;
+
+    //If julia has been initialized but global_state failed for whatever reason
     if(jl_is_initialized() && !julia_global_state->is_initialized())
     {
         jl_atexit_hook(0);
-        return true;
+        return;
     }
     
     if(julia_global_state->is_initialized())
@@ -2598,19 +2602,9 @@ inline bool julia_quit(World* world, void* cmd)
         delete julia_compiler_gc_barrier;
 
         free(gc_array);
+
+        printf("-> Julia: Finished quitting \n");
     }
-
-    printf("-> Julia: Finished quitting \n");
-
-    return true;
-}
-
-void julia_quit_cleanup(World* world, void* cmd) {}
-
-void JuliaQuit(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
-{
-    if(jl_is_initialized())
-        DoAsynchronousCommand(inWorld, replyAddr, "/jl_quit", nullptr, (AsyncStageFn)julia_quit, 0, 0, julia_quit_cleanup, 0, nullptr);
 }
 
 inline bool julia_query_id_dicts(World* world, void* cmd)
@@ -2709,7 +2703,6 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_get_julia_objects_list", (PlugInCmdFunc)JuliaGetJuliaObjectsList, nullptr);
     DefinePlugInCmd("/julia_get_julia_object_by_name", (PlugInCmdFunc)JuliaGetJuliaObjectByName, nullptr);
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
-    DefinePlugInCmd("/julia_quit", (PlugInCmdFunc)JuliaQuit, nullptr);
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
     DefinePlugInCmd("/julia_total_free_memory", (PlugInCmdFunc)JuliaTotalFreeMemory, nullptr);
 
