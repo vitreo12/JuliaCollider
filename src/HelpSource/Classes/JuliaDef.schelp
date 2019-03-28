@@ -75,6 +75,8 @@ The link::Classes/Server:: to query.
 
 returns:: Once the check on the server is finished, it will return, asynchronously, a link::Classes/List:: of link::Classes/Symbol::s with all the compiled emphasis::JuliaCollider:: strong::@object:: on the server.
 
+private::getJuliaDef
+
 INSTANCEMETHODS::
 
 METHOD:: edit
@@ -119,6 +121,12 @@ private::file_path
 
 EXAMPLES::
 
+For a more in depth look into the provided examples, see:
+NUMBEREDLIST::
+##link::Tutorials/JC_09_Examples_1::
+##link::Tutorials/JC_10_Examples_2::
+::
+
 code::
 //Boot server and Julia
 s.bootWithJulia;
@@ -134,7 +142,12 @@ SynthDef(\JuliaAnalogDelay, {
 	//Simple percussive noise
 	noise = PinkNoise.ar(EnvGen.kr(Env.perc, Impulse.kr(1)));
 
-	//Remember, Julia.ar only supports audio rate inputs. Use DC.ar() for steady values
+	//First input  = JuliaDef
+	//Second input = audio signal
+	//Third input  = max delay length
+	//Fourth input = delay time
+	//Fifth input  = feedback
+	//Sixth input  = damping
 	delay = Julia.ar(d, noise, DC.ar(1.0), DC.ar(0.2), DC.ar(0.9), DC.ar(0.8));
 
 	Out.ar([0, 1], delay);

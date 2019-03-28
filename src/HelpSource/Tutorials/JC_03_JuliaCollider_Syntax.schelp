@@ -34,4 +34,6 @@ NUMBEREDLIST::
 
 The body of the strong::@object::, then, will define every aspect of the audio code, from the data structures it will be using down to the actual audio loop code. The declaration of custom data types - as is the emphasis::mutable struct Phasor:: in the picture at the top - or functions can happen at any point in the body of the strong::@object::, but always before they're used. A convenient position would be right before the strong::@constructor:: macro, which will be analyzed in link::Tutorials/JC_05_Constructor_Perform::.
 
+strong::PREVIOUS:: : link::Tutorials/JC_02_Julia_Syntax::
+
 strong::NEXT:: : link::Tutorials/JC_04_Inputs_Outputs::

@@ -36,7 +36,7 @@ j.recompile;
 ::
 
 section:: The Julia UGen
-The link::Classes/Julia:: UGen is where the compiled link::Classes/JuliaDef:: will result in audio output. The first argument to the link::Classes/Julia:: UGen must always be a valid link::Classes/JuliaDef::, followed by any number of UGen arguments, depending on the @inputs macro in the Julia code (see link::Tutorials/JC_04_Inputs_Outputs::).
+The link::Classes/Julia:: UGen is where compiled link::Classes/JuliaDef::s is used to genereate actual audio output. The first argument to the link::Classes/Julia:: UGen must always be a valid link::Classes/JuliaDef::, followed by any number of UGen arguments, depending on the @inputs macro in the Julia code (see link::Tutorials/JC_04_Inputs_Outputs::).
 
 code::
 //Play the j JuliaDef.

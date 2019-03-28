@@ -13,4 +13,6 @@ image::inputs_outputs_args.png::
 
 On SuperCollider side, the number of inputs and outputs will be needed for the link::Classes/Julia:: UGen to correctly setup input and output buffers. This is one of the reasons why, currently, link::Classes/JuliaDef::(s) must be known at link::Classes/SynthDef:: definition time.
 
+strong::PREVIOUS:: : link::Tutorials/JC_03_JuliaCollider_Syntax::
+
 strong::NEXT:: : link::Tutorials/JC_05_Constructor_Perform::

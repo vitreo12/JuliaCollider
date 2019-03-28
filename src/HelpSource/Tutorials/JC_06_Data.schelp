@@ -73,4 +73,6 @@ NUMBEREDLIST::
 ##strong::size:: : Returns the total allocated size of the emphasis::Data:: (length * nchans).
 ::
 
+strong::PREVIOUS:: : link::Tutorials/JC_05_Constructor_Perform::
+
 strong::NEXT:: : link::Tutorials/JC_07_Buffer::

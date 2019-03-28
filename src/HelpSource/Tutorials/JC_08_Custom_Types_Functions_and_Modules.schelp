@@ -36,4 +36,6 @@ note::
 To use the emphasis::Data:: and emphasis::Buffer:: types in your own modules, simply import them by "emphasis::using JuliaCollider.SCData::" or "emphasis::using JuliaCollider.SCBuffer::" in your module body.
 ::
 
+strong::PREVIOUS:: : link::Tutorials/JC_07_Buffer::
+
 strong::NEXT:: : link::Tutorials/JC_09_Examples_1::

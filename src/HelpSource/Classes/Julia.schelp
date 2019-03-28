@@ -4,28 +4,79 @@ CATEGORIES:: JuliaCollider>Classes, UGens>JuliaCollider
 RELATED:: Classes/JuliaDef, Overviews/JuliaCollider
 
 DESCRIPTION::
+The link::Classes/Julia:: UGen is where a compiled strong::@object::, represented in sclang by a  link::Classes/JuliaDef::, is used to genereate actual audio output: the link::Classes/Julia:: UGen is a direct interface to the server's representation of emphasis::JuliaCollider:: .
 
-note::
-As of now, the link::Classes/Julia:: UGen only accepts audio inputs (strong::.ar:: UGen method). Use the link::Classes/DC:: UGen for strong::kr:: to strong::ar:: conversion.
-::
-
-note::
-Dynamic switching of link::Classes/JuliaDef:: is not yet permitted: the link::Classes/JuliaDef:: must be known when defining the link::Classes/SynthDef:: where the specific link::Classes/Julia:: UGen is declared.
-::
+For more informations on the interaction between the link::Classes/Julia:: UGen and the link::Classes/JuliaDef:: class, look into link::Classes/JuliaDef::'s help file.
 
 CLASSMETHODS::
 
 METHOD:: ar
 
+warning::
+Dynamic switching of link::Classes/JuliaDef:: is not yet permitted: the link::Classes/JuliaDef:: must be known when defining the link::Classes/SynthDef:: where the specific link::Classes/Julia:: UGen is declared.
+::
 
 ARGUMENT::  ... args
-Variable number of arguments. The first argument strong::must:: always been a link::Classes/JuliaDef::, followed any number of link::Classes/UGen:: arguments, according to the number of inputs stated in the strong::@object::'s strong::@inputs:: macro.
+Variable number of arguments. The first argument strong::must:: always be a link::Classes/JuliaDef::, followed any number of link::Classes/UGen:: arguments, according to the number of inputs stated in the strong::@object::'s strong::@inputs:: macro.
+
+note::
+As of now, the link::Classes/Julia:: UGen only accepts audio inputs (strong::.ar:: UGen method). Use the link::Classes/DC:: UGen for strong::kr::/strong::ir:: to strong::ar:: conversion.
+::
+
+note::
+When recompiling the link::Classes/JuliaDef:: to which the link::Classes/Julia:: UGen is pointing at, the changes will immediately be reflected in the audio output. This also means that the number of audio inputs/outputs stated in the strong::@object:: might change while the link::Classes/Julia:: UGen is playing.
+
+NUMBEREDLIST::
+##strong::IF:: the strong::@inputs::/strong::@outputs:: count remains the same as the original one, the link::Classes/Julia:: UGen will output the new compiled code.
+##strong::IF:: the strong::@inputs::/strong::@outputs:: count is less than the original one, the link::Classes/Julia:: UGen will output the new compiled code using the inputs/outputs up to the original amount.
+##strong::IF:: the strong::@inputs::/strong::@outputs:: count is more than the original one, the link::Classes/Julia:: UGen will output silence.
+::
+::
 
 METHOD:: kr
-link::Classes/Julia:: only currently supports the .ar method.
+link::Classes/Julia:: currently only supports the .ar method.
 
 EXAMPLES::
 
+For a more in depth look into the provided examples, see:
+NUMBEREDLIST::
+##link::Tutorials/JC_09_Examples_1::
+##link::Tutorials/JC_10_Examples_2::
+::
+
 code::
-(some example code)
+//Boot server and Julia
+s.bootWithJulia;
+
+//Compile "Saw.jl" example (an anti-aliased sawtooth oscillator)
+k = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");
+
+//Compile "SVF.jl" example
+f = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SVF.jl");
+
+//Compile a SynthDef with the the two JuliaDefs compiled in the Julia.ar() first inputs
+(
+SynthDef(\JuliaFilteredSaw, {
+	arg freq = 200;
+	var saw1, saw2, filter;
+
+	//First input = JuliaDef
+	//Second input = frequency
+	saw1 = Julia.ar(k, DC.ar(freq));
+	saw2 = Julia.ar(k, DC.ar(freq + rrand(-3.0, 3.0)));
+
+	//First input  = JuliaDef
+	//Second input = audio signal
+	//Third input  = filter type (0 = lowpass, 1 = highpass, 2 = bandpass)
+	//Fourth input = Cutoff
+	//Fifth input  = Resonance
+	filter = Julia.ar(f, saw1 + saw2, DC.ar(0.0), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9));
+
+	Out.ar([0, 1], filter);
+}).send(s)
+)
+
+//Play the SynthDef
+Synth(\JuliaFilteredSaw);
+
 ::

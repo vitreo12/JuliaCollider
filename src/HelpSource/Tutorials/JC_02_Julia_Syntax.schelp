@@ -55,4 +55,6 @@ image::macro.png::
 
 strong::More infos:: : https://docs.julialang.org/en/v1/manual/metaprogramming/index.html
 
+strong::PREVIOUS:: : link::Tutorials/JC_01_Introduction::
+
 strong::NEXT:: : link::Tutorials/JC_03_JuliaCollider_Syntax::
