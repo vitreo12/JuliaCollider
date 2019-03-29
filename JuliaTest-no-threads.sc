@@ -2,6 +2,8 @@ s.options.sampleRate = 48000;
 
 s.bootWithJulia;
 
+Julia.runtimeMode(s, "perform");
+
 s.sendMsg(\cmd, "/julia_set_perform_debug_mode", "perform");
 
 s.quit;
