@@ -8,7 +8,7 @@ TEST multi channel Data/Buffer.
    (for example, inner loops and conditions will escape variable checking)
    Maybe I could just precompile for a longer buffer?
 
-4) Implement a Singal DataType, which will work for both Float32 and Float64
+4) Implement a Signal DataType, which will work for both Float32 and Float64
 
 5) Implement input_names and output_names in JuliaDef
 

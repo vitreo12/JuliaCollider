@@ -2,11 +2,13 @@ s.options.sampleRate = 48000;
 
 s.bootWithJulia;
 
+s.sendMsg(\cmd, "/julia_set_perform_debug_mode", "perform");
+
+s.quit;
+
 p = Platform.resourceDir +/+ "sounds/a11wlk01.wav";
 b = Buffer.read(s, p);
 b.free;
-
-s.quitWithJulia;
 
 s.sendMsg(\cmd, "/julia_query_id_dicts");
 
@@ -61,22 +63,21 @@ k.query;
 k.recompile;
 k.free;
 
-{Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(0.5), DC.ar(0.5), DC.ar(1), DC.ar(0.5), DC.ar(0.1), DC.ar(0), DC.ar(0.1))}.play
+{Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), DC.ar(0.5), DC.ar(1), DC.ar(0.1), DC.ar(0.1), DC.ar(0), DC.ar(0.1))}.play
 
 {Julia.ar(k, DC.ar(b), DC.ar(~hannWindow), DC.ar(1), LFNoise1.ar(1).linlin(-1,1,0,1), DC.ar(0), DC.ar(0.5), DC.ar(1), DC.ar(0), DC.ar(0.5))}.play
-
-
-m = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/KrajeskiMoog.jl");
-m.free
-
-{Julia.ar(m, Saw.ar(50), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9), DC.ar(1.0))}.play;
 
 n = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SVF.jl");
 n.free
 
-{Julia.ar(n, Saw.ar(50), DC.ar(0.0), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(1.0))}.play;
+{Julia.ar(n, Saw.ar(50), DC.ar(0.0), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9))}.play;
 
 s.scope
+
+x = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/DiodeLadder.jl");
+x.recompile;
+
+{Julia.ar(x, Saw.ar(50), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9))}.play;
 
 10.do{a.recompile};
 
