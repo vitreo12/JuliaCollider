@@ -558,8 +558,6 @@ Julia : MultiOutUGen {
 	bootJulia {
 		arg pool_size = 131072;
 
-		var gc_fun;
-
 		if(pool_size < 131072, {
 			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
 			pool_size = 131072;
@@ -572,22 +570,6 @@ Julia : MultiOutUGen {
 			//pool_size.postln;
 			this.sendMsg(\cmd, "/julia_boot", pool_size);
 
-			/*
-			gc_fun = {
-				Routine.run({
-					0.01.wait;
-					this.sendMsg(\cmd, "/julia_GC");
-				});
-
-				//Return a string to be retrieved in quitWithJulia
-				"julia_gc_fun";
-			};
-
-			/* Perform GC everytime CMD + . is executed.
-			What about multiple clients and one server, though??? */
-			CmdPeriod.add(gc_fun);
-			*/
-
 			this.sync;
 		};
 	}
@@ -598,37 +580,5 @@ Julia : MultiOutUGen {
 		this.waitForBoot({
 			this.bootJulia(pool_size);
 		});
-	}
-
-	quitWithJulia {
-		var gc_fun;
-
-		Routine.run {
-
-			/*
-			//Not the most elegant way...
-			CmdPeriod.objects.do({
-				arg item;
-				item.postln;
-				if(item.isFunction, {
-					if(item.value == "julia_gc_fun", {
-						gc_fun = item;
-					});
-				});
-			});
-
-			//Remove the gc_fun at CmdPeriod
-			CmdPeriod.remove(gc_fun);
-
-			//syncing because item.value will perform one last GC async call.
-			this.sync;
-			*/
-
-			this.sendMsg(\cmd, "/julia_quit");
-
-			this.sync;
-
-			this.quit;
-		};
 	}
 }
