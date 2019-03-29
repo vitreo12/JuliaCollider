@@ -881,41 +881,44 @@ private:
         for(int i = 0; i < numOutputs(); i++)
             ((jl_array_t*)(outs[i]))->data = (float*)out(i);    
 
-        /* I could perhaps have a "debug" and "perform" mode
-        "debug" will run here, "perform" will just be used when you know the code 
-        is working and is in ready state */
-        /* MOREOVER, with supernova, I would need locks here for debugging code */
-        /* One more thing: for the future, when GC will be performed together with the RT thread,
-        I would probably need a GC lock here too, as I am not sure if JL_TRY/CATCH are safe
-        with GC */
-        JL_TRY {
+        //Perform mode (It's not that much faster, to be honest...)
+        if(debug_or_perform_mode)
             jl_invoke_already_compiled_SC(perform_instance, args, nargs);
-            
-            jl_exception_clear();
-        }
-        JL_CATCH {
-            jl_get_ptls_states()->previous_exception = jl_current_exception();
+        else //Debug mode
+        {
+            /* For supernova, I would need locks here for debugging code */
+            /* One more thing: for the future, when GC will be performed together with the RT thread,
+            I would probably need a GC lock here too, as I am not sure if JL_TRY/CATCH are safe
+            with GC */
+            JL_TRY {
+                jl_invoke_already_compiled_SC(perform_instance, args, nargs);
+                
+                jl_exception_clear();
+            }
+            JL_CATCH {
+                jl_get_ptls_states()->previous_exception = jl_current_exception();
 
-            if(!print_once_exception)
-            {
-                jl_value_t* exception = jl_exception_occurred();
-                jl_value_t* sprint_fun = julia_global_state->get_sprint_fun();
-                jl_value_t* showerror_fun = julia_global_state->get_showerror_fun();
-
-                if(exception)
+                if(!print_once_exception)
                 {
-                    //Can i avoid this jl_call2 somehow???? Maybe I can emulate a fake exception at bootup and store that method pointer?
-                    const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
-                    printf("ERROR: %s\n", returned_exception);
+                    jl_value_t* exception = jl_exception_occurred();
+                    jl_value_t* sprint_fun = julia_global_state->get_sprint_fun();
+                    jl_value_t* showerror_fun = julia_global_state->get_showerror_fun();
+
+                    if(exception)
+                    {
+                        //I should avoid this jl_call2. Could I emulate a fake exception at bootup and store that method pointer to be used here?
+                        const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+                        printf("ERROR: %s\n", returned_exception);
+                    }
+
+                    print_once_exception = true;
                 }
 
-                print_once_exception = true;
+                output_silence(inNumSamples);
+
+                //Clear exception for successive calls into Julia.
+                jl_exception_clear();
             }
-
-            output_silence(inNumSamples);
-
-            //Clear exception for successive calls into Julia.
-            jl_exception_clear();
         }
     }
 

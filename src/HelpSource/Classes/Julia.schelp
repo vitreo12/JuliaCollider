@@ -36,6 +36,29 @@ NUMBEREDLIST::
 METHOD:: kr
 link::Classes/Julia:: currently only supports the .ar method.
 
+METHOD:: runtimeMode
+Change the mode of operation for all link::Classes/Julia:: UGens: either emphasis::"debug":: or emphasis::"perform"::. What this command does is to switch on/off a runtime check on the audio loop for any errors that the precompilation of the link::Classes/JuliaDef:: might have missed. For example, if having multiple "if" branches in your emphasis::JuliaCollider:: code, they might have not been all executed in the compilation, and the variables declared in those branches might contain wrong types, or, generally, mistakes (e.g., returning the wrong values).
+
+note::
+link::Classes/Julia:: starts, by default, with the emphasis::"debug":: mode turned on.
+::
+
+warning::
+This is an experimental feature and is still work in progress.
+::
+
+ARGUMENT:: server
+The link::Classes/Server:: to send the command to.
+ARGUMENT:: new_mode
+A link::Classes/String:: which can either be:
+NUMBEREDLIST::
+##strong::"debug":: : Switch on the check on all link::Classes/Julia:: code.
+##strong::"perform":: : Switch off the check on all link::Classes/Julia:: code.
+warning::
+If you use the strong::"perform":: mode and you haven't properly debugged your code (e.g., you might have some errors in conditions that depend on some UGen input value, or you haven't checked if all the branches of your emphasis::JuliaCollider:: code actually lead to sensible results), the server could crash.
+::
+::
+
 EXAMPLES::
 
 For a more in depth look into the provided examples, see:

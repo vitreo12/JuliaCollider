@@ -551,6 +551,30 @@ Julia : MultiOutUGen {
 		inputs = theInputs;
 		^this.initOutputs(outputs, rate)
 	}
+
+	/* FUTURE FEATURE */
+	*runtimeMode {
+		arg server, new_mode;
+
+		if((server.class == Server).not, {
+			("ERROR: Julia runtimeMode: first argument is not a Server.").postln;
+			^this;
+		});
+
+		if((new_mode.class == String).not, {
+			("ERROR: Julia runtimeMode: second argument is not a String.").postln;
+			^this;
+		});
+
+		if((new_mode != "perform") && (new_mode != "debug"), {
+			("ERROR: Julia runtimeMode: invalid mode.").postln;
+			^this;
+		});
+
+		server = server ?? Server.default;
+
+		server.sendMsg(\cmd, "/julia_set_perform_debug_mode", new_mode);
+	}
 }
 
 + Server {

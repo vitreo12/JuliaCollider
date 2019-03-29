@@ -2109,6 +2109,11 @@ std::atomic<bool>gc_array_needs_emptying{false};
 int gc_array_num = 1000; //Maximum of 1000 concurrent UGens to delete. Should be enough
 jl_value_t** gc_array;
 
+/* Julia mode */
+ //Start with debug mode. This is always set on RT thread, so no need 
+ //for atomic here.
+bool debug_or_perform_mode = false;
+
 /****************************************************************************/
                             /* ASYNC COMMANDS */
 /****************************************************************************/
@@ -2649,7 +2654,18 @@ void JuliaTotalFreeMemory(World *inWorld, void* inUserData, struct sc_msg_iter *
         DoAsynchronousCommand(inWorld, replyAddr, "/jl_total_free_memory", nullptr, (AsyncStageFn)julia_total_free_memory, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
+/* This is executed on RT thread, so no need of checks with performing UGens */
+void JuliaChangeMode(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
+{
+    const char* mode = args->gets();
+    if(strcmp(mode, "perform") == 0)
+        debug_or_perform_mode = true;
+    else
+        debug_or_perform_mode = false;
 
+    printf("MODE: %d\n", debug_or_perform_mode);   
+}
+/*
 inline void test_alloc(AllocPoolSafe* alloc_pool_test, size_t size)
 {
     void* memory = alloc_pool_test->Alloc(size);
@@ -2694,6 +2710,7 @@ void JuliaTestAllocPoolSafe(World *inWorld, void* inUserData, struct sc_msg_iter
     if(jl_is_initialized())
         DoAsynchronousCommand(inWorld, replyAddr, "/jl_test_alloc_pool_safe", nullptr, (AsyncStageFn)julia_test_alloc_pool_safe, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
+*/
 
 inline void DefineJuliaCmds()
 {
@@ -2705,7 +2722,8 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_GC",   (PlugInCmdFunc)JuliaGC, nullptr);
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
     DefinePlugInCmd("/julia_total_free_memory", (PlugInCmdFunc)JuliaTotalFreeMemory, nullptr);
+    DefinePlugInCmd("/julia_set_perform_debug_mode", (PlugInCmdFunc)JuliaChangeMode, nullptr);
 
     /* TEST COMMANDS */
-    DefinePlugInCmd("/julia_test_alloc_pool_safe", (PlugInCmdFunc)JuliaTestAllocPoolSafe, nullptr);
+    //DefinePlugInCmd("/julia_test_alloc_pool_safe", (PlugInCmdFunc)JuliaTestAllocPoolSafe, nullptr);
 }
