@@ -14,9 +14,6 @@
 #include "JuliaAtomicBarrier.h"
 #include "SC_AllocPoolSafe.h"
 
-//MAC: ./build_install_native.sh ~/Desktop/IP/JuliaCollider/vitreo12-julia/julia-native/ ~/SuperCollider ~/Library/Application\ Support/SuperCollider/Extensions
-//LINUX: ./build_install_native.sh ~/Sources/JuliaCollider/vitreo12-julia/julia-native ~/Sources/SuperCollider-3.10.0 ~/.local/share/SuperCollider/Extensions
-
 //for dlopen
 #ifdef __linux__
 #include <dlfcn.h>
@@ -1111,6 +1108,9 @@ class JuliaObjectCompiler
 
             /* PATH */
             julia_object->path.clear();
+
+            /* JULIADEF */
+            julia_object->julia_def = nullptr;
             
             /* MODULE */
             julia_object->evaluated_module = nullptr;
@@ -1138,19 +1138,19 @@ class JuliaObjectCompiler
 
         inline void add_julia_object_to_global_def_id_dict(JuliaObject* julia_object)
         {
-            julia_global->get_global_def_id_dict().add_to_id_dict(julia_object->julia_def);
+            if(julia_object->julia_def)
+                julia_global->get_global_def_id_dict().add_to_id_dict(julia_object->julia_def);
         }
 
         inline void remove_julia_object_from_global_def_id_dict(JuliaObject* julia_object)
         {
-            julia_global->get_global_def_id_dict().remove_from_id_dict(julia_object->julia_def);
+            if(julia_object->julia_def)
+                julia_global->get_global_def_id_dict().remove_from_id_dict(julia_object->julia_def);
         }
 
         inline bool precompile_julia_object(jl_module_t* evaluated_module, JuliaObject* julia_object)
         {
             bool precompile_state = precompile_stages(evaluated_module, julia_object);
-
-            //printf("PRECOMPILE STATE (precompile_julia_object): %i \n", precompile_state);
 
             //if any stage failed, keep nullptrs and memset to zero.
             if(!precompile_state)
@@ -1162,8 +1162,6 @@ class JuliaObjectCompiler
 
             /* REMOVE jl_call() from here--- */
             add_julia_object_to_global_def_id_dict(julia_object);
-            
-            //printf("AFTER ID DICT\n");
 
             /* precompile_state = true */
             julia_object->compiled = precompile_state;
@@ -1174,8 +1172,6 @@ class JuliaObjectCompiler
         inline bool precompile_stages(jl_module_t* evaluated_module, JuliaObject* julia_object)
         {
             bool precompile_state = false;
-            
-            //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
             //object that will be created in perform and passed in destructor and ugen_ref, without creating new ones...
             jl_value_t* ugen_object;
@@ -1186,9 +1182,8 @@ class JuliaObjectCompiler
             jl_value_t* destructor_fun;
             jl_method_instance_t* destructor_instance;
 
-            //printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
-
             //jl_get_ptls_states()->world_age = jl_get_world_counter();
+            
             /* These functions will return false if anything goes wrong. */
             if(precompile_constructor(evaluated_module, &ugen_object, &ins, &ins_float, julia_object))
             {
@@ -1223,7 +1218,6 @@ class JuliaObjectCompiler
             }
             
             //jl_get_ptls_states()->world_age = jl_get_world_counter();
-            //printf("PRECOMPILE STATE (precompile_stages): %i \n", precompile_state);
 
             return precompile_state;
         }
@@ -1281,10 +1275,7 @@ class JuliaObjectCompiler
 
                 //Emulate some sort of (-1 / 1) random float data as Input 
                 for(int y = 0; y < buffer_size; y++)
-                {
                     dummy_ins[i][y] = rand_vals(gen);
-                    printf("%f\n", dummy_ins[i][y]);
-                }
                 
                 ins_1d[i] = (jl_value_t*)jl_ptr_to_array_1d(julia_global->get_vector_float32(), dummy_ins[i], buffer_size, 0);
                 if(!ins_1d[i])
@@ -1645,12 +1636,19 @@ class JuliaObjectCompiler
             delete_index_args[2] = ugen_ref_object[0];
 
             /* COMPILATION */
+            //This will add to global_object_id_dict
             jl_method_instance_t* set_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(set_index_args, set_index_nargs);
-            jl_method_instance_t* delete_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(delete_index_args, delete_index_nargs);
-
-            if(!set_index_ugen_ref_instance || !delete_index_ugen_ref_instance)
+            if(!set_index_ugen_ref_instance)
             {
-                printf("ERROR: Could not compile set_index_ugen_ref_instance or delete_index_ugen_ref_instance\n");
+                printf("ERROR: Could not compile set_index_ugen_ref_instance\n");
+                return false;
+            }
+
+            //This will delete right away what's been just added.
+            jl_method_instance_t* delete_index_ugen_ref_instance = jl_lookup_generic_and_compile_SC(delete_index_args, delete_index_nargs);
+            if(!delete_index_ugen_ref_instance)
+            {
+                printf("ERROR: Could not compile delete_index_ugen_ref_instance\n");
                 return false;
             }
 
@@ -1964,7 +1962,6 @@ class JuliaObjectsArray : public JuliaObjectCompiler, public JuliaAtomicBarrier,
         {
             JuliaObject* this_julia_object = julia_objects_array + unique_id;
             
-            unload_julia_object(this_julia_object);
             if(unload_julia_object(this_julia_object))
                 decrease_active_entries();
         }
@@ -2127,8 +2124,6 @@ IF WANTING A THREAD-SAFE ALLOCATOR, LOOK INTO supernova's simple_pool CLASS
 */
 inline void perform_gc(int full, bool already_has_lock = false)
 {
-    printf("ALREADY HAS LOCK? %d\n", already_has_lock);
-
     if(!already_has_lock)
         julia_gc_barrier->NRTSpinlock();
 
@@ -2150,7 +2145,11 @@ inline void perform_gc(int full, bool already_has_lock = false)
                 delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
                 delete_index_args[2] = this_ugen_ref;
 
-                /* Should I simply run the destructor instead?.. Well, it depends if Data is a mutable struct with finalizer or not. */
+                /* 
+                Should I simply run the destructor instead?
+                Well, it depends if Data is a mutable struct with finalizer or not.
+                If it has finalizer, this method is just fine.
+                */
                 jl_value_t* delete_index_successful = jl_lookup_generic_and_compile_return_value_SC(delete_index_args, delete_index_nargs);
                 if(!delete_index_successful)
                     Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
@@ -2212,7 +2211,8 @@ my third thread.
 */
 void JuliaGC(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
-    DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
+    if(jl_is_initialized())
+        DoAsynchronousCommand(inWorld, replyAddr, "/jl_gc", nullptr, (AsyncStageFn)julia_perform_gc, 0, 0, julia_gc_cleanup, 0, nullptr);
 }
 
 /*
@@ -2225,16 +2225,26 @@ inline void perform_gc_on_NRT_thread(World* inWorld)
     while(perform_gc_thread_run)
     {
         /* This lock is used to schedule things between NRT thread (where compiler operates) and
-        GC thread, which is executed once every certain time (depending on sleep). The interaction between
-        the two should not affect RT thread. */
-        /* It could also be a spinlock here... Depends on the sleep period of the thread */
+        GC thread, which is executed once every certain time (depending on thread sleep). The interaction between
+        the two does not affect the RT audio thread */
+        /* It could also be a spinlock here. Depends on the sleep period of the thread */
         if(julia_compiler_gc_barrier->RTTrylock())
         {
             printf("*** MY THREAD ***\n");
 
             julia_gc_barrier->NRTSpinlock();
 
-            //This won't ever be called together with RT thread...
+            /* 
+            Thanks to the thread-safe allocator, the GC would actually working fine
+            together with the RT thread.
+            Things to watch out: 
+            1 Does GC finalizers work with RT thread?
+            2 Does GC work together with "debug" mode and its JL_TRY/CATCH? Or does it require locks?
+
+            However, this will all be implemented in a future release, together
+            with a better deletion of modules when running JuliaDef.free.
+            */
+
             if(!active_julia_ugens.load())
                 perform_gc(1, true); //already acquired GC lock to check for number of active ugens
 
@@ -2247,8 +2257,6 @@ inline void perform_gc_on_NRT_thread(World* inWorld)
         //and a perform_gc(0) every 30 seconds
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-
-    printf("*** MY THREAD DONE ***\n");
 }
 
 struct JuliaBootArgs
@@ -2665,51 +2673,13 @@ void JuliaChangeMode(World *inWorld, void* inUserData, struct sc_msg_iter *args,
 
     printf("MODE: %d\n", debug_or_perform_mode);   
 }
+
 /*
-inline void test_alloc(AllocPoolSafe* alloc_pool_test, size_t size)
-{
-    void* memory = alloc_pool_test->Alloc(size);
-    void* more_memory = alloc_pool_test->Realloc(memory, size * 2);
-    alloc_pool_test->Free(more_memory);
-}
-
-inline bool julia_test_alloc_pool_safe(World* world, void* cmd)
-{
-    size_t size = 1024000;
-    AllocPoolSafe* alloc_pool_test = new AllocPoolSafe(malloc, free, size, 0);
-
-    std::thread thread1 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread2 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread3 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread4 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread5 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread6 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread7 = std::thread(test_alloc, alloc_pool_test, 1000);
-    std::thread thread8 = std::thread(test_alloc, alloc_pool_test, 1000);
-
-    thread1.join();
-    thread2.join();
-    thread3.join();
-    thread4.join();
-    thread5.join();
-    thread6.join();
-    thread7.join();
-    thread8.join();
-
-    //Check if all memory was succesfully freed
-    printf("MEMORY: %zu\n", alloc_pool_test->TotalFree());
-    printf("BARRIER: %d\n", alloc_pool_test->get_barrier_value());
-
-    delete alloc_pool_test;
-
-    return true;
-}
-
-void JuliaTestAllocPoolSafe(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
-{
-    if(jl_is_initialized())
-        DoAsynchronousCommand(inWorld, replyAddr, "/jl_test_alloc_pool_safe", nullptr, (AsyncStageFn)julia_test_alloc_pool_safe, 0, 0, julia_gc_cleanup, 0, nullptr);
-}
+NOTES:
+1) The module deletion problem could simply be solved with an improved allocation pool that, when surpassed the size
+   would just allocate a new chunk. This way, Julia would operate normally (and would delete old modules
+   after long periods of time. If allocation pool allows it, it's all good). Moreover, what should be optimized
+   is the actual memory footprint of each module and its precompilation process: some of the things could be simplified
 */
 
 inline void DefineJuliaCmds()
@@ -2723,7 +2693,4 @@ inline void DefineJuliaCmds()
     DefinePlugInCmd("/julia_query_id_dicts",   (PlugInCmdFunc)JuliaQueryIdDicts, nullptr);
     DefinePlugInCmd("/julia_total_free_memory", (PlugInCmdFunc)JuliaTotalFreeMemory, nullptr);
     DefinePlugInCmd("/julia_set_perform_debug_mode", (PlugInCmdFunc)JuliaChangeMode, nullptr);
-
-    /* TEST COMMANDS */
-    //DefinePlugInCmd("/julia_test_alloc_pool_safe", (PlugInCmdFunc)JuliaTestAllocPoolSafe, nullptr);
 }
