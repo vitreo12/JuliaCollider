@@ -539,7 +539,7 @@ Julia : MultiOutUGen {
 
 	*kr {^this.shouldNotImplement(thisMethod)}
 
-	init{ arg ... theInputs;
+	init { arg ... theInputs;
 		var outputs = 0;
 		/* At this stage, 'audio' as already been removed as first element in array and
 		assigned to class variable "rate". Now "outputs" is first element.
@@ -550,6 +550,42 @@ Julia : MultiOutUGen {
 		will have the server_id as first input, then UGens. */
 		inputs = theInputs;
 		^this.initOutputs(outputs, rate)
+	}
+
+	*boot {
+		arg server, pool_size = 131072;
+
+		if((server.class == Server).not, {
+			("ERROR: Julia: first argument is not a Server.").postln;
+			^this;
+		});
+
+		if(pool_size < 131072, {
+			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
+			pool_size = 131072;
+		});
+
+		//Can't reset it here. I might have multiple server setup...
+		//JuliaDef.initClass;
+
+		Routine.run {
+			server.sendMsg(\cmd, "/julia_boot", pool_size);
+
+			server.sync;
+		};
+	}
+
+	*bootWithServer {
+		arg server, pool_size = 131072;
+
+		if((server.class == Server).not, {
+			("ERROR: Julia: first argument is not a Server.").postln;
+			^this;
+		});
+
+		server.waitForBoot({
+			this.boot(server, pool_size);
+		});
 	}
 
 	/* FUTURE FEATURE */
@@ -574,35 +610,5 @@ Julia : MultiOutUGen {
 		server = server ?? Server.default;
 
 		server.sendMsg(\cmd, "/julia_set_perform_debug_mode", new_mode);
-	}
-}
-
-+ Server {
-
-	bootJulia {
-		arg pool_size = 131072;
-
-		if(pool_size < 131072, {
-			"WARNING: Julia: minimum memory size is 131072. Using 131072.".postln;
-			pool_size = 131072;
-		});
-
-		//Can't reset it here. I might have multiple server setup...
-		//JuliaDef.initClass;
-
-		Routine.run {
-			//pool_size.postln;
-			this.sendMsg(\cmd, "/julia_boot", pool_size);
-
-			this.sync;
-		};
-	}
-
-	bootWithJulia {
-		arg pool_size = 131072;
-
-		this.waitForBoot({
-			this.bootJulia(pool_size);
-		});
 	}
 }

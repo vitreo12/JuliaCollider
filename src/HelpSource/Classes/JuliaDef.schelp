@@ -6,10 +6,10 @@ RELATED:: Classes/Julia, Overviews/JuliaCollider
 DESCRIPTION::
 A link::Classes/JuliaDef:: is the sclang representation of a compiled emphasis::JuliaCollider:: strong::@object:: on the server. Together with link::Classes/Julia::, it is the basic building block of the emphasis::JuliaCollider:: system on SuperCollider side.
 
-First of all, any calls into emphasis::Julia:: need to happen after that emphasis::JuliaCollider:: has been booted. To do so, simply run the strong::bootJulia:: or strong::bootWithJulia:: function on the link::Classes/Server:: you want to boot emphasis::JuliaCollider:: on.
+First of all, any calls into emphasis::Julia:: need to happen after that emphasis::JuliaCollider:: has been booted. To do so, simply run the strong::boot:: or strong::bootWithServer:: methods of the link::Classes/Julia:: class:
 
 code::
-s.bootWithJulia;
+Julia.bootWithServer(s);
 ::
 
 Once emphasis::Julia:: is correctly booted, it is now possible to declare a new link::Classes/JuliaDef:: for that server. Its interface works very similarly to how the link::Classes/Buffer:: class works. To create a new JuliaDef, two arguments are needed: the server and a string path to the Julia file to load on the server. When a valid link::Classes/JuliaDef:: is created, an asynchronous command will build the relative Julia file on the server, making it ready to be used in the link::Classes/Julia:: UGen.
@@ -129,7 +129,7 @@ NUMBEREDLIST::
 
 code::
 //Boot server and Julia
-s.bootWithJulia;
+Julia.bootWithServer(s);
 
 //Compile the AnalogDelay.jl example
 d = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl");

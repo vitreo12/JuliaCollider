@@ -10,6 +10,20 @@ For more informations on the interaction between the link::Classes/Julia:: UGen 
 
 CLASSMETHODS::
 
+METHOD:: boot
+Boot emphasis::JuliaCollider:: on the specified link::Classes/Server::.
+ARGUMENT:: server
+The link::Classes/Server:: to boot emphasis::JuliaCollider:: on.
+ARGUMENT:: pool_size
+The size of the memory for emphasis::JuliaCollider::'s real-time allocator. Minimum (and default) is 131072 Kb.
+
+METHOD:: bootWithServer
+Boot emphasis::JuliaCollider:: together with the specified server.
+ARGUMENT:: server
+The link::Classes/Server:: to boot emphasis::JuliaCollider:: on.
+ARGUMENT:: pool_size
+The size of the memory for emphasis::JuliaCollider::'s real-time allocator. Minimum (and default) is 131072 Kb.
+
 METHOD:: ar
 
 warning::
@@ -69,7 +83,7 @@ NUMBEREDLIST::
 
 code::
 //Boot server and Julia
-s.bootWithJulia;
+Julia.bootWithServer(s);
 
 //Compile "Saw.jl" example (an anti-aliased sawtooth oscillator)
 k = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");

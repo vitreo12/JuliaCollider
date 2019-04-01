@@ -6,25 +6,29 @@ related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
 JuliaCollider is a basic Domain Specific Language (DSL) written in strong::C++::, strong::Julia:: and strong::sclang::, which allows to quickly prototype audio code in the SuperCollider coding environment. It provides both a strong::Julia:: and strong::sclang:: APIs which will be thoroughly be looked at in this series of tutorials.
 
 section:: Booting (and quitting) JuliaCollider
-JuliaCollider does not boot automatically with the SuperCollider server, but can be initialized at anytime with the strong::bootJulia:: link::Classes/Server:: method. Alternatively, one could use the strong::bootWithJulia:: link::Classes/Server:: method to run Julia's initialization together with the boot of the server. It is worth noting that JuliaCollider uses its own real-time allocator, and it is possible to change its size with an argument to either of the boot commands (default = 131072 Kb).
+JuliaCollider does not boot automatically with the SuperCollider server, but can be initialized at anytime with the strong::boot:: link::Classes/Julia:: method. Alternatively, one could use the strong::bootWithServer:: link::Classes/Julia:: method to run Julia's initialization together with the boot of the server. Both functions take two arguments:
+NUMBEREDLIST::
+## The link::Classes/Server:: to boot emphasis::JuliaCollider:: on.
+## An optional number setting the memory size for emphasis::JuliaCollider::'s own real-time allocator. (strong::default:: = 131072 Kb)
+::
 
 code::
 (
 s.waitForBoot{
-	s.bootJulia;
+	Julia.boot(s);
 };
 )
 
-//Equivalent to:
+/* Equivalent to: */
 
-s.bootWithJulia;
+Julia.bootWithServer(s);
 ::
 
 section:: The JuliaDef class
 The link::Classes/JuliaDef:: class is the client side representation of a compiled Julia file on the server. Its interface works very similarly to how the link::Classes/Buffer:: class works. To create a new JuliaDef, two arguments are needed: the server and a string path to the Julia file to load on the server. When a valid link::Classes/JuliaDef:: is created, an asynchronous command will build the relative Julia file on the server, making it ready to be used in the link::Classes/Julia:: UGen.
 
 code::
-s.bootWithJulia;
+Julia.bootWithServer(s);
 p = Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl";
 j = JuliaDef(s, p); //Note: the server (and Julia) needs to be booted
 ::
