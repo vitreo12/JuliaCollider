@@ -2471,20 +2471,21 @@ bool julia_get_julia_objects_list(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
     {
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /* DO I REQUIRE LOCKS HERE???? */
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
+        /* SHOULD THESE LOCKS BE REMOVED? They are mainly needed to make sure
+        that the julia_object won't get deleted as it's getting retrieved... */
+        
+        julia_compiler_barrier->NRTSpinlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->NRTSpinlock();
 
         JuliaReply* julia_reply = (JuliaReply*)cmd;
         julia_objects_array->get_julia_objects_list(julia_reply);
+
+        julia_compiler_barrier->Unlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->Unlock();
     }
 
     return true;
@@ -2525,20 +2526,21 @@ bool julia_get_julia_object_by_name(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
     {
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /* DO I REQUIRE LOCKS HERE???? */
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
-        /*******************************/
+        /* SHOULD THESE LOCKS BE REMOVED? They are mainly needed to make sure
+        that the julia_object won't get deleted as it's getting retrieved... */
+
+        julia_compiler_barrier->NRTSpinlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->NRTSpinlock();
         
         JuliaReplyWithLoadPath* julia_reply = (JuliaReplyWithLoadPath*)cmd;
         julia_objects_array->get_julia_object_by_name(julia_reply);
+
+        julia_compiler_barrier->Unlock();
+
+        //GC interaction from spawned thread
+        julia_compiler_gc_barrier->Unlock();
     }
 
     return true;
