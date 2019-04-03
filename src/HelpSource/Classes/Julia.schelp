@@ -85,11 +85,13 @@ code::
 //Boot server and Julia
 Julia.bootWithServer(s);
 
+(
 //Compile "Saw.jl" example (an anti-aliased sawtooth oscillator)
 k = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");
 
 //Compile "SVF.jl" example
 f = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SVF.jl");
+)
 
 //Compile a SynthDef with the the two JuliaDefs compiled in the Julia.ar() first inputs
 (
