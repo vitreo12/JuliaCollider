@@ -5,7 +5,8 @@
 #include "SC_AllocPoolSafe.h"
 #include <string>
 
-#define JC_VER 0.1
+#define JC_VER_MAJ 0
+#define JC_VER_MIN 1
 
 /************************/
 /* JuliaGlobalUtilities */

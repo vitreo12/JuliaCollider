@@ -417,6 +417,7 @@ void JuliaGlobalState::boot_julia()
                 return;
             }
 
+            /* Thid id dict should be removed */
             bool initialized_global_gc_id_dict = global_gc_id_dict.initialize_id_dict("__JuliaGlobalGCIdDict__");
             if(!initialized_global_gc_id_dict)
             {
@@ -430,12 +431,12 @@ void JuliaGlobalState::boot_julia()
             //between their world age minimum and maximum.
             jl_get_ptls_states()->world_age = jl_get_world_counter();
 
-            printf("**************************\n");
-            printf("**************************\n");
-            printf("*** JuliaCollider %s ***\n", JC_VER);
-            printf("*** Julia %s booted ***\n", jl_ver_string());
-            printf("**************************\n");
-            printf("**************************\n");
+            printf("****************************\n");
+            printf("****************************\n");
+            printf("**** JuliaCollider  %d.%d ****\n", JC_VER_MAJ, JC_VER_MIN);
+            printf("**** Julia %s booted ****\n", jl_ver_string());
+            printf("****************************\n");
+            printf("****************************\n");
             
             initialized = true;
         }
