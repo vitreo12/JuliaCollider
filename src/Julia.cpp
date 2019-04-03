@@ -1,4 +1,5 @@
-#include "JuliaFuncs.hpp"
+//Global variables are included in JuliaAsyncCmds.hpp anyway
+#include "JuliaAsyncCmds.hpp"
 
 struct Julia : public SCUnit 
 {
@@ -7,7 +8,6 @@ public:
     {   
         //It should have a more refined mechanism, linked to actual constructors and destructors of Julia code.
         active_julia_ugens++;
-        //
 
         if(!julia_global_state->is_initialized())
         {
@@ -941,7 +941,7 @@ PluginLoad(JuliaUGens)
     DefineJuliaCmds();
 }
 
-/* Register an unload function on the server */
+/* Register an unload function on server quit */
 C_LINKAGE SC_API_EXPORT void unload(InterfaceTable *inTable)
 {
     julia_quit();

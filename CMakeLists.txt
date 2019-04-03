@@ -101,7 +101,7 @@ if(MINGW)
 endif()
 
 #Julia.scx/.so. Building it from Julia.cpp and all other .cpp files
-add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolSafe.cpp" "src/JuliaAtomicBarrier.cpp" "src/SCBuffer.cpp")
+add_library(${PROJECT} MODULE "src/${FILENAME}" "src/GlobalVariables.cpp" "src/JuliaAtomicBarrier.cpp" "src/JuliaGlobalIdDict.cpp" "src/JuliaGlobalState.cpp" "src/JuliaObjectCompiler.cpp" "src/JuliaObjectsArray.cpp" "src/JuliaReplyCmds.cpp" "src/SC_AllocPoolSafe.cpp" "src/SCBuffer.cpp")
 
 #JULIA LINKER FLAGS.
 #-L'${JULIA_BUILD_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.

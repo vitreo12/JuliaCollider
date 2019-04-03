@@ -2,8 +2,7 @@
 
 #pragma once
 
-/* SHOULD I RE-IMPLEMENT THIS BARRIER WITH std::atomic_flag INSTEAD OF std::atomic<bool>??? 
-IT MIGHT BE FASTER!!!!!!!!! */
+/* SHOULD I RE-IMPLEMENT THIS BARRIER WITH std::atomic_flag INSTEAD OF std::atomic<bool>??? */
 
 class AtomicBarrier
 {
@@ -38,5 +37,5 @@ class JuliaAtomicBarrier : public AtomicBarrier
         /* Used in RT thread. Returns true if compare_exchange_strong succesfully exchange the value. False otherwise. */
         bool RTTrylock();
 
-        /* inline void Unlock(); */
+        /* void Unlock(); */
 };
