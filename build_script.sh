@@ -1,5 +1,28 @@
 #!/bin/bash
 
+#Check if user is looking for help
+if [ "$1" == "-h" ]; then
+  echo "******************************************************************"
+  echo 
+  echo " First argument is the number of cores to build Julia with."
+  echo " Second argument is your SuperCollider Platform.userExtensionDir."
+  echo " e.g. ./build_script.sh 8 ~/Library/Application\ Support/SuperCollider/Extensions "
+  echo
+  echo "******************************************************************"
+  exit 1
+fi
+
+if [ "$1" == "--help" ]; then
+  echo "******************************************************************"
+  echo 
+  echo " First argument is the number of cores to build Julia with."
+  echo " Second argument is your SuperCollider Platform.userExtensionDir."
+  echo " e.g. ./build_script.sh 8 ~/Library/Application\ Support/SuperCollider/Extensions "
+  echo
+  echo "******************************************************************"
+  exit 1
+fi
+
 #If any command fails, exit
 set -e
 
@@ -31,7 +54,7 @@ if [ ! -d "$SC_EXTENSIONS_PATH" ]; then
     echo "*** ERROR *** '$SC_EXTENSIONS_PATH' is not a valid folder"
     exit 1
 fi
-echo "SuperCollider Extensions folder path : $SC_EXTENSIONS_PATH"
+#echo "SuperCollider Extensions folder path : $SC_EXTENSIONS_PATH"
 
 #First, build julia.
 #MAYBE CAN SET THE -MARCH and -JULIA_CPU_TARGET flags here when it's building instead of Make.user??
