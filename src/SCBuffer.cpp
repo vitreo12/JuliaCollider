@@ -14,7 +14,7 @@ extern "C"
 {
     __attribute__((visibility("default"))) void* jl_get_buf_shared_SC(void* buffer_SCWorld, float fbufnum)
     {
-        printf("*** NEW BUFFER!!! ***\n");
+        //printf("*** NEW BUFFER!!! ***\n");
         World* SCWorld = (World*)buffer_SCWorld;
 
         uint32 bufnum = (int)fbufnum; 
