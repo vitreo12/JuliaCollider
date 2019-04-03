@@ -54,6 +54,8 @@ NUMBEREDLIST::
 ##strong::length:: : Returns the length of the emphasis::Buffer::.
 ##strong::nchans:: : Returns the number of channels of the emphasis::Buffer::.
 ##strong::size:: : Returns the total allocated size of the emphasis::Buffer:: (length * nchans).
+##strong::samplerate:: : Returns the sampling rate of the emphasis::Buffer::.
+##strong::sampledur:: : Returns the sample duration (1 / samplerate) of the emphasis::Buffer::.
 ::
 
 strong::PREVIOUS:: : link::Tutorials/JC_06_Data::

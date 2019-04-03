@@ -18,6 +18,12 @@ SC_PATH=$DIR/deps/supercollider
 #Unpack arguments
 CORES=$1                                   #first argument, number of cores to build julia
 
+re='^[0-9]+$'
+if ! [[ $CORES =~ $re ]] ; then
+   echo "*** ERROR ***: First argument is not a number" >&2
+   exit 1
+fi
+
 SC_EXTENSIONS_PATH="${2/#\~/$HOME}"        #second argument, the extensions path for SC. (expand tilde)
 SC_EXTENSIONS_PATH=${SC_EXTENSIONS_PATH%/} #remove trailing slash, if there is one
 
