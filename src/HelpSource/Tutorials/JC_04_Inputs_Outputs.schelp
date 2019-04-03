@@ -1,0 +1,18 @@
+title:: JuliaCollider 04: The @inputs and @outputs macros
+summary:: Analysis and usage of the @inputs and @outputs macros
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+The strong::@inputs:: and strong::@outputs:: macros define the number of inputs and outputs for the current strong::@object::.
+
+image::inputs_outputs.png::
+
+The macro can take an additional tuple argument to describe what each input/output does:
+
+image::inputs_outputs_args.png::
+
+On SuperCollider side, the number of inputs and outputs will be needed for the link::Classes/Julia:: UGen to correctly setup input and output buffers. This is one of the reasons why, currently, link::Classes/JuliaDef::(s) must be known at link::Classes/SynthDef:: definition time.
+
+strong::PREVIOUS:: : link::Tutorials/JC_03_JuliaCollider_Syntax::
+
+strong::NEXT:: : link::Tutorials/JC_05_Constructor_Perform::

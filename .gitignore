@@ -3,3 +3,9 @@ build/
 *.code-workspace
 
 \.vscode/
+
+.DS_STORE
+
+src/.DS_STORE
+
+JuliaTest-no-threads.sc

@@ -1,0 +1,169 @@
+CLASS:: JuliaDef
+SUMMARY:: Links a Julia compiled @object from the server to sclang
+CATEGORIES:: JuliaCollider>Classes
+RELATED:: Classes/Julia, Overviews/JuliaCollider
+
+DESCRIPTION::
+A link::Classes/JuliaDef:: is the sclang representation of a compiled emphasis::JuliaCollider:: strong::@object:: on the server. Together with link::Classes/Julia::, it is the basic building block of the emphasis::JuliaCollider:: system on SuperCollider side.
+
+First of all, any calls into emphasis::Julia:: need to happen after that emphasis::JuliaCollider:: has been booted. To do so, simply run the strong::boot:: or strong::bootWithServer:: methods of the link::Classes/Julia:: class:
+
+code::
+Julia.bootWithServer(s);
+::
+
+Once emphasis::Julia:: is correctly booted, it is now possible to declare a new link::Classes/JuliaDef:: for that server. Its interface works very similarly to how the link::Classes/Buffer:: class works. To create a new JuliaDef, two arguments are needed: the server and a string path to the Julia file to load on the server. When a valid link::Classes/JuliaDef:: is created, an asynchronous command will build the relative Julia file on the server, making it ready to be used in the link::Classes/Julia:: UGen.
+
+code::
+p = Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl";
+j = JuliaDef(s, p); //Note: the server (and Julia) needs to be booted
+::
+
+Once a link::Classes/JuliaDef:: is compiled, it is now possible to use it in a link::Classes/Julia:: UGen.
+
+code::
+//Play the j JuliaDef.
+{Julia.ar(j, DC.ar(440))}.play;
+::
+
+Since a link::Classes/JuliaDef:: is just a client side view on a Julia compiled file on the server, two link::Classes/JuliaDef::s pointing at the same source code are, effectively, the same. Recompiling one, will result in the effects of the recompilation to be viewed on all the homonyms aswell.
+
+code::
+h = JuliaDef(s, p); //It will trigger recompilation on the same path of the "j" variable
+
+//If changing the source code and recompiling "h", effects will also be viewed on "j": they are the same
+h.recompile;
+::
+
+warning::
+On a multiple clients / single server setups, recompiling a link::Classes/JuliaDef:: will only reflect its changes on the scope of the single client. While the code on the server will strong::always:: get updated by any call by any client, the clients that did not make a specific call might still be using older defined link::Classes/JuliaDef::s, which, perhaps, might contain wrong informations on inputs/outputs counting. In such cases, use the strong::update:: method to get the latest link::Classes/JuliaDef:: from the server.
+::
+
+note::
+An emphasis::autowatch:: feature will be added, in order to automatically recompile link::Classes/JuliaDef::s.
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+Declare a new link::Classes/JuliaDef:: and triggers the compilation of the file it points at on the server.
+
+ARGUMENT:: server
+The link::Classes/Server:: to compile the file on.
+
+ARGUMENT:: path
+A link::Classes/String:: path of the location of the emphasis::JuliaCollider:: script to compile.
+
+returns:: Once the compilation is finished, it will return an asynchronous query to state of the compiled object.
+
+METHOD:: retrieve
+Retrieve an already compiled emphasis::JuliaCollider:: strong::@object:: file on the server and returns a new link::Classes/JuliaDef::.
+
+ARGUMENT:: server
+The link::Classes/Server:: to look for the compiled file on.
+
+ARGUMENT:: obj_name
+A link::Classes/Symbol:: with the name of the compiled emphasis::JuliaCollider:: strong::@object:: on the server
+
+returns:: a link::Classes/JuliaDef::.
+
+METHOD:: getCompiledJuliaDefs
+Get a link::Classes/List:: of all the compiled emphasis::JuliaCollider:: strong::@object:: on the server.
+
+ARGUMENT:: server
+The link::Classes/Server:: to query.
+
+returns:: Once the check on the server is finished, it will return, asynchronously, a link::Classes/List:: of link::Classes/Symbol::s with all the compiled emphasis::JuliaCollider:: strong::@object:: on the server.
+
+private::getJuliaDef
+
+INSTANCEMETHODS::
+
+METHOD:: edit
+Opens the file that the link::Classes/JuliaDef:: is pointing at with your default program for emphasis::Julia:: ".jl" extension files
+
+returns:: nil
+
+METHOD:: recompile
+Triggers the recompilation of the link::Classes/JuliaDef::.
+
+returns:: Once the compilation is finished, it will return an asynchronous query to state of the compiled object.
+
+METHOD:: free
+Unloads the emphasis::JuliaCollider:: strong::@object:: from the server that the link::Classes/JuliaDef:: was compiled on.
+
+returns:: nil
+
+METHOD:: query
+Queries the state of the link::Classes/JuliaDef:: and prints it on the console.
+
+returns:: nil
+
+METHOD:: update
+Query the server for the latest informations on inputs/outputs of the compiled emphasis::JuliaCollider:: strong::@object::. It is mostly used in multi-clients / single server setups, where link::Classes/JuliaDef:: will not be updated cross-client.
+
+returns:: nil
+
+private::compiled
+private::freeJuliaDef
+private::getCompiledJuliaDef
+private::input_names
+private::inputs
+private::name
+private::newJuliaDef
+private::output_names
+private::outputs
+private::precompile
+private::server_id
+private::srvr
+private::file_path
+
+
+EXAMPLES::
+
+For a more in depth look into the provided examples, see:
+NUMBEREDLIST::
+##link::Tutorials/JC_09_Examples_1::
+##link::Tutorials/JC_10_Examples_2::
+::
+
+code::
+//Boot server and Julia
+Julia.bootWithServer(s);
+
+//Compile the AnalogDelay.jl example
+d = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl");
+
+//Compile a SynthDef with the JuliaDef "d" as first argument to Julia.ar
+(
+SynthDef(\JuliaAnalogDelay, {
+	var noise, delay;
+
+	//Simple percussive noise
+	noise = PinkNoise.ar(EnvGen.kr(Env.perc, Impulse.kr(1)));
+
+	//First input  = JuliaDef
+	//Second input = audio signal
+	//Third input  = max delay length
+	//Fourth input = delay time
+	//Fifth input  = feedback
+	//Sixth input  = damping
+	delay = Julia.ar(d, noise, DC.ar(1.0), DC.ar(0.2), DC.ar(0.9), DC.ar(0.8));
+
+	Out.ar([0, 1], delay);
+}).send(s)
+)
+
+//Play the SynthDef
+Synth(\JuliaAnalogDelay);
+
+//Open the source code
+d.edit;
+
+//If changing the source code, recompile it to hear the effects.
+d.recompile;
+
+//Free the JuliaDef if needed.
+d.free;
+
+::

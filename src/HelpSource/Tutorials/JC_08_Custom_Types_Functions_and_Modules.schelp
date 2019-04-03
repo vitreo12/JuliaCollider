@@ -1,0 +1,41 @@
+title:: JuliaCollider 08: Using custom Types, Functions and Modules
+summary:: How to use custom Types, Functions and Modules
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+section::Custom Types
+In emphasis::JuliaCollider::, it is possible to use custom emphasis::Julia:: types ("emphasis::mutable struct::" or "emphasis::struct::") at any stage of the code. They should just be declared before their use. It is important to note that, however, it is strong::strongly:: suggested to always have a fully typed system (as also previously shown in link::Tutorials/JC_06_Data:: and link::Tutorials/JC_07_Buffer::), where the parser and compiler will not have to guess the type of a variable.
+
+This is bad emphasis::JuliaCollider:: code:
+
+image::unsure_type.png::
+
+This is good emphasis::JuliaCollider:: code:
+
+image::sure_type.png::
+
+section::Custom Functions
+In emphasis::JuliaCollider::, it is possible to use custom emphasis::Julia:: functions at any stage of the code. It is strong::highly:: recommended that your own functions are typed, in order to generate performant code. Moreover, remember that most emphasis::JuliaCollider:: errors that you will encounter will be of type conversion.
+
+Two simple examples of a linear interpolation and cubic interpolation functions that would work for any type of Float value, would look like so:
+
+image::interpolation.png::
+
+Note that, while each of the arguments can be any kind of emphasis::AbstractFloat:: subtype, the return value of both of them, in this case, is a emphasis::Float32::.
+
+section::Custom Modules
+In emphasis::JuliaCollider::, it is possible to use custom emphasis::Julia:: modules to wrap certain functionalities of your code. Modules must be declared outside of the strong::@object:: body, and they can be used as any other module by simply importing them in the body of the strong::@object::. Consider a simple module like so, stored in a file called "MyModule.jl" in the same folder as the emphasis::JuliaCollider:: file you want to import it in:
+
+image::mymodule.png::
+
+To use the emphasis::MyModule:: in our strong::@object::, then, simply include the file where it is declared and run the "emphasis::using / import::" emphasis::Julia:: commands, depending on how the module was declared.
+
+image::using_mymodule.png::
+
+note::
+To use the emphasis::Data:: and emphasis::Buffer:: types in your own modules, simply import them by "emphasis::using JuliaCollider.SCData::" or "emphasis::using JuliaCollider.SCBuffer::" in your module body.
+::
+
+strong::PREVIOUS:: : link::Tutorials/JC_07_Buffer::
+
+strong::NEXT:: : link::Tutorials/JC_09_Examples_1::

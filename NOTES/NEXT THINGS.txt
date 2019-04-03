@@ -1,0 +1,21 @@
+TEST multi channel Data/Buffer.
+
+1) Finish JuliaDef SC interface (autowatch, precompile into sysimg, etc...)
+
+2) More reliable way of deleting old modules when recompiling
+
+3) Implement a @debug macro for places where often the precompilation won't go.
+   (for example, inner loops and conditions will escape variable checking)
+   Maybe I could just precompile for a longer buffer?
+
+4) Implement a Signal DataType, which will work for both Float32 and Float64
+
+5) Implement input_names and output_names in JuliaDef
+
+6) Implement JuliaDefProxy
+
+7) Implement the Done action
+
+8) Make @out(i) / @in(i) working
+
+9) Revert SC_Julia.cpp to SC_Julia.c

@@ -1,0 +1,257 @@
+                    *******************************************
+                    ************* JULIA_THREADS=0 *************
+                    *******************************************
+
+- Why do I need to build Julia with Multithreading disabled? 
+  (Also check: https://discourse.julialang.org/t/c-embedding-interface-called-from-multiple-threads/18609)
+  Because, otherwise, Julia will have a thread local storage that is just Julia accessible from the thread where Julia is initialised.
+  If trying to access Julia from another C thread that Julia isn't aware of, there will be given a jl_enter_handler error.
+  It turns out that Julia tries to access information from the thread local storage. With the audio real-time thread unknown to Julia, 
+  it does not find an associate local storage in the audio thread and then walks right into accessing uninitialised memory.
+  By building with threading disabled, though, there is just one TLS and accessible (if made thread safe) from any C thread. 
+  Any calls into Julia will not look into the TLS from that specific thread (which would be undefined), but it will just look for the 
+  global TLS, thus made accessible by any C thread. (look at tls.h)
+
+OTHER SOLUTIONS WORTH LOOKING INTO:
+1) It's possible to call uv_async_send from any thread in C and receive it via AsyncCondition in Julia:
+   https://docs.julialang.org/en/v1.1-dev/manual/calling-c-and-fortran-code/#Thread-safety-1 
+   This handles audio thread-to-Julia part but I would still need to code up Julia-to-audio thread communication.
+
+2) Find a way to initialize a thread local storage (TLS) on the audio thread and make it accessible. 
+   Probably not worth it since it can go wrong in many ways with possible problems when calling into the GC etc...
+
+3) Find a way to link every call into a TLS from the audio thread to the TLS in the thread where Julia was initialised.
+
+4) See how things will work with PARTR when it will be merged (https://github.com/JuliaLang/julia/pull/22631). 
+
+
+                    *******************************************
+                    **************** GC ISSUES ****************
+                    *******************************************
+
+- When turning GC back on in NRT thread, the RT thread could call into it when creating a new object.
+
+gc.c:
+/**
+ * Note about GC synchronization:
+ *
+ * When entering `jl_gc_collect()`, `jl_gc_running` is atomically changed from
+ * `0` to `1` to make sure that only one thread can be running the GC. Other
+ * threads that enters `jl_gc_collect()` at the same time (or later calling
+ * from unmanaged code) will wait in `jl_gc_collect()` until the GC is finished.
+ *
+ * Before starting the mark phase the GC thread calls `jl_safepoint_gc_start()`
+ * and `jl_gc_wait_for_the_world()`
+ * to make sure all the thread are in a safe state for the GC. The function
+ * activates the safepoint and wait for all the threads to get ready for the
+ * GC (`gc_state != 0`). It also acquires the `finalizers` lock so that no
+ * other thread will access them when the GC is running.
+ *
+ * During the mark and sweep phase of the GC, the threads that are not running
+ * the GC should either be running unmanaged code (or code section that does
+ * not have a GC critical region mainly including storing to the stack or
+ * another object) or paused at a safepoint and wait for the GC to finish.
+ * If a thread want to switch from running unmanaged code to running managed
+ * code, it has to perform a GC safepoint check after setting the `gc_state`
+ * flag (see `jl_gc_state_save_and_set()`. it is possible that the thread might
+ * have `gc_state == 0` in the middle of the GC transition back before entering
+ * the safepoint. This is fine since the thread won't be executing any GC
+ * critical region during that time).
+ *
+ * The finalizers are run after the GC finishes in normal mode (the `gc_state`
+ * when `jl_gc_collect` is called) with `jl_in_finalizer = 1`. (TODO:) When we
+ * have proper support of GC transition in codegen, we should execute the
+ * finalizers in unmanaged (GC safe) mode.
+ **/
+
+Way to fix it:
+Only ever create objects when the GC is disabled. Also, while in the middle of creating objects,
+make sure that the GC cannot be turned back on. I need this two way check from the GC and the objects.
+The priority must be the objects, as I can still collect the GC at a later stage. The GC collections, also,
+most of the time will be of very small data, while the call is very expensive. Need to think of a way of 
+only collecting when it is actually purposeful to do so.
+
+Things to check in Julia source : jl_gc_safe_enter, jl_gc_unsafe_enter, JL_LOCK, etc...
+
+NRT THREAD                      RT THREAD
+jl_gc_enable(1);
+                                 
+//now gc is turned on....                 
+                                jl_call...... (creating an object might trigger a jl_gc_collect call on rt thread)
+jl_gc_collect(1);
+
+
+SOLUTIONS:
+1) Could just keep gc disabled at all times, since Julia will reuse the memory once a variable has been
+   set to jl_nothing
+
+2) ??? Preallocate a big vector, set it to nothing, and see if julia will reuse that memory ???
+
+                    *******************************************
+                    *********** PRINT ON SC CONSOLE ***********
+                    *******************************************
+
+- Need to collect errors when including a file, parsing it and precompiling it and posting them on the SC console.
+
+SOLUTIONS: 
+1) Using JL_TRY and JL_CATCH in cojunction with sprint and showerror to print the exceptions on console:
+   e.g:
+    JL_TRY
+    {
+        //faulty bit of code...
+        jl_eval_string("a = sqrrrt(2)");
+    }
+    JL_CATCH
+    {
+        jl_value_t* exception = jl_exception_occurred();
+        jl_value_t* sprint_fun = jl_get_function(jl_base_module, "sprint");
+        jl_value_t* showerror_fun = jl_get_function(jl_base_module, "showerror");
+
+        if(exception)
+        {
+            const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
+            printf("ERROR: %s\n", returned_exception);
+        }
+    }
+
+
+                    *******************************************
+                    ********** AUTOWATCH JULIA FILES **********
+                    *******************************************
+
+- Introduce an autowatch feature for Julia files being modified so that users don't have to "JuliaLang.add()" everytime.
+
+                    *******************************************
+                    ************ VARIABLE ARGUMENTS ***********
+                    *******************************************
+
+- How to have multiple arguments within the same Julia UGen? Also, how do I let SC know that an included Julia file can only 
+  take a set amount of inputs and outputs?? How can I evaluate that when I add the SynthDef to the server????
+
+SOLUTIONS:
+1) Dispatching the created object to different SC classes that handle different arguments to Julia, up to 32 ins and outs
+   (e.g. Julia1_1 (1in 1out), Julia2_1, Julia3_1..........Julia1_2, Julia1_3........Julia32_32)
+
+2) Alex said that the UGen on the server doesn't actually know how many inputs and outputs are given from sclang. I might just have
+   a single Julia shared object which supports up to 32 ins 32 outs and do the deal on the lang side with Julia1_1, Julia1_2, etc...
+
+                    *******************************************
+                    ************** SC INTERFACE ***************
+                    *******************************************
+
+- How to interface with Julia from sclang side?
+
+SOLUTIONS:
+1) Including, parsing and precompiling on the NRT thread with an async call. 
+   e.g:
+    ~sinePath = Platform.userExtensionDir++"/JuliaCollider/Sine.jl";
+
+    //edit the file in whatever text editor
+    JuliaLang.edit(~sinePath);
+
+    //add to server. Including, parsing and precompiling on NRT thread.
+    JuliaLang.add(\Sine, ~sinePath)
+
+    SynthDef(\JuliaSine, {
+        arg frequency = 440;
+        var signal = Julia.ar(\Sine, frequency);
+        Out.ar(0, signal);
+    }).add;
+
+    x = Synth(\JuliaSine);
+
+
+                    *******************************************
+                    ************ JULIA INTERFACE **************
+                    *******************************************
+
+- What is the Julia syntax?
+
+SOLUTIONS:
+1) Extensive use of macros to tie together the code. Is it too detailed to give constructor and destructor???
+   e.g:
+    @object Sine
+        @inputs 1 ("frequency")
+        @outputs 1
+
+        mutable struct PhaseIncrement
+            p::Float64
+        end
+
+        @constructor
+            PhaseIncrement.p = 0.0
+        end
+
+        #sampleRate, bufSize, inverseSampleRate, in1, out1...
+        @perform
+            frequency::Float64 = in1
+            @sample
+                phase::Float64 = PhaseIncrement.p
+
+                if(phase >= 1.0)
+                    phase = 0.0
+                end
+
+                out1 = cos(phase * 2pi)
+
+                phase += frequency * inverseSampleRate
+                PhaseIncrement.p = phase
+            end
+        end
+
+        @destructor 
+        end
+    end
+
+                    *******************************************
+                    ************ BUFFER ALLOCATION ************
+                    *******************************************
+
+- Julia wrapper and interface to SC's real-time allocator.
+
+SOLUTIONS:
+1) Have a Buffer struct in Julia which wraps, with a ccall, a void pointer C function which allocates memory in SC.
+   The void pointer is stored in the GlobalIdDict under the symbol :CFunctionPointer
+   e.g:
+    struct Buffer
+        size::Int32
+        data::Vector{Float32}
+
+        function Buffer(size::Int32)
+            data::Vector{Float32} = unsafe_wrap(Vector{Float32}, ccall(GlobalIdDict[:CFunctionPointer], Ptr{Cfloat}, (Cint,), size), size)
+            return new(size, data)
+        end
+    end
+
+                    *******************************************
+                    ********** SC BUFFER AS ARGUMENT **********
+                    *******************************************
+
+- How to pass a SC Buffer as an argument to do processing on it?
+
+                    *******************************************
+                    ************ SC CLIENT/SERVER *************
+                    *******************************************
+
+- What about when sclang and scsynth are not on the same machine, but the Julia code is on the sclang machine? 
+
+SOLUTIONS:
+1) I should probably send  the contents of the Julia files are string to the server to be parsed there on the NRT thread, 
+   as include() wouldn't work since the file would not be on the server computer.
+
+                    *******************************************
+                    ************** MINOR ISSUES ***************
+                    *******************************************
+
+1) Do I have an individual IdDict per allocated object, or do I deal with each of them individually through the GlobalIdDict?
+2) Split the code into .hpp and .cpp files for easier use. (JuliaInclude, JuliaHash, JuliaBootAndQuit, JuliaPrecompile, etc...)
+3) Check JL_TRY and JL_CATCH better.
+4) Check if jl_gc_wb() is necessary when updating the audio pointer or the variables in the dsp loop:
+    Actually, by looking at how jl_ptr_to_array_1d works, i am sure there is no need for jl_gc_wb(), as it is setting
+    the data simply with a pointer the same way i am doing it in the dsp loop. I would not change the julia stuff it is
+    pointing at, but just the C pointer. Need to verify if the same is for jl_box() values for parameters.
+    It probaly is  the same case again, since i am not updating any julia data, as it still is boxing a float64, or whatever value. 
+    Just changing the C content of it. (ASK ON THE FORUM ABOUT THIS SPECIFIC BIT)
+
+5) Use jl_base_module instead of jl_main_module to retrieve functions from Base.
+6) Wrap jl_call_no_gc() calls in JL_TRY, JL_CATCH, where JL_CATCH fills the output buffers with zeros.

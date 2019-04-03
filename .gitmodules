@@ -1,0 +1,6 @@
+[submodule "deps/supercollider"]
+	path = deps/supercollider
+	url = https://github.com/supercollider/supercollider.git
+[submodule "deps/julia"]
+	path = deps/julia
+	url = https://github.com/vitreo12/julia.git

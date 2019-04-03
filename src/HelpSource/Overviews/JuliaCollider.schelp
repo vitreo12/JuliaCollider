@@ -1,0 +1,45 @@
+title:: JuliaCollider
+summary:: Overview of the JuliaCollider environment
+categories:: JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef
+
+note::
+Current version: strong::0.1 alpha.::
+::
+
+
+note::
+strong::MacOS::/strong::Linux:: only (strong::Windows:: support is in development).
+::
+
+
+note::
+strong::scsynth:: only (strong::supernova:: support is in development).
+::
+
+image::JuliaCollider_logo.png::
+
+section::What is JuliaCollider?
+JuliaCollider is an extension which aims to bring the functionalities of a high performance language like Julia to the SuperCollider environment. The scope of the project is to provide SuperCollider with an easy way to develop UGen audio code in Julia, taking advantage of its JIT compilation pipeline. The final goal is to provide scsynth and supernova with a fully integrated system for low-level audio development, in the likes of Max's gen~ (See: https://docs.cycling74.com/max7/vignettes/gen_overview
+).
+
+section:: What is Julia?
+Julia is an open source programming language for scientific computing originally developed at MIT. It has been in development since 2012, and it reached its 1.0 release on August 2018.
+Julia is a JIT compiled and optionally-typed programming language which, when used accordingly, can generate high performance machine code that matches the speed of statically compiled languages like C/C++ and Fortran.
+
+For more informations on Julia, visit https://julialang.org/ and https://discourse.julialang.org/.
+
+section::Tutorials
+
+definitionList::
+## link::Tutorials/JC_01_Introduction:: || Introduction to the strong::JuliaCollider:: environment
+## link::Tutorials/JC_02_Julia_Syntax:: || Introduction to some key concepts of the strong::Julia:: syntax
+## link::Tutorials/JC_03_JuliaCollider_Syntax:: || Analysis of the strong::JuliaCollider:: syntax
+## link::Tutorials/JC_04_Inputs_Outputs:: || Analysis and usage of the strong::@inputs:: and strong::@outputs:: macros
+## link::Tutorials/JC_05_Constructor_Perform:: || Analysis and usage of the strong::@constructor:: and strong::@perform:: macros
+## link::Tutorials/JC_06_Data:: || Analysis and usage of the strong::Data:: type
+## link::Tutorials/JC_07_Buffer:: || Analysis and usage of the strong::Buffer:: type
+## link::Tutorials/JC_08_Custom_Types_Functions_and_Modules:: || How to use custom Types, Functions and Modules
+## link::Tutorials/JC_09_Examples_1:: || Insight on the Examples folder
+## link::Tutorials/JC_10_Examples_2:: || Insight on the Examples folder
+::

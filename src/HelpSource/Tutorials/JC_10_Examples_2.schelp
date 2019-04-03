@@ -1,0 +1,111 @@
+title:: JuliaCollider 10: Examples folder (part 2)
+summary:: Insight on the Examples folder
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+section::Diode Ladder filter
+This example contains a diode ladder lowpass filter.
+It is stored in the emphasis::"DiodeLadder.jl":: file.
+
+code::
+e = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/DiodeLadder.jl");
+
+(
+SynthDef(\JuliaLadderFilteredSaw, {
+    arg freq = 200;
+    var saw1, saw2, filter;
+
+	//W//We're using the previously declared Saw oscillator as input to the filter
+
+    //First input = JuliaDef
+	//Second input = frequency (0 to 20000)
+    saw1 = Julia.ar(c, DC.ar(freq));
+    saw2 = Julia.ar(c, DC.ar(freq + rrand(-3.0, 3.0)));
+
+    //First input  = JuliaDef
+    //Second input = audio signal
+	//Third input = Cutoff (0 to 20000)
+    //Fourth input  = Resonance (0 to 1)
+    filter = Julia.ar(e, saw1 + saw2, SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9));
+
+    Out.ar([0, 1], filter);
+}).send(s)
+)
+
+Synth(\JuliaLadderFilteredSaw);
+::
+
+section::Analog Delay
+This example contains a simple analog delay emulation.
+It is stored in the emphasis::"AnalogDelay.jl":: file.
+
+code::
+f = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl");
+
+(
+SynthDef.new(\JuliaAnalogDelay, {
+	arg freq = 100, pulse_time = 0.5, delay_time = 0.2, fb = 0.9, damping = 0.8;
+	var saw, delay;
+
+	//We're using the previously declared Saw oscillator as input to delay, scaled by a percussive envelope.
+
+	//First input = JuliaDef
+    //Second input = frequency
+	saw = Julia.ar(c, DC.ar(freq)) * EnvGen.ar(Env.perc, Impulse.kr(pulse_time));
+
+	//First input = JuliaDef
+    //Second input = signal
+	//Third input = maximum delay time
+	//Fourth input = delay time (0 to maximum delay time)
+	//Fifth input = feedback (0 to 1)
+	//Sixth input = damping (0 to 1)
+	delay = Julia.ar(f, saw, DC.ar(1.0), DC.ar(delay_time), DC.ar(fb), DC.ar(damping));
+
+	Out.ar([0, 1], delay);
+}).send(s);
+)
+
+Synth(\JuliaAnalogDelay);
+::
+
+section::Buffer granulator
+This example contains a granulator that acts on a link::Classes/Buffer::.
+It is contained in the emphasis::"Granulator.jl":: file.
+
+code::
+//Buffer for playback and buffer for window
+(
+p = Platform.resourceDir +/+ "sounds/a11wlk01.wav";
+~buffer = Buffer.read(s, p);
+~hannWindow = Buffer.loadCollection(s, Signal.hanningWindow(1024));
+)
+
+f = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Granulator.jl");
+
+(
+SynthDef(\JuliaGranulator, {
+	arg buffer, window_buffer, density = 0.5, position = 0.5, position_jitter = 0.2, length = 0.2, length_jitter = 0.3, pitch = 0, pitch_jitter = 0.5;
+
+	var granulator;
+
+	//First input = JuliaDef
+    //Second input = buffer
+	//Third input = window buffer
+	//Fourth input = density (0 to 1)
+	//Fifth input = position (0 to 1)
+	//Sixth input = position jitter (0 to 1)
+	//Seventh input = length (0 to 1)
+	//Eighth input = length jitter (0 to 1)
+	//Ninth input = pitch (-12 to 12)
+	//Tenth input = pith jitter (0 to 1)
+	granulator = Julia.ar(f, DC.ar(buffer), DC.ar(window_buffer), DC.ar(density), DC.ar(position), DC.ar(position_jitter), DC.ar(length), DC.ar(length_jitter), DC.ar(pitch), DC.ar(pitch_jitter));
+
+	Out.ar([0, 1], granulator);
+}).send(s);
+)
+
+Synth(\JuliaGranulator, [\buffer, ~buffer, \window_buffer, ~hannWindow]);
+
+::
+
+strong::PREVIOUS:: : link::Tutorials/JC_09_Examples_1::

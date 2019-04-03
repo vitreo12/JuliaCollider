@@ -1,0 +1,75 @@
+title:: JuliaCollider 09: Examples folder (part 1)
+summary:: Insight on the Examples folder
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+We will now look into some of the Examples that come together with JuliaCollider. These examples give for granted that JuliaCollider is installed in the user extension directory.
+Let's first boot emphasis::JuliaCollider:: with the server.
+
+code::
+Julia.bootWithServer(s);
+::
+
+section::Phasor and Sine oscillators
+These are two examples of two simple oscillators.
+They are stored in the emphasis::"Phasor.jl":: and emphasis::"Sine.jl":: files.
+
+code::
+(
+a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
+b = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Phasor.jl");
+)
+
+//First input = JuliaDef
+//Second input = frequency (0 to 20000)
+{Julia.ar(a, DC.ar(440))}.play;
+{Julia.ar(b, DC.ar(440))}.play;
+::
+
+section::Saw oscillator
+This example contains an anti-aliased sawtooth oscillator.
+It is stored in the emphasis::"Saw.jl":: file.
+code::
+c = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");
+
+//First input = JuliaDef
+//Second input = frequency (0 to 20000)
+{Julia.ar(c, SinOsc.ar(1).linlin(-1.0, 1.0, 50, 3000))}.play;
+::
+
+section::SVF filter
+This example contains a State Variable Filter.
+It is stored in the emphasis::"SVF.hl":: file.
+code::
+d = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/SVF.jl");
+
+(
+SynthDef(\JuliaFilteredSaw, {
+    arg freq = 200;
+    var saw1, saw2, filter;
+
+	//We're using the previously declared Saw oscillator as input to the filter
+
+    //First input = JuliaDef
+    //Second input = frequency
+    saw1 = Julia.ar(c, DC.ar(freq));
+    saw2 = Julia.ar(c, DC.ar(freq + rrand(-3.0, 3.0)));
+
+    //First input  = JuliaDef
+    //Second input = audio signal
+    //Third input  = filter type (0 = lowpass, 1 = highpass, 2 = bandpass)
+	//Fourth input = Cutoff (0 to 20000)
+	//Fifth input  = Resonance (0 to 1)
+    filter = Julia.ar(d, saw1 + saw2, DC.ar(0.0), SinOsc.ar(0.3).linlin(-1,1, 100, 5000), DC.ar(0.9));
+
+    Out.ar([0, 1], filter);
+}).send(s)
+)
+
+Synth(\JuliaFilteredSaw);
+::
+
+
+strong::PREVIOUS:: : link::Tutorials/JC_08_Custom_Types_Functions_and_Modules::
+
+strong::NEXT:: : link::Tutorials/JC_10_Examples_2::

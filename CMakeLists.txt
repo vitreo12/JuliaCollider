@@ -2,6 +2,9 @@ set(FILENAME "Julia.cpp")
 cmake_minimum_required (VERSION 2.8)
 get_filename_component(PROJECT ${FILENAME} NAME_WE)
 message(STATUS "Project name is ${PROJECT}")
+
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.10" CACHE STRING "Minimum OS X deployment version")
+
 project (${PROJECT})
 
 include_directories(${SC_PATH}/include/plugin_interface)
@@ -9,10 +12,7 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/common)
 
 #JULIA INCLUDES
-set(JULIA_PATH "${CMAKE_SOURCE_DIR}/julia")
-if(APPLE)
-    include_directories(${JULIA_PATH}/include/julia)
-endif()
+include_directories(${JULIA_BUILD_PATH}/include/julia)
 ###############
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
@@ -42,6 +42,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(CMAKE_COMPILER_IS_CLANG 1)
 endif()
 
+#Should I disable all these C flags for generic builds???
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_definitions(-fvisibility=hidden)
 
@@ -79,7 +80,12 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     endif()
 
     if(NATIVE)
+        message(STATUS "NATIVE : ON")
         add_definitions(-march=native)
+    else()
+        #x86-64 architectures only for generic builds... Should add support for more architectures.
+        message(STATUS "NATIVE : OFF")
+        add_definitions(-march=x86-64)
     endif()
 
     if(CPP11)
@@ -94,17 +100,18 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-add_library(${PROJECT} MODULE ${FILENAME})
+#Julia.scx/.so. Building it from Julia.cpp and all other .cpp files
+add_library(${PROJECT} MODULE "src/${FILENAME}" "src/GlobalVariables.cpp" "src/JuliaAtomicBarrier.cpp" "src/JuliaGlobalIdDict.cpp" "src/JuliaGlobalState.cpp" "src/JuliaObjectCompiler.cpp" "src/JuliaObjectsArray.cpp" "src/JuliaReplyCmds.cpp" "src/SC_AllocPoolSafe.cpp" "src/SCBuffer.cpp")
 
-#JULIA LINKER FLAGS
-if(APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    #linking when building. linking against the julia folder inside the source files.
-    target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib'")
-    #linking when executing the shared library. it will link against the julia/lib folder inside the Julia package. Linux equivalent to @loader_path is $ORIGIN
-    target_link_libraries(${PROJECT} "-Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
+#JULIA LINKER FLAGS.
+#-L'${JULIA_BUILD_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
+#-ldl needed for <dlfcn.h>
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -ldl")
 endif()
-#target_link_libraries(${PROJECT} "-L'${JULIA_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'${JULIA_PATH}/lib' -Wl,-rpath,'${JULIA_PATH}/lib/julia' -ljulia")
 ###########################################
 
 if(SUPERNOVA)
@@ -112,4 +119,3 @@ if(SUPERNOVA)
     set_property(TARGET ${PROJECT}_supernova
                  PROPERTY COMPILE_DEFINITIONS SUPERNOVA)
 endif()
-

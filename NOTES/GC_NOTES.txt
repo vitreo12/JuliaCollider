@@ -1,0 +1,31 @@
+IMPORTANT FILES IN JULIA SOURCE:
+SC_Julia.h
+SC_Julia.cpp
+SC_AllocMacros.h
+arraylist.c
+julia_internal.h
+julia.h
+gc.c
+gc-pages.c
+threadgroup.c
+Makefile in /src: Added SC_Julia to compiled files and -fexception flag to .cpp to compile try/catch blocks.
+
+CHECK LOCKS INSIDE THE USE OF GC TO ASSURE LOCK IN GC WHEN DOING GC COLLECTION.
+
+Using jl_finalize at object destructor to collect its memory? (For SC buffers, at least?)
+
+Allocation calls are into: 
+    1) jl_gc_big_alloc -> malloc_cache_align -> jl_malloc_aligned -> posix_memalign
+    2) jl_gc_pool_alloc -> add_page -> malloc
+    3) jl_gc_managed_malloc -> jl_malloc_aligned -> posix_memalign
+    4) _jl_gc_collect -> _jl_gc_queue_remset -> gc_mark_stack_resize -> realloc
+    5) _jl_gc_collect -> gc_mark_loop -> _arraylist_push -> LLT_REALLOC -> realloc
+
+    Look also into standard constructors (array, tuples, etc...)
+                   
+    I NEED TO FIND THE RELATIVE FREE CALLS
+
+NEXT THINGS:
+1) Check deeply into GC call when quitting the server. Check if it was half-processed also before
+   all the rewriting of the Julia allocator. Check if it is actually necessary to even run it, or if
+   it is enough to turn GC on, and let it collect on jl_atexit_hook.

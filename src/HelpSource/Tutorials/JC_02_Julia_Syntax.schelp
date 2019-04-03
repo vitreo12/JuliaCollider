@@ -1,0 +1,60 @@
+title:: JuliaCollider 02: Basics of the Julia syntax
+summary:: Introduction to some key concepts of the Julia syntax for JuliaCollider
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+This tutorial will look into some basic concepts of the emphasis::Julia:: syntax. It is by no means a comprehensive overview of what emphasis::Julia:: is capable to do, but just a brief introduction to some important aspects of the language needed for emphasis::JuliaCollider::.
+
+note::
+emphasis::JuliaCollider:: uses a custom build of Julia, and some of Julia features are not supported (e.g. emphasis::Packages::, emphasis::Vector/Array::, and more...).
+::
+
+section:: Variables
+emphasis::Julia:: is an optionally typed language. This means that it is not mandatory to specify the type of a variable, even though it is highly recommended when needing to write performant code, as would be the emphasis::JuliaCollider:: one.
+
+image::typed_untyped_variables.png::
+
+strong::More infos:: : https://docs.julialang.org/en/v1/manual/variables/
+
+section:: Types
+
+In emphasis::Julia::, it is possible to define custom types. They can take the form of abstract types, which are only used to represent a conceptual supertype that cannot be instantiated, and concrete types, which can be instantiated and declared as subtypes of an abstract type.
+
+In emphasis::Julia:: syntax, this takes the form of the keywords "emphasis::abstract type::" for abstract types, and "emphasis::struct::" and "emphasis::mutable struct::" for concrete types. The difference between the last two would be that a "emphasis::struct::" constructs an immutable type whose fields, once constructed, cannot be modified, but just retrieved. A "emphasis::mutable struct::", on the other hand, allows to access and modify its values:
+
+image::mutable_immutable.png::
+
+strong::More infos:: : https://docs.julialang.org/en/v1/manual/types/
+
+section:: Modules
+In emphasis::Julia::, it is possible to abstract our code in the form of emphasis::modules::. These emphasis::modules:: introduce local namespaces that allow us to develop our code in modular building blocks, each represented by a emphasis::module::. We could, for example, wrap the previous types definitions in a "emphasis::module::" and reuse it in different parts of our code:
+
+image::julia_mymodule.png::
+
+strong::More infos:: : https://docs.julialang.org/en/v1/manual/modules/
+
+section:: Multiple dispatch and Functions
+emphasis::Julia:: is built on a programming paradigm called multiple dispatch, which differs from from the more used object-oriented or functional paradigm. What multiple dispatch does, in a nutshell, is to emphasis::dispatch:: the specific method of a function according to its argument types. Each version of the function - called method -, given different argument types, then, can be optimized individually either both at parsing and compilation stages. Thanks to the "emphasis::abstract type::" feature of the language, this allows to write abstract code that still performs fast.
+
+As an example, the previous module has been expanded with an extension to emphasis::Julia::'s "+" function. This additional method for the "+" function will allow us to emphasis::dispacth:: the sum of two emphasis::concrete types:: inheriting from the emphasis::abstract type:: "emphasis::MyAbstractType::" with a simple method definition, without the need of defining the "+" method for each of the combinations of the concrete types inheriting from "emphasis::MyAbstractType::":
+
+image::julia_mymodule_sum.png::
+
+
+strong::More infos:: : https://docs.julialang.org/en/v1/manual/methods/
+
+strong::More infos:: : https://docs.julialang.org/en/v1/manual/functions/
+
+
+section::Macros
+Macros are a metaprogramming feature of the emphasis::Julia:: language that allows to write emphasis::Julia:: code  from emphasis::Julia:: itself. In fact, begin them executed at parsing time, and not runtime, they are useful to abstract code sections away or to build custom Domain Specific Languages, like emphasis::JuliaCollider::. emphasis::JuliaCollider::'s functionalities, in fact, are all abstracted away from the user thanks to the use of specific macros, that will be analyzed in the following tutorials.
+
+As an example, this is the code for a macro that will build a "emphasis::mutable struct::" of the name "name" with "N" fields of type "type". The name of the fields will be "var1, var2, var3... varN". The strong::@create_struct:: macro also defines a no argument constructor that will initialize all fields of "emphasis::mutable struct::" the to the value of "initValue".
+
+image::macro.png::
+
+strong::More infos:: : https://docs.julialang.org/en/v1/manual/metaprogramming/index.html
+
+strong::PREVIOUS:: : link::Tutorials/JC_01_Introduction::
+
+strong::NEXT:: : link::Tutorials/JC_03_JuliaCollider_Syntax::

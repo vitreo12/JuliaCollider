@@ -1,0 +1,57 @@
+title:: JuliaCollider 05: The @constructor and @perform macros
+summary:: Analysis and usage of the @constructor and @perform macros
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+These two macros describe the creation and behaviour of the strong::@object::. They both only take a strong::begin::/strong::end:: block as argument.
+
+section:: The @constructor macro
+
+image::constructor.png::
+
+The strong::@constructor:: macro describes the initialization routine for every strong::@object::, with the relative instatiation of any additional data that needs to be used later in the audio loop. This data could take the form of constants, SuperCollider's link::Classes/Buffer:: pointers, allocation of memory, custom data structures, etc...
+
+subsection:: The @new macro
+
+The strong::@new:: macro is used to determine which variables declared in a strong::@constructor:: will be later used in the audio loop, making them available to the scope of the strong::@perform:: macro.
+
+note::
+To be able to store values in the strong::@constructor:: variables, they must be declared as member variables of a "emphasis::mutable struct::". If passing a emphasis::Float32:: variable to strong::@new::, it will be a constant value in strong::@perform::
+::
+
+note::
+Every strong::@constructor:: macro strong::MUST:: always end with a call to the strong::@new:: macro.
+::
+
+section:: The @perform macro
+
+image::perform.png::
+
+The strong::@perform:: macro describes the actual audio loop of the strong::@object::. All the variables that have been previously forwarded to the strong::@new:: macro will be available with their respective names. As with any JuliaCollider code, it is strongly advised, for performance reasons, that any variable declared in the strong::@perform:: macro is explicitly typed.
+
+The strong::@perform:: macro has access to 3 sub-macros, listed here:
+
+NUMBEREDLIST::
+##strong::@in0:: : This macro takes 1 argument, the input number, and it returns the control rate value from that input. strong::return type:: = emphasis::Float32:: .
+##strong::@sampleRate:: : This macro returns the current sample rate value. strong::return type:: = emphasis::Float64:: .
+##strong::@bufSize:: : This macro returns the current buffer size value. strong::return type:: = emphasis::Int32:: .
+::
+
+subsection:: The @sample macro
+The strong::@sample:: macro describes the inner audio loop of the strong::@object::. Here is where values are calculated sample by sample and assigned to the output buffers.
+
+The strong::@sample:: macro, as well as having access to all of the strong::@perform:: macros, introduces 3 more sub-macros, listed here:
+NUMBEREDLIST::
+##strong::@in:: : This macro takes 1 argument, the input number, and it returns the audio rate value from that input. strong::return type:: = emphasis::Float32:: .
+##strong::@out:: : This macro takes 1 argument, the output number, and it assigns the value of the equality operation to the selected output. The value could either be a emphasis::Float64:: or a emphasis::Float32::.
+
+note::
+Considering that the server's audio buffers are of type emphasis::Float32::, it is more performant to directly assign a emphasis::Float32:: value, in order to prevent any value conversion calculations to be added to the audio loop.
+::
+
+##strong::@sampleIndex:: This macro returns the current sample index in the audio loop. It goes from 1 to the buffer size. strong::return type:: = emphasis::Int32:: .
+::
+
+strong::PREVIOUS:: : link::Tutorials/JC_04_Inputs_Outputs::
+
+strong::NEXT:: : link::Tutorials/JC_06_Data::

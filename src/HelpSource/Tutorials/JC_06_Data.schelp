@@ -1,0 +1,78 @@
+title:: JuliaCollider 06: The Data type
+summary:: Analysis and usage of the Data type
+categories:: JuliaCollider>Tutorials
+related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+
+emphasis::Data:: is a special emphasis::JuliaCollider:: type which allows to allocate memory in the strong::@constructor:: macro to be used in the strong::@perform:: macro.
+
+warning::
+emphasis::Data:: is the only safe way of allocating memory in emphasis::JuliaCollider::, as any standard emphasis::Julia:: memory allocation methods (Vector, Array, etc...) must strong::never:: be used: they would cause memory leaks.
+::
+
+warning::
+a emphasis::Data:: must strong::always:: be declared and initialized in the strong::@constructor:: macro, as its lifetime is linked to the one of the strong::@object::. Memory allocated in the strong::@perform:: macro will cause memory to grow out of bounds, causing emphasis::JuliaCollider:: (and perhaps, your PC) to crash.
+::
+
+section:: Data in @constructor
+Here is where a emphasis::Data:: must be declared and constructed, either directly as a member variable of the strong::@constructor:: macro, or as a member of a fully typed defined emphasis::struct:: or emphasis::mutable struct::.
+
+emphasis::Data:: takes three arguments:
+NUMBEREDLIST::
+## strong::DataType:: : a emphasis::DataType:: value indicating which emphasis::DataType:: to allocate. It only supports the following emphasis::DataType::(s)
+NUMBEREDLIST::
+##emphasis::Float16, Float32, Float64::
+##emphasis::Int8, Int16, Int32, Int64, Int128::
+::
+## strong::Number of elements:: : an integer value for the number of the emphasis::DataType:: elements to allocate.
+## strong::Number of channels:: (optional, strong::default = 1::) : an integer value for the number of channels to allocate.
+NUMBEREDLIST::
+##If the number of channels is 1, the emphasis::Data:: will be a 1D array, and its parameterized version is represented as : emphasis::Data{DataType, 1}:: .
+##If the number of channels is more than 1, the emphasis::Data:: will be a 2D array, and its parameterized version is represented as : strong::Data{DataType, 2}:: .
+::
+::
+
+note::
+For better performance, it is suggested that the emphasis::Data:: is declared as a parameterized type.
+For example,
+image::my_data_parameter.png::
+will perform faster than
+image::my_data.png::
+In fact, in the first case, the compiler is able to optimize more as it knows the memory layout of the emphasis::Data:: .
+::
+
+
+warning::
+In order for the emphasis::JuliaCollider:: parser to catch every allocated emphasis::Data:: and free it right away at the destructor of the link::Classes/Julia:: UGen, all type inference should be resolved when declaring the emphasis::Data::.
+Consider the example:
+image::data_unsure_type.png::
+Here, the "emphasis::my_final_recursive_data::" field of the "emphasis::mutable struct RecursiveData::" has not been assigned a type, making it possible to store any value (also, making code performing strong::very:: slowly). emphasis::JuliaCollider::'s parser, comes UGen destructor time, is here not capable of retrieving the "emphasis::my_data::" field of the "emphasis::mutable struct FinalRecursiveData::, which is in fact a emphasis::Data::. As a result, at UGen release time, the memory of that emphasis::Data:: won't be memory freed right away, but it will only be collected at a later garbage collection call.
+Also, always remember that every variable (be it a member variable of strong::@constructor:: or not) that stores a emphasis::Data:: strong::must:: be declared as such, or the parser will not pick it up and initialize it.
+::
+
+section:: Data in @perform
+note::
+Julia array-indexing starts counting from 1. A standard [emphasis::0 : length-1::] interval, in Julia, would be written as a [emphasis::1 : length::] interval.
+::
+
+In the strong::@perform:: macro is where a emphasis::Data:: can be accessed to store and retrieve values in the audio loop. The syntax for accessing a emphasis::Data:: is the same as any emphasis::Julia:: array. Consider the following code:
+
+image::data_perform.png::
+
+Here, a new emphasis::Data:: of one second of samples is allocated in the strong::@constructor::, and passed to strong::@perform:: through the strong::@new:: macro, together with a simple counter. Then, in strong::@perform:: the emphasis::Data:: is being written a sample, which is read out soon after. The most important note to stress here is to always remember that emphasis::Julia::'s array indexing starts counting from 1, and that emphasis::Data:: follows the same principle.
+
+A multi-channel emphasis::Data:: would be accessed like so, (again, the emphasis::channel:: indexing should start from 1):
+
+image::data_multichannel.png::
+
+section::Additional functions for Data
+The emphasis::Data::: type has some special functions linked to it:
+
+NUMBEREDLIST::
+##strong::length:: : Returns the length of the emphasis::Data::.
+##strong::nchans:: : Returns the number of channels of the emphasis::Data::.
+##strong::size:: : Returns the total allocated size of the emphasis::Data:: (length * nchans).
+::
+
+strong::PREVIOUS:: : link::Tutorials/JC_05_Constructor_Perform::
+
+strong::NEXT:: : link::Tutorials/JC_07_Buffer::
