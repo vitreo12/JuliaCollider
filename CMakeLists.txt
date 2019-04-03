@@ -83,7 +83,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
         message(STATUS "NATIVE : ON")
         add_definitions(-march=native)
     else()
-        #x86-64 architectures only for generic builds???
+        #x86-64 architectures only for generic builds... Should add support for more architectures.
         message(STATUS "NATIVE : OFF")
         add_definitions(-march=x86-64)
     endif()
@@ -100,13 +100,12 @@ if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
 endif()
 
-#Julia.cpp is inside src/ folder. Headers are all in there, should probably simply include the whole src directory aswell
+#Julia.scx/.so. Building it from Julia.cpp and all other .cpp files
 add_library(${PROJECT} MODULE "src/${FILENAME}" "src/SC_AllocPoolSafe.cpp" "src/JuliaAtomicBarrier.cpp" "src/SCBuffer.cpp")
 
 #JULIA LINKER FLAGS.
 #-L'${JULIA_BUILD_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
 #-ldl needed for <dlfcn.h>
-#-lboost_system needed to send OSC messages from
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
