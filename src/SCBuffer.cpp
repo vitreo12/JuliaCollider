@@ -129,4 +129,28 @@ extern "C"
             
         return 0;
     }
+
+    //Samplerate
+    __attribute__((visibility("default"))) double jl_get_samplerate_buf_SC(void* buf)
+    {
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+            return snd_buf->samplerate;
+        }
+            
+        return 0;
+    }
+
+    //Sampledur
+    __attribute__((visibility("default"))) double jl_get_sampledur_buf_SC(void* buf)
+    {
+        if(buf)
+        {
+            SndBuf* snd_buf = (SndBuf*)buf;
+            return snd_buf->sampledur;
+        }
+            
+        return 0;
+    }
 }
