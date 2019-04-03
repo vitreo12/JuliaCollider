@@ -28,7 +28,7 @@ public:
         }
 
         bool gc_lock = julia_gc_barrier->RTTrylock();
-        printf("gc_lock: %d\n", gc_lock);
+        //Print("gc_lock: %d\n", gc_lock);
         if(!gc_lock) 
         {
             Print("WARNING: Julia's GC is running. Object creation deferred.\n");
@@ -49,7 +49,7 @@ public:
         JuliaObjectsArrayState array_state = retrieve_julia_object();
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
-            printf("WARNING: Invalid unique id \n");
+            Print("WARNING: Invalid unique id \n");
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -137,7 +137,7 @@ public:
         if(outs)
             free_outs();
 
-        Print("IS VALID? %d\n", valid);
+        //Print("IS VALID? %d\n", valid);
 
         if(valid)
         {
@@ -147,7 +147,7 @@ public:
             if(!gc_lock)
             {
                 /* GC PERFORMING */
-                printf("WARNING: GC locked: posting __UGenRef__ destruction to gc_array \n");
+                Print("WARNING: GC locked: posting __UGenRef__ destruction to gc_array \n");
                 
                 /* This is not thread-safe for supernova */
                 for(int i = 0; i < gc_array_num; i++)
@@ -171,7 +171,7 @@ public:
             if(!compiler_lock)
             {
                 /* GC AND COMPILER PERFORMING */
-                printf("WARNING: Compiler and GC locked: posting __UGenRef__ destruction to gc_array \n");
+                Print("WARNING: Compiler and GC locked: posting __UGenRef__ destruction to gc_array \n");
 
                 /* This is not thread-safe for supernova */
                 for(int i = 0; i < gc_array_num; i++)
@@ -193,7 +193,7 @@ public:
                 return;
             }
 
-            Print("*** RT Locks aquired!! ***\n");
+            //Print("*** RT Locks aquired!! ***\n");
 
             perform_destructor();
 
@@ -559,13 +559,13 @@ private:
         }
 
         //GC/compiler locks acquired!
-        Print("*** RT Locks aquired!! ***\n");
+        //Print("*** RT Locks aquired!! ***\n");
 
         /* THIS will change the pointer of julia_object* */
         JuliaObjectsArrayState array_state = retrieve_julia_object();
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
-            printf("WARNING: Invalid unique id \n");
+            Print("WARNING: Invalid unique id \n");
             valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
@@ -701,7 +701,7 @@ private:
                 {
                     if(!print_once_inputs)
                     {
-                        printf("WARNING: Julia @object \"%s\" inputs mismatch. Expected: %d. Have: %d\n", julia_object->name, julia_object->num_inputs, real_num_inputs);
+                        Print("WARNING: Julia @object \"%s\" inputs mismatch. Expected: %d. Have: %d\n", julia_object->name, julia_object->num_inputs, real_num_inputs);
                         print_once_inputs = true;
                     }
                     output_silence(inNumSamples);
@@ -712,13 +712,13 @@ private:
                 }
 
                 if(julia_object->num_inputs < real_num_inputs)
-                    printf("WARNING: Julia @object \"%s\" inputs mismatch. Expected: %d. Have: %d. Using only first %d inputs.\n", julia_object->name, julia_object->num_inputs, real_num_inputs, julia_object->num_inputs);
+                    Print("WARNING: Julia @object \"%s\" inputs mismatch. Expected: %d. Have: %d. Using only first %d inputs.\n", julia_object->name, julia_object->num_inputs, real_num_inputs, julia_object->num_inputs);
 
                 if(numOutputs() > julia_object->num_outputs)
                 {
                     if(!print_once_outputs)
                     {
-                        printf("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d\n", julia_object->name, julia_object->num_outputs, numOutputs());
+                        Print("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d\n", julia_object->name, julia_object->num_outputs, numOutputs());
                         print_once_outputs = true;
                     }
                     output_silence(inNumSamples);
@@ -729,7 +729,7 @@ private:
                 }
 
                 if(julia_object->num_outputs < numOutputs())
-                    printf("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d. Using only first %d outputs.\n", julia_object->name, julia_object->num_outputs, numOutputs(), julia_object->num_outputs);
+                    Print("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d. Using only first %d outputs.\n", julia_object->name, julia_object->num_outputs, numOutputs(), julia_object->num_outputs);
 
                 //Recompile...
                 perform_instance = julia_object->perform_instance;
@@ -908,7 +908,7 @@ private:
                     {
                         //I should avoid this jl_call2. Could I emulate a fake exception at bootup and store that method pointer to be used here?
                         const char* returned_exception = jl_string_ptr(jl_call2(sprint_fun, showerror_fun, exception));
-                        printf("ERROR: %s\n", returned_exception);
+                        Print("ERROR: %s\n", returned_exception);
                     }
 
                     print_once_exception = true;

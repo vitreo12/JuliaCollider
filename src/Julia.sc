@@ -141,6 +141,8 @@ JuliaDef {
 			server.sync;
 
 			//Print out
+			("-> Compilation successful: ").postln;
+
 			this.query.value();
 		}
 	}
@@ -185,7 +187,7 @@ JuliaDef {
 		("*** ID: " ++ julia_def.server_id ++ " ***").postln;
 		("*** Inputs: " ++ julia_def.inputs ++ " ***").postln;
 		("*** Outputs: " ++ julia_def.outputs ++ " ***").postln;
-		("*** File Path: " ++ julia_def.file_path ++ " ***\n").postln;
+		("*** File Path: " ++ julia_def.file_path ++ " ***").postln;
 	}
 
 	edit {
