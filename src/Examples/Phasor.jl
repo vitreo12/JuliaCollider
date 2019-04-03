@@ -2,19 +2,16 @@
     @inputs 1 ("frequency")
     @outputs 1
     
-    #Declaration of structs (possibly, include() calls aswell)
-    mutable struct Phasor
+    mutable struct MyPhasor
         p::Float32
-        function Phasor()
+        function MyPhasor()
             return new(0.0)
         end
     end
 
-    #initialization of variables
     @constructor begin
-        phasor::Phasor = Phasor()
+        phasor::MyPhasor = MyPhasor()
 
-        #Must always be last.
         @new(phasor)
     end
 
