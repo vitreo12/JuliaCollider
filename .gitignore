@@ -7,3 +7,5 @@ build/
 .DS_STORE
 
 src/.DS_STORE
+
+JuliaTest-no-threads.sc
