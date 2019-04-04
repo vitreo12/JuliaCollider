@@ -9,6 +9,7 @@ where all classes come to place and get used. */
 
 void julia_empty_cleanup(World* world, void* cmd) {return;}
 
+/* Actual GC collection function */
 void perform_gc(int full, bool already_has_lock = false)
 {
     if(!already_has_lock)
@@ -71,6 +72,7 @@ void perform_gc(int full, bool already_has_lock = false)
         julia_gc_barrier->Unlock();
 }
 
+/* Function to be performed on spawned thread */
 void perform_gc_on_spawned_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
@@ -144,7 +146,7 @@ bool julia_boot(World* inWorld, void* cmd)
 
             perform_gc(1);
 
-            //Setup thread for GC collection every 10 seconds. This thread will call into the NRT thread async mechanism
+            //Setup thread for GC collection every 10 seconds.
             perform_gc_thread_run.store(true);
             perform_gc_thread = std::thread(perform_gc_on_spawned_thread, inWorld);
         }
