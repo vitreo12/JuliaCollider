@@ -2,6 +2,9 @@
 #include "JuliaObjectCompiler.h"
 #include "JuliaUtilitiesMacros.hpp"
 
+/* Actual compilation of an @object: from its module, to constructor, perform and destructor functions.
+Also, all utilities functions (like __UGenRef__ stuff) are compiled here and assigned to a JuliaObject* */
+
 JuliaObjectCompiler::JuliaObjectCompiler(World* in_world_, JuliaGlobalState* julia_global_)
 {
     in_world = in_world_;

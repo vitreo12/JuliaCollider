@@ -36,6 +36,9 @@ Improved bit block scanning by using a count leading zeroes instruction.
 
 #include "JuliaAtomicBarrier.h"
 
+/* Modified allocation pool with thread-safe locks around each stage. Moreover, 
+it returns a NULL pointer (instead of throwing an exception) when running out of memory */
+
 const int kNumAllocBins = 128;
 const int kNumSmallBins = 64;
 const int kMaxSmallBin = kNumSmallBins - 1;

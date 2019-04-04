@@ -1,6 +1,8 @@
 //Global variables are included in JuliaAsyncCmds.hpp anyway
 #include "JuliaAsyncCmds.hpp"
 
+/* Julia UGen code */
+
 struct Julia : public SCUnit 
 {
 public:
@@ -26,6 +28,10 @@ public:
             Print("WARNING: Invalid unique id \n");
             set_calc_function<Julia, &Julia::output_silence>();
         }
+
+        /* Trylock on the GC and compiler threads. If any of the two fails to acquire lock, defer
+        the initialization of JuliaObject and the UGen to next cycle, by setting the next_calc_function
+        to next_NRT_busy, which will be executed at each cycle until succesfully obtaining GC and compiler locks */
 
         bool gc_lock = julia_gc_barrier->RTTrylock();
         //Print("gc_lock: %d\n", gc_lock);
@@ -267,7 +273,7 @@ private:
         RTFree(mWorld, outs);
     }
 
-    /* JUST ONCE */
+    /* JUST ONCE per UGen, even if code is recompiled. */
     inline bool allocate_args_costructor_perform()
     {      
         /* ARGS MEMORY */
@@ -881,7 +887,7 @@ private:
         for(int i = 0; i < numOutputs(); i++)
             ((jl_array_t*)(outs[i]))->data = (float*)out(i);    
 
-        //Perform mode (It's not that much faster, to be honest...)
+        //Perform mode (It's not that much faster, to be honest)
         if(debug_or_perform_mode)
             jl_invoke_already_compiled_SC(perform_instance, args, nargs);
         else //Debug mode

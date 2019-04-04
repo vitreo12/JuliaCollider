@@ -1,6 +1,9 @@
 #pragma once
 #include "SC_PlugIn.hpp"
 
+/* Class which overloads C++ new/delete operators with InterfacteTable->fRTAlloc/fRTFree.
+Used for all user data in the async commands. */
+
 //Overload new and delete operators with RTAlloc and RTFree calls
 class RTClassAlloc
 {

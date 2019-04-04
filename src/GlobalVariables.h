@@ -7,6 +7,8 @@
 #include "JuliaGlobalState.h"
 #include "JuliaObjectsArray.h"
 
+/* Global variables needed for the execution of JuliaCollider */
+
 /* INTERFACE TABLE */
 static InterfaceTable* ft;
 

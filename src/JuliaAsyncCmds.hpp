@@ -51,7 +51,7 @@ void perform_gc(int full, bool already_has_lock = false)
     /* Check if memory has been allocated */
     int current_pool_size = julia_global_state->get_julia_alloc_funcs()->fRTTotalFreeMemory(julia_global_state->get_julia_alloc_pool());
 
-    /* Only perform GC is memory has been allocated from last time */
+    /* Only perform GC if memory has been allocated from last time */
     if(previous_pool_size != current_pool_size)
     {
         if(!jl_gc_is_enabled())
@@ -71,11 +71,6 @@ void perform_gc(int full, bool already_has_lock = false)
         julia_gc_barrier->Unlock();
 }
 
-/*
-Is there the need to wrap all Julia calls also in checks to the gc barrier? Maybe not, 
-as gc barrier already checks if it can lock the compiler, if not, it will just wait. The compiler, on the other hand
-has a spinlock that will just wait for the release of this compiler lock, which might come either from RT thread, or from here 
-*/
 void perform_gc_on_spawned_thread(World* inWorld)
 {
     while(perform_gc_thread_run)
@@ -185,6 +180,7 @@ void JuliaBoot(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     DoAsynchronousCommand(inWorld, replyAddr, "/jl_boot", (void*)julia_boot_args, (AsyncStageFn)julia_boot, 0, 0, julia_boot_cleanup, 0, nullptr);
 }
 
+/* on NRT thread. Actually compiles a @object */
 bool julia_load(World* world, void* cmd)
 {
     JuliaReplyWithLoadPath* julia_reply_with_load_path = (JuliaReplyWithLoadPath*)cmd;
@@ -257,6 +253,7 @@ void JuliaLoad(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
     
 }
 
+/* Delete an @object */
 bool julia_free(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
@@ -313,6 +310,7 @@ void JuliaFree(World *inWorld, void* inUserData, struct sc_msg_iter *args, void 
         printf("WARNING: Julia hasn't been initialized yet\n");
 }
 
+/* Get array of all @object(s) */
 bool julia_get_julia_objects_list(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())
@@ -368,6 +366,7 @@ void JuliaGetJuliaObjectsList(World *inWorld, void* inUserData, struct sc_msg_it
         printf("WARNING: Julia hasn't been initialized yet\n");
 }
 
+/* Retrieve just one @object by name */
 bool julia_get_julia_object_by_name(World* world, void* cmd)
 {
     if(julia_global_state->is_initialized())

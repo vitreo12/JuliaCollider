@@ -2,7 +2,7 @@
 
 #pragma once
 
-/* SHOULD I RE-IMPLEMENT THIS BARRIER WITH std::atomic_flag INSTEAD OF std::atomic<bool>??? */
+/* Spinlock and Trylock classes */
 
 class AtomicBarrier
 {
@@ -23,7 +23,7 @@ class AtomicBarrier
         bool get_barrier_value();
 
     private:
-        std::atomic<bool> barrier{false};
+        std::atomic<bool> barrier{false}; //Should it be atomic_flag instead? Would it be faster?
 };
 
 class JuliaAtomicBarrier : public AtomicBarrier

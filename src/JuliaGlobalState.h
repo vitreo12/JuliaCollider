@@ -8,6 +8,8 @@
 #define JC_VER_MAJ 0
 #define JC_VER_MIN 1
 
+/* Series of global variables and initialization/quit routines for Julia */
+
 /************************/
 /* JuliaGlobalUtilities */
 /************************/

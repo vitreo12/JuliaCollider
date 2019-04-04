@@ -5,6 +5,9 @@
 #include "JuliaObject.h"
 #include "JuliaReplyCmds.h"
 
+/* Actual compilation of an @object: from its module, to constructor, perform and destructor functions.
+Also, all utilities functions (like __UGenRef__ stuff) are compiled here and assigned to a JuliaObject* */
+
 /***********************/
 /* JuliaObjectCompiler */
 /***********************/

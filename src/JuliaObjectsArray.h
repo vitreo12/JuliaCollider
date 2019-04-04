@@ -3,6 +3,8 @@
 #include "JuliaObjectCompiler.h"
 #include "JuliaAtomicBarrier.h"
 
+/* Array of JuliaObject*. Fixed size of 1000 (for now) */
+
 /***********************/
 /* JuliaEntriesCounter */
 /***********************/

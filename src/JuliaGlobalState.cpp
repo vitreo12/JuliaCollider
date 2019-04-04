@@ -9,6 +9,8 @@
 #include <dlfcn.h>
 #endif
 
+/* Series of global variables and initialization/quit routines for Julia */
+
 /************************/
 /* JuliaGlobalUtilities */
 /************************/

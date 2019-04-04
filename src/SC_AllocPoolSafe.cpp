@@ -66,6 +66,10 @@ void freemem(AllocPool *pool, void* ptr)
 	pool->Free(ptr);
 }
 */
+
+/* Modified allocation pool with thread-safe locks around each stage. Moreover, 
+it returns a NULL pointer (instead of throwing an exception) when running out of memory */
+
 void AllocPoolSafe::InitAlloc()
 {
 	if (mAreaInitSize == 0) return;

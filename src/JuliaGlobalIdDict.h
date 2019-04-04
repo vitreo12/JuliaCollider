@@ -2,7 +2,10 @@
 
 #include "julia.h"
 
-/* IdDict() Julia wrapper. */
+/* IdDict() Julia wrapper. It is used to make global
+all the __JuliaDef__ (for a JuliaObject) and the __UGenRef__ (for single UGens)
+in order to keep them referenced for the GC not to pick on them until they are released */
+
 class JuliaGlobalIdDict
 {
     public:

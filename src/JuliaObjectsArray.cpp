@@ -1,6 +1,8 @@
 #include "JuliaObjectsArray.h"
 #include "JuliaUtilitiesMacros.hpp"
 
+/* Array of JuliaObject*. Fixed size of 1000 (for now) */
+
 /***********************/
 /* JuliaEntriesCounter */
 /***********************/

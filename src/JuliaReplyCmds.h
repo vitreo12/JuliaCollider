@@ -3,6 +3,9 @@
 #include "RTClassAlloc.hpp"
 #include <string>
 
+/* Reply functions to sclang when a "/done" command is sent from "/julia_load", "/julia_free", etc..
+This is where all the inputs/outputs/name informations are sent back to sclang from scsynth */
+
 //Not the safest way. GetJuliaDefs could simply run out of the characters
 #define JULIA_CHAR_BUFFER_SIZE 1000
 

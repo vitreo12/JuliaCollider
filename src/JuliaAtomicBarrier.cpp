@@ -1,5 +1,7 @@
 #include "JuliaAtomicBarrier.h"
 
+/* Spinlock and Trylock classes */
+
 void AtomicBarrier::Spinlock()
 {
     bool expected_val = false;

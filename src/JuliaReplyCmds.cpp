@@ -1,5 +1,8 @@
 #include "JuliaReplyCmds.h"
 
+/* Reply functions to sclang when a "/done" command is sent from "/julia_load", "/julia_free", etc..
+This is where all the inputs/outputs/name informations are sent back to sclang from scsynth */
+
 /**************/
 /* JuliaReply */
 /**************/

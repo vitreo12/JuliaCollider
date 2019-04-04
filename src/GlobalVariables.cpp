@@ -1,5 +1,7 @@
 #include "GlobalVariables.h"
 
+/* Initialization of the global variables */
+
 /* GLOBAL STATE */
 JuliaGlobalState*   julia_global_state = nullptr;
 
