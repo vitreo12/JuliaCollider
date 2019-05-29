@@ -1,4 +1,5 @@
 #include "SC_PlugIn.h"
+#include <cstdio>
 
 /*******************************************************
     SCBuffer.jl functions. Declared in julia.h 
