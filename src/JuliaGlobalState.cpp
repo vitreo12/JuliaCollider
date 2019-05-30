@@ -336,7 +336,9 @@ void JuliaGlobalState::boot_julia()
         printf("-> Booting Julia...\n");
 
         #ifdef __linux__
-            load_julia_shared_library();
+            bool loaded_julia_shared_library = load_julia_shared_library();
+            if(!loaded_julia_shared_library)
+                return;
         #endif
 
         const char* path_to_julia_sysimg = JuliaPath::get_julia_sysimg_path();
@@ -554,13 +556,15 @@ JuliaAllocFuncs* JuliaGlobalState::get_julia_alloc_funcs()
 
 //In julia.h, #define JL_RTLD_DEFAULT (JL_RTLD_LAZY | JL_RTLD_DEEPBIND) is defined. Could I just redefine the flags there?
 #ifdef __linux__
-    void JuliaGlobalState::load_julia_shared_library()
+    bool JuliaGlobalState::load_julia_shared_library()
     {
-        dl_handle = dlopen("libjulia.so", RTLD_NOW | RTLD_GLOBAL);
+        dl_handle = dlopen("libjulia.so", RTLD_NOW | RTLD_DEEPBIND | RTLD_GLOBAL);
         if (!dl_handle) {
             fprintf (stderr, "%s\n", dlerror());
-            printf("ERROR: Could not find Julia. \n");
+            return false;
         }
+
+        return true;
     }
 
     void JuliaGlobalState::close_julia_shared_library()

@@ -161,7 +161,7 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
 
         //In julia.h, #define JL_RTLD_DEFAULT (JL_RTLD_LAZY | JL_RTLD_DEEPBIND) is defined. Could I just redefine the flags there?
         #ifdef __linux__
-            void load_julia_shared_library();
+            bool load_julia_shared_library();
 
             void close_julia_shared_library();
         #endif
