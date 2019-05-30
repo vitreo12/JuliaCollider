@@ -202,7 +202,7 @@ JuliaPath::JuliaPath()
     julia_version_string = std::string(jl_ver_string());
     julia_version_maj_min = julia_version_string.substr(0, julia_version_string.size()-2); //Remove last two characters. Result is "1.1"
 
-    julia_path_to_sysimg  = "julia/lib/julia";
+    julia_path_to_sysimg  = "julia/scide_lib/julia";
     julia_path_to_stdlib  = std::string("julia/stdlib/v").append(julia_version_maj_min);
     julia_path_to_startup = "julia/startup/startup.jl";
 

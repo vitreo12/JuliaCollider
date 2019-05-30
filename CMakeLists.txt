@@ -108,9 +108,9 @@ add_library(${PROJECT} MODULE "src/${FILENAME}" "src/GlobalVariables.cpp" "src/J
 #-ldl needed for <dlfcn.h>
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/scide_lib' -Wl,-rpath,'@loader_path/julia/scide_lib/julia' -ljulia")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -ldl")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/scide_lib' -Wl,-rpath,'$ORIGIN/julia/scide_lib/julia' -ljulia -ldl")
 endif()
 ###########################################
 

@@ -92,6 +92,9 @@ rsync -r --links --update "$JULIA_BUILD_PATH/lib" ./JuliaCollider/julia         
 rsync --update "$JULIA_BUILD_PATH/etc/julia/startup.jl" ./JuliaCollider/julia/startup #copy startup.jl
 rsync -r -L --update "$JULIA_BUILD_PATH/share/julia/stdlib" ./JuliaCollider/julia     #copy /stdlib. Need to deep copy all the symlinks (-L flag)
 
+#rename julia/lib into julia/scide_lib. So that (Linux SC problem) SC won't be looking in that folder and attempt to load all the .so files in there.
+mv ./JuliaCollider/julia/lib ./JuliaCollider/julia/scide_lib
+
 if [[ "$OSTYPE" == "darwin"* ]]; then                     
     cp Julia.scx ./JuliaCollider                                                #copy compiled Julia.scx
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then 
