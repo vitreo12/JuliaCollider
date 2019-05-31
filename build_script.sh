@@ -43,7 +43,7 @@ CORES=$1                                   #first argument, number of cores to b
 
 re='^[0-9]+$'
 if ! [[ $CORES =~ $re ]] ; then
-   echo "*** ERROR ***: First argument is not a number" >&2
+   echo "*** ERROR ***: First argument is not a number. Insert a number for the cores to build julia with." >&2
    exit 1
 fi
 
@@ -51,7 +51,7 @@ SC_EXTENSIONS_PATH="${2/#\~/$HOME}"        #second argument, the extensions path
 SC_EXTENSIONS_PATH=${SC_EXTENSIONS_PATH%/} #remove trailing slash, if there is one
 
 if [ ! -d "$SC_EXTENSIONS_PATH" ]; then
-    echo "*** ERROR *** '$SC_EXTENSIONS_PATH' is not a valid folder"
+    echo "*** ERROR *** '$SC_EXTENSIONS_PATH' is not a valid folder. Insert your SuperCollider user Extensions folder"
     exit 1
 fi
 #echo "SuperCollider Extensions folder path : $SC_EXTENSIONS_PATH"
@@ -64,8 +64,8 @@ make -j $CORES
 #cd back to JuliaCollider folder
 cd $DIR
 
-#create build dir
-mkdir -p build
+#create build dir, deleting a previous one if it was there.
+rm -rf build; mkdir -p build
 cd build
 
 #Native build:
@@ -93,7 +93,7 @@ rsync --update "$JULIA_BUILD_PATH/etc/julia/startup.jl" ./JuliaCollider/julia/st
 rsync -r -L --update "$JULIA_BUILD_PATH/share/julia/stdlib" ./JuliaCollider/julia     #copy /stdlib. Need to deep copy all the symlinks (-L flag)
 
 #rename julia/lib into julia/scide_lib. So that (Linux SC problem) SC won't be looking in that folder and attempt to load all the .so files in there.
-mv ./JuliaCollider/julia/lib ./JuliaCollider/julia/scide_lib
+mv -f ./JuliaCollider/julia/lib ./JuliaCollider/julia/scide_lib
 
 if [[ "$OSTYPE" == "darwin"* ]]; then                     
     cp Julia.scx ./JuliaCollider                                                #copy compiled Julia.scx
