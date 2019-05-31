@@ -357,9 +357,17 @@ void JuliaGlobalState::boot_julia()
         if(path_to_julia_sysimg)
         {
             #ifdef __APPLE__
-                jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size);
+                #ifndef SUPERNOVA
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 0);
+                #else
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 1);
+                #endif
             #elif __linux__
-                jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size);
+                #ifndef SUPERNOVA
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 0);
+                #else
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 1);
+                #endif
             #endif
         }
 
