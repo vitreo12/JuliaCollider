@@ -6,7 +6,8 @@
 #include <string>
 
 #define JC_VER_MAJ 0
-#define JC_VER_MIN 1
+#define JC_VER_MID 1
+#define JC_VER_MIN 0
 
 /* Series of global variables and initialization/quit routines for Julia */
 

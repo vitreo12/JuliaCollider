@@ -437,7 +437,7 @@ void JuliaGlobalState::boot_julia()
 
             printf("****************************\n");
             printf("****************************\n");
-            printf("**** JuliaCollider  %d.%d ****\n", JC_VER_MAJ, JC_VER_MIN);
+            printf("**** JuliaCollider %d.%d.%d ***\n", JC_VER_MAJ, JC_VER_MID, JC_VER_MIN);
             printf("**** Julia %s booted ****\n", jl_ver_string());
             printf("****************************\n");
             printf("****************************\n");
