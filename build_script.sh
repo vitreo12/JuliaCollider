@@ -141,7 +141,7 @@ rsync --update ../src/Julia.sc ./JuliaCollider                                  
 rsync -r --update ../src/HelpSource ./JuliaCollider                                   #copy .schelp(s)
 rsync -r --links --update ../src/Examples ./JuliaCollider                             #copy /Examples 
 
-#Copy stuff over to SC's User Extension directory
+#Copy the whole build/JuliaCollider folder over to SC's User Extension directory
 rsync -r --links --update ./JuliaCollider "$SC_EXTENSIONS_PATH"
 
 echo "Done!"
