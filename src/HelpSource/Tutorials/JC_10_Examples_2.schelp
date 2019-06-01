@@ -8,7 +8,10 @@ This example contains a diode ladder lowpass filter.
 It is stored in the emphasis::"DiodeLadder.jl":: file.
 
 code::
-e = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/DiodeLadder.jl");
+(
+c = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl"); //Saw
+e = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/DiodeLadder.jl"); //Filter
+)
 
 (
 SynthDef(\JuliaLadderFilteredSaw, {
@@ -40,7 +43,10 @@ This example contains a simple analog delay emulation.
 It is stored in the emphasis::"AnalogDelay.jl":: file.
 
 code::
-f = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl");
+(
+c = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl"); //Saw
+f = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/AnalogDelay.jl"); //Delay
+)
 
 (
 SynthDef.new(\JuliaAnalogDelay, {

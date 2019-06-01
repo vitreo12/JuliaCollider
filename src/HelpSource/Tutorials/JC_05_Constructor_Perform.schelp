@@ -43,7 +43,7 @@ The strong::@sample:: macro describes the inner audio loop of the strong::@objec
 The strong::@sample:: macro, as well as having access to all of the strong::@perform:: macros, introduces 3 more sub-macros, listed here:
 NUMBEREDLIST::
 ##strong::@in:: : This macro takes 1 argument, the input number, and it returns the audio rate value from that input. strong::return type:: = emphasis::Float32:: .
-##strong::@out:: : This macro takes 1 argument, the output number, and it assigns the value of the equality operation to the selected output. The value could either be a emphasis::Float64:: or a emphasis::Float32::.
+##strong::@out:: : This macro takes 1 argument, the output number, and it assigns the value of the assignment operator to the selected output. The value could either be a emphasis::Float64:: or a emphasis::Float32::.
 
 note::
 Considering that the server's audio buffers are of type emphasis::Float32::, it is more performant to directly assign a emphasis::Float32:: value, in order to prevent any value conversion calculations to be added to the audio loop.
