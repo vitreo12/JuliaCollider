@@ -42,7 +42,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	set(CMAKE_COMPILER_IS_CLANG 1)
 endif()
 
-#Should I disable all these C flags for generic builds???
+#Build architecture
+message(STATUS "BUILD ARCHITECTURE : ${BUILD_MARCH}")
+add_definitions(-march=${BUILD_MARCH})
+
+#Should all these C flags be disabled for generic builds???
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     add_definitions(-fvisibility=hidden)
 
@@ -77,15 +81,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
     endif()
     if (HAS_CXX_FPMATH_SSE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpmath=sse")
-    endif()
-
-    if(NATIVE)
-        message(STATUS "NATIVE : ON")
-        add_definitions(-march=native)
-    else()
-        #x86-64 architectures only for generic builds... Should add support for more architectures.
-        message(STATUS "NATIVE : OFF")
-        add_definitions(-march=x86-64)
     endif()
 
     if(CPP11)
