@@ -4,7 +4,7 @@ CATEGORIES:: JuliaCollider>Classes, UGens>JuliaCollider
 RELATED:: Classes/JuliaDef, Overviews/JuliaCollider
 
 DESCRIPTION::
-The link::Classes/Julia:: UGen is where a compiled strong::@object::, represented in sclang by a  link::Classes/JuliaDef::, is used to genereate actual audio output: the link::Classes/Julia:: UGen is a direct interface to the server's representation of emphasis::JuliaCollider:: .
+The link::Classes/Julia:: UGen is where a compiled strong::@object::, represented in sclang by a  link::Classes/JuliaDef::, is used to generate actual audio output: the link::Classes/Julia:: UGen is a direct interface to the server's representation of emphasis::JuliaCollider:: .
 
 For more informations on the interaction between the link::Classes/Julia:: UGen and the link::Classes/JuliaDef:: class, look into link::Classes/JuliaDef::'s help file.
 

@@ -202,7 +202,7 @@ JuliaPath::JuliaPath()
     julia_version_string = std::string(jl_ver_string());
     julia_version_maj_min = julia_version_string.substr(0, julia_version_string.size()-2); //Remove last two characters. Result is "1.1"
 
-    julia_path_to_sysimg  = "julia/lib/julia";
+    julia_path_to_sysimg  = "julia/scide_lib/julia";
     julia_path_to_stdlib  = std::string("julia/stdlib/v").append(julia_version_maj_min);
     julia_path_to_startup = "julia/startup/startup.jl";
 
@@ -336,7 +336,9 @@ void JuliaGlobalState::boot_julia()
         printf("-> Booting Julia...\n");
 
         #ifdef __linux__
-            load_julia_shared_library();
+            bool loaded_julia_shared_library = load_julia_shared_library();
+            if(!loaded_julia_shared_library)
+                return;
         #endif
 
         const char* path_to_julia_sysimg = JuliaPath::get_julia_sysimg_path();
@@ -355,9 +357,17 @@ void JuliaGlobalState::boot_julia()
         if(path_to_julia_sysimg)
         {
             #ifdef __APPLE__
-                jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size);
+                #ifndef SUPERNOVA
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 0);
+                #else
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.dylib", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 1);
+                #endif
             #elif __linux__
-                jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size);
+                #ifndef SUPERNOVA
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 0);
+                #else
+                    jl_init_with_image_SC(path_to_julia_sysimg, "sys.so", SCWorld, julia_alloc_pool, julia_alloc_funcs, pool_starting_position, pool_size, 1);
+                #endif
             #endif
         }
 
@@ -435,7 +445,7 @@ void JuliaGlobalState::boot_julia()
 
             printf("****************************\n");
             printf("****************************\n");
-            printf("**** JuliaCollider  %d.%d ****\n", JC_VER_MAJ, JC_VER_MIN);
+            printf("**** JuliaCollider %d.%d.%d ***\n", JC_VER_MAJ, JC_VER_MID, JC_VER_MIN);
             printf("**** Julia %s booted ****\n", jl_ver_string());
             printf("****************************\n");
             printf("****************************\n");
@@ -554,13 +564,15 @@ JuliaAllocFuncs* JuliaGlobalState::get_julia_alloc_funcs()
 
 //In julia.h, #define JL_RTLD_DEFAULT (JL_RTLD_LAZY | JL_RTLD_DEEPBIND) is defined. Could I just redefine the flags there?
 #ifdef __linux__
-    void JuliaGlobalState::load_julia_shared_library()
+    bool JuliaGlobalState::load_julia_shared_library()
     {
-        dl_handle = dlopen("libjulia.so", RTLD_NOW | RTLD_GLOBAL);
+        dl_handle = dlopen("libjulia.so", RTLD_NOW | RTLD_DEEPBIND | RTLD_GLOBAL);
         if (!dl_handle) {
             fprintf (stderr, "%s\n", dlerror());
-            printf("ERROR: Could not find Julia. \n");
+            return false;
         }
+
+        return true;
     }
 
     void JuliaGlobalState::close_julia_shared_library()

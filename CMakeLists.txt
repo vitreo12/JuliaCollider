@@ -101,16 +101,16 @@ if(MINGW)
 endif()
 
 #Julia.scx/.so. Building it from Julia.cpp and all other .cpp files
-add_library(${PROJECT} MODULE "src/${FILENAME}" "src/GlobalVariables.cpp" "src/JuliaAtomicBarrier.cpp" "src/JuliaGlobalIdDict.cpp" "src/JuliaGlobalState.cpp" "src/JuliaObjectCompiler.cpp" "src/JuliaObjectsArray.cpp" "src/JuliaReplyCmds.cpp" "src/SC_AllocPoolSafe.cpp" "src/SCBuffer.cpp")
+add_library(${PROJECT} MODULE "src/${FILENAME}" "src/GlobalVariables.cpp" "src/JuliaAtomicBarrier.cpp" "src/JuliaGlobalIdDict.cpp" "src/JuliaGlobalState.cpp" "src/JuliaObjectCompiler.cpp" "src/JuliaObjectsArray.cpp" "src/JuliaReplyCmds.cpp" "src/SC_AllocPoolSafe.cpp")
 
 #JULIA LINKER FLAGS.
 #-L'${JULIA_BUILD_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
 #-ldl needed for <dlfcn.h>
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/lib' -Wl,-rpath,'@loader_path/julia/lib/julia' -ljulia")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/scide_lib' -Wl,-rpath,'@loader_path/julia/scide_lib/julia' -ljulia")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/lib' -Wl,-rpath,'$ORIGIN/julia/lib/julia' -ljulia -ldl")
+    target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,--export-dynamic -Wl,-rpath,'$ORIGIN/julia/scide_lib' -Wl,-rpath,'$ORIGIN/julia/scide_lib/julia' -ljulia -ldl")
 endif()
 ###########################################
 
