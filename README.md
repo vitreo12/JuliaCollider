@@ -1,4 +1,19 @@
 JuliaCollider
+=============
+
+What is JuliaCollider?
+----------------------
+
+Download binaries
+-----------------
+
+Build from source
+-----------------
+
+MacOS:
+
+Linux:
+(pmap requirements)
 
 BUILD INSTRUCTIONS:
 Run the build_script.sh with two arguments:

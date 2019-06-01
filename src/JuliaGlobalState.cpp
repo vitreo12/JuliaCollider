@@ -566,6 +566,7 @@ JuliaAllocFuncs* JuliaGlobalState::get_julia_alloc_funcs()
 #ifdef __linux__
     bool JuliaGlobalState::load_julia_shared_library()
     {
+        //Should it be RLTD_LAZY instead of RLTD_NOW ?
         dl_handle = dlopen("libjulia.so", RTLD_NOW | RTLD_DEEPBIND | RTLD_GLOBAL);
         if (!dl_handle) {
             fprintf (stderr, "%s\n", dlerror());

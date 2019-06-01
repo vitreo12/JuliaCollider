@@ -105,7 +105,9 @@ add_library(${PROJECT} MODULE "src/${FILENAME}" "src/GlobalVariables.cpp" "src/J
 
 #JULIA LINKER FLAGS.
 #-L'${JULIA_BUILD_PATH}/lib' needed to find functions at linking time. -Wl,-rpath to find them at runtime.
-#-ldl needed for <dlfcn.h>
+#-L'${JULIA_BUILD_PATH}/lib' is in the deps directory, where julia has been built.
+#-Wl,-rpath  is in the built folder, and it must look for "scide_lib" (instead of just "lib") because of a SC problem in loading .so files that are not SC plugins on Linux. 
+#-ldl needed for <dlfcn.h>, to run dlopen() on libjulia.so on Linux. It is to solve a Julia bug. Refer to: https://discourse.julialang.org/t/different-behaviours-in-linux-and-macos-with-julia-embedded-in-c/18101
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     target_link_libraries(${PROJECT} "-L'${JULIA_BUILD_PATH}/lib' -Wl,-rpath,'@loader_path/julia/scide_lib' -Wl,-rpath,'@loader_path/julia/scide_lib/julia' -ljulia")
