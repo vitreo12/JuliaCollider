@@ -1,6 +1,10 @@
 JuliaCollider
 =============
 
+<p align="center">
+  <img width="400" height="260" src="src/HelpSource/Overviews/JuliaCollider_logo.png">
+</p>
+
 What is JuliaCollider?
 ----------------------
 
