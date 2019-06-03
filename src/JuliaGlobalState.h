@@ -137,7 +137,7 @@ class JuliaGlobalState : public JuliaPath, public JuliaGlobalUtilities
         ~JuliaGlobalState();
 
         //Called with async command.
-        void boot_julia();
+        bool boot_julia();
 
         bool run_startup_file();
 

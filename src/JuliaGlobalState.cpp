@@ -314,7 +314,29 @@ JuliaGlobalState::JuliaGlobalState(World* SCWorld_, int julia_pool_alloc_mem_siz
     julia_alloc_funcs->fRTFree = &julia_pool_free;
     julia_alloc_funcs->fRTTotalFreeMemory = &julia_pool_total_free_memory;
 
-    boot_julia();
+    bool has_julia_booted = boot_julia();
+    if(!has_julia_booted)
+    {
+        printf("ERROR: Could not boot Julia\n");
+
+        if(alloc_pool)
+        {
+            delete alloc_pool;
+            alloc_pool = nullptr;
+        }
+
+        if(julia_alloc_pool)
+        {
+            free(julia_alloc_pool);
+            julia_alloc_pool = nullptr;
+        }
+
+        if(julia_alloc_funcs)
+        {
+            free(julia_alloc_funcs);
+            julia_alloc_funcs = nullptr;
+        }
+    }
 }
 
 JuliaGlobalState::~JuliaGlobalState()
@@ -322,14 +344,19 @@ JuliaGlobalState::~JuliaGlobalState()
     //First quit julia. It will run finalizers and it will still need the memory pool to be alive
     quit_julia();
 
-    //Then delete pool 
-    delete alloc_pool;
-    free(julia_alloc_pool);
-    free(julia_alloc_funcs);
+    //Then delete pool
+    if(alloc_pool) 
+        delete alloc_pool;
+
+    if(julia_alloc_pool)
+        free(julia_alloc_pool);
+
+    if(julia_alloc_funcs)
+        free(julia_alloc_funcs);
 }
 
 //Called with async command.
-void JuliaGlobalState::boot_julia()
+bool JuliaGlobalState::boot_julia()
 {
     if(!jl_is_initialized() && !initialized)
     {
@@ -338,11 +365,14 @@ void JuliaGlobalState::boot_julia()
         #ifdef __linux__
             bool loaded_julia_shared_library = load_julia_shared_library();
             if(!loaded_julia_shared_library)
-                return;
+            {
+                printf("ERROR: Could not load libjulia.so\n");
+                return false;
+            }
         #endif
 
         const char* path_to_julia_sysimg = JuliaPath::get_julia_sysimg_path();
-        const char* path_to_julia_stdlib  = JuliaPath::get_julia_stdlib_path();
+        const char* path_to_julia_stdlib = JuliaPath::get_julia_stdlib_path();
 
         //printf("***\nPath to Julia lib:\n %s\n***", path_to_julia_sysimg);
 
@@ -354,6 +384,9 @@ void JuliaGlobalState::boot_julia()
         void* pool_starting_position = julia_alloc_pool->alloc_pool->get_area_ptr()->get_unaligned_pointer();
         size_t pool_size = julia_alloc_pool->alloc_pool->get_area_ptr()->get_size();
         
+        //Set julia optimization to -O3
+        jl_options.opt_level = 3;
+
         if(path_to_julia_sysimg)
         {
             #ifdef __APPLE__
@@ -398,35 +431,35 @@ void JuliaGlobalState::boot_julia()
             if(!initialized_startup_file)
             {
                 printf("ERROR: Could not run startup.jl\n");
-                return;
+                return false;
             }
 
             bool initialized_julia_collider = initialize_julia_collider_module();
             if(!initialized_julia_collider)
             {
                 printf("ERROR: Could not intialize JuliaCollider module\n");
-                return;
+                return false;
             }
 
             bool initialized_global_utilities = JuliaGlobalUtilities::initialize_global_utilities(SCWorld);
             if(!initialized_global_utilities)
             {
                 printf("ERROR: Could not intialize JuliaGlobalUtilities\n");
-                return;
+                return false;
             }
 
             bool initialized_global_def_id_dict = global_def_id_dict.initialize_id_dict("__JuliaGlobalDefIdDict__");
             if(!initialized_global_def_id_dict)
             {
                 printf("ERROR: Could not intialize JuliaGlobalDefIdDict \n");
-                return;
+                return false;
             }
 
             bool initialized_global_object_id_dict = global_object_id_dict.initialize_id_dict("__JuliaGlobalObjectIdDict__");
             if(!initialized_global_object_id_dict)
             {
                 printf("ERROR: Could not intialize JuliaGlobalObjectIdDict \n");
-                return;
+                return false;
             }
 
             /* Thid id dict should be removed */
@@ -434,13 +467,14 @@ void JuliaGlobalState::boot_julia()
             if(!initialized_global_gc_id_dict)
             {
                 printf("ERROR: Could not intialize JuliaGlobalGCIdDict \n");
-                return;
+                return false;
             }
 
-            //Get world_counter right away, otherwise last_age, in include sections, would be
+            //Update world_age world_counter right away, otherwise last_age, in include sections, would be
             //still age 1. This update here allows me to only advance age on the NRT thread, while 
             //on the RT thread I only invoke methods that are been already compiled and would work 
             //between their world age minimum and maximum.
+            //Basically, I do update here in order to avoid to have "1" as last_age at any stage of JuliaCollider.
             jl_get_ptls_states()->world_age = jl_get_world_counter();
 
             printf("****************************\n");
@@ -451,12 +485,16 @@ void JuliaGlobalState::boot_julia()
             printf("****************************\n");
             
             initialized = true;
+            return true;
         }
     }
     else if(initialized)
+    {
         printf("*** Julia %s already booted ***\n", jl_ver_string());
-    else
-        printf("ERROR: Could not boot Julia \n"); 
+        return true;
+    }
+
+    return false;
 }
 
 bool JuliaGlobalState::run_startup_file()
@@ -568,7 +606,8 @@ JuliaAllocFuncs* JuliaGlobalState::get_julia_alloc_funcs()
     {
         //Should it be RLTD_LAZY instead of RLTD_NOW ?
         dl_handle = dlopen("libjulia.so", RTLD_NOW | RTLD_DEEPBIND | RTLD_GLOBAL);
-        if (!dl_handle) {
+        if (!dl_handle) 
+        {
             fprintf (stderr, "%s\n", dlerror());
             return false;
         }
