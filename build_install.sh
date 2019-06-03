@@ -16,7 +16,7 @@ fi
 BUILD_MARCH=native
 
 #Unpack -c (CORES) -e (EXTENSIONS DIR) -a (BUILD_MARCH) arguments
-while getopts "a:c:e:" opt; do
+while getopts "a:c:e:h" opt; do #Note that "h" is not followed by ":", which would make it expect an argument.
   case $opt in
     a) BUILD_MARCH="$OPTARG"
     ;;
@@ -24,7 +24,9 @@ while getopts "a:c:e:" opt; do
     ;;
     e) SC_EXTENSIONS_PATH="$OPTARG"
     ;;
-    \?) PRINT_HELP=1                 #If no recognizable args
+    h) PRINT_HELP=1
+    ;;
+    \?) PRINT_HELP=1                 #If no recognizable args, print the help 
     ;;
   esac
 done
@@ -37,20 +39,22 @@ fi
 #Check if user is looking for help
 if [ $PRINT_HELP == 1 ]; then
   echo
-  echo "*************************************************************************************"
-  echo "* JuliaCollider: build script help file.                                            *"
-  echo "*                                                                                   *"
-  echo "* 1) -c argument is the number of cores to build Julia with.                        *"
-  echo "*    (default = 4)                                                                  *"
-  echo "*                                                                                   *"
-  echo "* 2) -e argument is your SuperCollider \"Platform.userExtensionDir\".                 *"
-  echo "*    (default MacOS = ~/Library/Application\ Support/SuperCollider/Extensions)      *"
-  echo "*    (default Linux = ~/.local/share/SuperCollider/Extensions)                      *"
-  echo "*                                                                                   *"
-  echo "* 3) -a argument is optional. It allows to make builds for different architectures. *"
-  echo "*    (default = native)                                                             *"
-  echo "*                                                                                   *"
-  echo "*************************************************************************************"
+  echo "**********************************************************************************"
+  echo "* JuliaCollider: build script help file.                                         *"
+  echo "*                                                                                *"
+  echo "*  ARGUMENTS:                                                                    *"
+  echo "*                                                                                *"
+  echo "*   [-c] : number of cores to build Julia with.                                  *"
+  echo "*    (default = 4)                                                               *"
+  echo "*                                                                                *"
+  echo "*   [-e] : your SuperCollider \"Platform.userExtensionDir\".                       *"
+  echo "*    (default MacOS = ~/Library/Application\ Support/SuperCollider/Extensions)   *"
+  echo "*    (default Linux = ~/.local/share/SuperCollider/Extensions)                   *"
+  echo "*                                                                                *"
+  echo "*   [OPTIONAL] [-a] : build architecture.                                        *"
+  echo "*    (default = native)                                                          *"
+  echo "*                                                                                *"
+  echo "**********************************************************************************"
   echo
   exit 1
 fi
@@ -73,7 +77,7 @@ SC_PATH=$DIR/deps/supercollider
 #-c argument
 re='^[0-9]+$'
 if ! [[ $CORES =~ $re ]] ; then
-   echo "*** ERROR ***: First argument is not a number. Insert a number for the cores to build julia with." >&2
+   echo "*** ERROR ***: [-c] argument is not a number. Insert a number for the cores to build julia with." >&2
    exit 1
 fi
 
@@ -82,7 +86,7 @@ SC_EXTENSIONS_PATH="${SC_EXTENSIONS_PATH/#\~/$HOME}"   #expand tilde, if there i
 SC_EXTENSIONS_PATH=${SC_EXTENSIONS_PATH%/}             #remove trailing slash, if there is one
 
 if [ ! -d "$SC_EXTENSIONS_PATH" ]; then
-    echo "*** ERROR *** '$SC_EXTENSIONS_PATH' is not a valid folder. Insert your SuperCollider \"Platform.userExtensionDir\"."
+    echo "*** ERROR *** [-e] argument, '$SC_EXTENSIONS_PATH', is not a valid folder. Insert your SuperCollider \"Platform.userExtensionDir\"."
     exit 1
 fi
 
