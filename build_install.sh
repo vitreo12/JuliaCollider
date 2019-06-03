@@ -7,9 +7,9 @@ CORES=4
 
 #-e default value
 if [[ "$OSTYPE" == "darwin"* ]]; then  
-  SC_EXTENSIONS_PATH=${SC_EXTENSIONS_PATH:-~/Library/Application\ Support/SuperCollider/Extensions} 
+  SC_EXTENSIONS_PATH=~/Library/Application\ Support/SuperCollider/Extensions
 elif [[ "$OSTYPE" == "linux-gnu" ]]; then 
-  SC_EXTENSIONS_PATH=${SC_EXTENSIONS_PATH:-~/.local/share/SuperCollider/Extensions}
+  SC_EXTENSIONS_PATH=~/.local/share/SuperCollider/Extensions
 fi
 
 #-a default value

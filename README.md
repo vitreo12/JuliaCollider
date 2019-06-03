@@ -27,7 +27,7 @@ Build from source
 
 The requirements for JuliaCollider are the same of [Julia]. Check Julia's README for required software that you might need to install on your machine in order to correctly build JuliaCollider.
 
-**Clone and build**
+**Clone and build:**
 
     1) git clone --recursive https://github.com/vitreo12/JuliaCollider
     2) cd to git folder
