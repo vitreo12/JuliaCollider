@@ -39,22 +39,26 @@ fi
 #Check if user is looking for help
 if [ $PRINT_HELP == 1 ]; then
   echo
-  echo "**********************************************************************************"
-  echo "* JuliaCollider: build script help file.                                         *"
-  echo "*                                                                                *"
-  echo "*  ARGUMENTS:                                                                    *"
-  echo "*                                                                                *"
-  echo "*   [-c] : number of cores to build Julia with.                                  *"
-  echo "*    (default = 4)                                                               *"
-  echo "*                                                                                *"
-  echo "*   [-e] : your SuperCollider \"Platform.userExtensionDir\".                       *"
-  echo "*    (default MacOS = ~/Library/Application\ Support/SuperCollider/Extensions)   *"
-  echo "*    (default Linux = ~/.local/share/SuperCollider/Extensions)                   *"
-  echo "*                                                                                *"
-  echo "*   [OPTIONAL] [-a] : build architecture.                                        *"
-  echo "*    (default = native)                                                          *"
-  echo "*                                                                                *"
-  echo "**********************************************************************************"
+  echo "-------------------------------------------------------------------------------------------------"
+  echo
+  echo "  JuliaCollider: build script help file. "
+  echo
+  echo "   FLAGS: "
+  echo
+  echo "    [-c] [default = 4] : " 
+  echo
+  echo "         - Number of cores to build Julia with. "
+  echo
+  echo "    [-e] [default MacOS = ~/Library/Application\ Support/SuperCollider/Extensions]"
+  echo "         [default Linux = ~/.local/share/SuperCollider/Extensions] : "
+  echo
+  echo "         - Your SuperCollider's \"Platform.userExtensionDir\" or \"Platform.systemExtensionDir\"."
+  echo 
+  echo "    [-a] [OPTIONAL] [default = native] : "
+  echo
+  echo "         - Build architecture."
+  echo 
+  echo "-------------------------------------------------------------------------------------------------"
   echo
   exit 1
 fi

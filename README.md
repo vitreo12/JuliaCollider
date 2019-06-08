@@ -19,7 +19,11 @@ Once you have downloaded the zipped release, extract it and simply put the **Jul
     
     Platform.userExtensionDir
 
-in SuperCollider.
+in SuperCollider. For a system wide installation, put the folder in your
+
+    Platform.systemExtensionDir
+
+instead.
 
 Build from source
 =================
@@ -27,16 +31,50 @@ Build from source
 Requirements:
 -------------
 
-The requirements for JuliaCollider are the same of [Julia]. Check Julia's README for required software that you might need to install on your machine in order to correctly build JuliaCollider.
+The requirements for JuliaCollider are the same that [Julia] has. Check Julia's [README] for required libraries and tools that you might need to install on your machine in order to correctly build Julia and, thus, **JuliaCollider**.
+
+[README]: https://github.com/vitreo12/julia/blob/master/README.md#required-build-tools-and-external-libraries
 
 Clone and build:
 ----------------
 
-    1) git clone --recursive https://github.com/vitreo12/JuliaCollider
-    2) cd to git folder
-    3) run ./build_install.sh script (check its help file for flags)
+Once you have all the requirements in place, building **JuliaCollider** simply requires to:
 
-If the build_install.sh script gives error, you are probably missing some of Julia's required software. Make sure you have all of them installed. If they are all installed and you're still given an error, run the script again, as Julia's build, sometimes, fails in downloading all the rest of its necessary dependencies.
+1) Clone the repository with all initialized submodules:
+ 
+        git clone --recursive https://github.com/vitreo12/JuliaCollider
+
+2) Move inside the cloned repository:
+        
+        cd JuliaCollider/
+
+3) Run the **build_install.sh** script:
+   
+    - To see which flags are available for the script, run the help file by evaluating:
+
+          ./build_install.sh -h
+
+        Available flags are:
+
+            [-c] [default = 4] : 
+
+                - Number of cores to build Julia with.
+
+            [-e] [default MacOS = ~/Library/Application\ Support/SuperCollider/Extensions]
+                 [default Linux = ~/.local/share/SuperCollider/Extensions] :
+
+                - Your SuperCollider's "Platform.userExtensionDir" or "Platform.systemExtensionDir".
+          
+            [-a] [OPTIONAL] [default = native] :
+
+                - Build architecture.
+    
+    - Once you chose the number of cores to build Julia with and found your SuperCollider's Extensions directory, run the script with the correct flags. This is an example of build with 8 cores, with the Extensions directory in "~/Library/Application\ Support/SuperCollider/Extensions":
+
+          ./build_install.sh -c 8 -e ~/Library/Application\ Support/SuperCollider/Extensions
+
+
+If the **build_install.sh** script gives error, you are probably missing some of Julia's required software. Make sure you have all of them installed. If they are all installed and you're still given an error, run the script again, as Julia's build, sometimes, fails in downloading all the rest of its necessary dependencies.
 
 **NOTE**: As **JuliaCollider** uses a custom fork of [Julia], which needs to be built from the ground up, the first time you'll compile **JuliaCollider** will take some time.
 
