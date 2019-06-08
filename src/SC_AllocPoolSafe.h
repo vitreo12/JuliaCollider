@@ -1,4 +1,3 @@
-
 /*
 	SuperCollider real time audio synthesis system
     Copyright (c) 2002 James McCartney. All rights reserved.
@@ -18,14 +17,27 @@
     along with this program; if not, write to the Free Software
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 */
-/*
-This is based on Doug Lea's allocator but rewritten so I can read and understand it...
-also features of free all-at-once pools are added.
-Now uses 16 byte alignment, which does increase the minimum allocation size to 32 bytes
-including the overhead.
-Improved bit block scanning by using a count leading zeroes instruction.
 
+/*
+    JuliaCollider: Julia's JIT compilation for low-level audio synthesis and prototyping in SuperCollider.
+    Copyright (C) 2019 Francesco Cameli. All rights reserved.
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+
+/* Modified SuperCollider's allocation pool with thread-safe locks around each stage. Moreover, 
+it returns a NULL pointer (instead of throwing an exception) when running out of memory */
 
 #pragma once
 
@@ -35,9 +47,6 @@ Improved bit block scanning by using a count leading zeroes instruction.
 #include <stdlib.h>
 
 #include "JuliaAtomicBarrier.h"
-
-/* Modified allocation pool with thread-safe locks around each stage. Moreover, 
-it returns a NULL pointer (instead of throwing an exception) when running out of memory */
 
 const int kNumAllocBins = 128;
 const int kNumSmallBins = 64;
