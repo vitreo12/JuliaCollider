@@ -117,9 +117,12 @@ Getting started
 
 **NOTE FOR LINUX USERS:** In order to use **JuliaCollider** (either the downloaded binaries or the custom built version), you must make sure that your distribution has [pmap] installed.
 
-To get started with **JuliaCollider** simply navigate to the `Browse` section of the `Help Browser`. If **JuliaCollider** has been correctly installed in either the `Platform.userExtensionDir` or the `Platform.systemExtensionDir`, you should be able to see the **JuliaCollider** section:
+To get started with **JuliaCollider** simply navigate to the `Browse` section of `SCIde`'s `Help Browser`. If **JuliaCollider** has been correctly installed in either the `Platform.userExtensionDir` or the `Platform.systemExtensionDir`, you should be able to see a **JuliaCollider** section which contains an overview, a series of 10 tutorials and help files for both the `Julia` and `JuliaDef` new `Classes`:
 
+<p align="center">
+  <img width="700" height="608" src="NOTES/JuliaCollider_Help_Browse.png">
+</p>
 
-The **JuliaCollider** `Browse` section contains an overview, a series of 10 tutorials and help files for both the `Julia` and `JuliaDef` new `Classes`.
+Refer to these help files in the SuperCollider's `Document Browser` to correctly setup your **JuliaCollider** environment.
 
 [pmap]: https://linux.die.net/man/1/pmap
