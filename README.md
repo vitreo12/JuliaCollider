@@ -31,9 +31,41 @@ Build from source
 Requirements:
 -------------
 
-The requirements for JuliaCollider are the same that [Julia] has. Check Julia's [README] for required libraries and tools that you might need to install on your machine in order to correctly build Julia and, thus, **JuliaCollider**.
+The requirements to build **JuliaCollider** are the same that [Julia] has:
 
-[README]: https://github.com/vitreo12/julia/blob/master/README.md#required-build-tools-and-external-libraries
+- **[GNU make]**                — building dependencies.
+- **[gcc & g++][gcc]** (>= 4.7) or **[Clang][clang]** (>= 3.1, Xcode 4.3.3 on OS X) — compiling and linking C, C++.
+- **[libatomic][gcc]**          — provided by **[gcc]** and needed to support atomic operations.
+- **[python]** (>=2.7)          — needed to build LLVM.
+- **[gfortran]**                — compiling and linking Fortran libraries.
+- **[perl]**                    — preprocessing of header files of libraries.
+- **[wget]**, **[curl]**, or **[fetch]** (FreeBSD) — to automatically download external libraries.
+- **[m4]**                      — needed to build GMP.
+- **[awk]**                     — helper tool for Makefiles.
+- **[patch]**                   — for modifying source code.
+- **[cmake]** (>= 3.4.3)        — needed to build `libgit2`.
+- **[pkg-config]**              — needed to build `libgit2` correctly, especially for proxy support.
+
+Check Julia's [README] for additional platform specific build informations. You should ignore the [Architecture Customization] section.
+
+[README]: https://github.com/vitreo12/julia/blob/master/README.md#platform-specific-build-notes
+
+[Architecture Customization]: https://github.com/vitreo12/julia/blob/master/README.md#architecture-customization
+
+[GNU make]:     http://www.gnu.org/software/make
+[patch]:        http://www.gnu.org/software/patch
+[wget]:         http://www.gnu.org/software/wget
+[m4]:           http://www.gnu.org/software/m4
+[awk]:          http://www.gnu.org/software/gawk
+[gcc]:          http://gcc.gnu.org
+[clang]:        http://clang.llvm.org
+[python]:       https://www.python.org/
+[gfortran]:     https://gcc.gnu.org/fortran/
+[curl]:         http://curl.haxx.se
+[fetch]:        http://www.freebsd.org/cgi/man.cgi?fetch(1)
+[perl]:         http://www.perl.org
+[cmake]:        http://www.cmake.org
+[pkg-config]:   https://www.freedesktop.org/wiki/Software/pkg-config/
 
 Clone and build:
 ----------------
@@ -81,6 +113,13 @@ If the **build_install.sh** script gives error, you are probably missing some of
 Getting started
 ===============
 
-**FOR LINUX USERS**: In order to use **JuliaCollider**, you must make sure that your distribution has [pmap] installed.
+**NOTE FOR MACOS USERS:** **JuliaCollider** (either the downloaded binaries or the custom built version) only works with at least MacOS 10.10.
+
+**NOTE FOR LINUX USERS:** In order to use **JuliaCollider** (either the downloaded binaries or the custom built version), you must make sure that your distribution has [pmap] installed.
+
+To get started with **JuliaCollider** simply navigate to the `Browse` section of the `Help Browser`. If **JuliaCollider** has been correctly installed in either the `Platform.userExtensionDir` or the `Platform.systemExtensionDir`, you should be able to see the **JuliaCollider** section:
+
+
+The **JuliaCollider** `Browse` section contains an overview, a series of 10 tutorials and help files for both the `Julia` and `JuliaDef` new `Classes`.
 
 [pmap]: https://linux.die.net/man/1/pmap
