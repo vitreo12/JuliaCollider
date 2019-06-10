@@ -101,7 +101,7 @@ Once you have all the requirements in place, building **JuliaCollider** simply r
 
                 - Build architecture.
     
-    - Once you chose the number of cores to build Julia with and found your SuperCollider's Extensions directory, run the script with the correct flags. This is an example of build with 8 cores, with the Extensions directory in "~/Library/Application\ Support/SuperCollider/Extensions":
+    - Once you've chosen the number of cores to build Julia with and found your SuperCollider's Extensions directory, run the script with the correct flags. This is an example of build with 8 cores, with the Extensions directory in "~/Library/Application\ Support/SuperCollider/Extensions":
 
           ./build_install.sh -c 8 -e ~/Library/Application\ Support/SuperCollider/Extensions
 
