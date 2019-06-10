@@ -13,7 +13,7 @@ What is JuliaCollider?
 Download binaries
 =================
 
-Precompiled binaries for MacOS (10.10+) and Linux (Intel 64 bit) are available under the releases of the repository.
+Precompiled binaries for MacOS (10.10+) and Linux (x86 - 64-bit) are available under the releases of the repository.
 
 Once you have downloaded the zipped release, extract it and simply put the **JuliaCollider** folder in your SuperCollider extensions folder. You can find yours by evaluating
     
