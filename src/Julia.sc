@@ -118,8 +118,8 @@ JuliaDef {
 			inputs = ins;
 			outputs = outs;
 
-			//Add file_path only on positive response of server (inputs > -1)
-			if(inputs > -1, {file_path = path;});
+			/* Add JuliaDef to IdentityDictionary, regardless if compilation was successful or not,
+			so that it's still possible to run the "recompile" method on it. */
 
 			//[s, name.AsSymbol]
 			julia_def_to_dict_index = Array.newClear(2);
@@ -137,17 +137,28 @@ JuliaDef {
 
 			//postln("DICT: " ++ julia_defs_dictionary);
 
+			//If inputs is more than -1, it means the compilation has been successful.
+			if(inputs > -1, {
+				//Only add file_path if the compilation was successful
+				file_path = path;
+				compiled = true;
+
+				("-> Compilation successful: ").postln;
+			}, {
+				compiled = false;
+				("-> Failed Compilation: ").postln;
+			}
+			);
+
 			//Sync server right after variables assignment
 			server.sync;
 
 			//Print out
-			("-> Compilation successful: ").postln;
-
 			this.query.value();
 		}
 	}
 
-	//Retrieve a JuliaDef from the IdentityDictionary.
+	/* Retrieve a JuliaDef from the IdentityDictionary. */
 	*getJuliaDef {
 		arg server, julia_def_name;
 
@@ -183,6 +194,7 @@ JuliaDef {
 
 		/* Queried JuliaDef will be the updated version from the Dictionary */
 		("*** Julia @object: " ++ name ++ " ***").postln;
+		("*** Compiled : " ++ compiled ++ " ***").postln;
 		("*** Server: " ++ srvr ++ " ***").postln;
 		("*** ID: " ++ julia_def.server_id ++ " ***").postln;
 		("*** Inputs: " ++ julia_def.inputs ++ " ***").postln;
@@ -214,6 +226,7 @@ JuliaDef {
 		outputs = -1;
 		name = "@No_Name";
 		file_path = "";
+		compiled = false;
 
 		this.query.value();
 	}
@@ -248,7 +261,7 @@ JuliaDef {
 	/* Retrieve a JuliaDef from server by name, and assign it to a new JuliaDef, returning it */
 	*retrieve {
 		arg server, obj_name;
-		^this.new(server, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name);
+		^this.new(server, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name); //Create a dummy JuliaDef
 	}
 
 	getCompiledJuliaDef {
@@ -321,8 +334,7 @@ JuliaDef {
 			inputs = ins;
 			outputs = outs;
 
-			//Assign name, the opposite as newJuliaDef.
-			if(inputs > -1, {name = obj_name;});
+			/* Update the IdentityDictionary entry aswell */
 
 			//[s, name.AsSymbol]
 			julia_def_to_dict_index = Array.newClear(2);
@@ -339,6 +351,11 @@ JuliaDef {
 			julia_defs_dictionary.put(julia_def_to_dict_index, julia_def_to_dict);
 
 			//postln("DICT: " ++ julia_defs_dictionary);
+
+			//If inputs is more than -1, it means that the retrieved JuliaDef is compiled.
+			if(inputs > -1, {
+				name = obj_name;
+			});
 
 			//Sync server right after variables assignment
 			server.sync;
@@ -421,7 +438,7 @@ JuliaDef {
 			server.sync;
 		}
 
-		//It will be empty at the moment of return, but filled when server command returns
+		//It will be empty at the moment of return, but filled when server command returns.
 		^return_array;
 	}
 
@@ -469,8 +486,7 @@ Julia : MultiOutUGen {
 			Error("Julia: no arguments provided.").throw;
 		});
 
-		//If first argument is not a JuliaDef, return silence. Return silence immediately
-		// in order not to unpack things from objects that might not be JuliaDefs...
+		//If first argument is not a JuliaDef, error
 		if((args[0].class == JuliaDef).not, {
 			Error("Julia: first argument is not a JuliaDef.").throw;
 		});
@@ -485,14 +501,15 @@ Julia : MultiOutUGen {
 		//Get the server of the JuliaDef
 		julia_def_server = args[0].srvr;
 
-		/* Unpack JuliaDef from the IdentityDictionary, to pick up eventual changes made by other JuliaDefs */
+		/* Unpack JuliaDef from the IdentityDictionary, to pick up eventual changes made
+		when recompiling the same JuliaDef from a different variable. */
 		julia_def = JuliaDef.getJuliaDef(julia_def_server, julia_def_name);
 
 		if(julia_def == nil, {
 			Error("Julia: invalid JuliaDef.").throw;
 		});
 
-		server_id =julia_def.server_id;
+		server_id = julia_def.server_id;
 		inputs = julia_def.inputs;
 		outputs = julia_def.outputs;
 
@@ -522,7 +539,7 @@ Julia : MultiOutUGen {
 		//Copy elements over to new_args
 		args.do({
 			arg item, i;
-			//Shift UGen args by three. It will leave first two entries free
+			//Shift UGen args by three. It will leave first three entries free
 			new_args[i + 3] = item;
 		});
 
@@ -543,13 +560,15 @@ Julia : MultiOutUGen {
 
 	init { arg ... theInputs;
 		var outputs = 0;
+
 		/* At this stage, 'audio' as already been removed as first element in array and
-		assigned to class variable "rate". Now "outputs" is first element.
+		assigned to class variable "rate". Now, the number of outputs is first element.
 		Retrieve it, and remove it from the array. */
 		outputs = theInputs[0];
 		theInputs.removeAt(0);
-		/*Assign input array to be theInputs, when "output" is removed, theInputs
-		will have the server_id as first input, then UGens. */
+
+		/* Assign inputs array of class to be theInputs, when "outputs" is removed, theInputs
+		will have the server_id as first input, then the UGens arguments. */
 		inputs = theInputs;
 		^this.initOutputs(outputs, rate)
 	}
