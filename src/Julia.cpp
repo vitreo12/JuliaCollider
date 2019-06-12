@@ -236,6 +236,8 @@ private:
 
     int real_num_inputs = 0;
 
+    bool print_once_id_mismatch = false;
+
     bool print_once_inputs = false;
     bool print_once_outputs = false;
 
@@ -657,8 +659,46 @@ private:
         bool compiler_lock = julia_compiler_barrier->RTTrylock();
         if(compiler_lock)
         {
-            //If THIS @object has changed, start the recompilation. Otherwise, it meant that another @object
-            //object was being recompiled.
+            /* JuliaProxy: check if id changed */
+            int input_id = (int)in0(0);
+            if(input_id != unique_id)
+            {
+                int old_unique_id = unique_id;
+
+                unique_id = input_id;
+
+                //Do I also need the GC lock here? It seems like not.
+
+                JuliaObject* old_julia_object = julia_object;
+
+                /* THIS will change the pointer of julia_object* */
+                JuliaObjectsArrayState array_state = retrieve_julia_object();
+
+                //If assignment fails, keep the same old julia_object and output silence. Should I output the old Julia code instead?
+                if(array_state == JuliaObjectsArrayState::Invalid)
+                {
+                    julia_object = old_julia_object;
+                    unique_id = old_unique_id;
+
+                    if(!print_once_id_mismatch)
+                    {
+                        Print("WARNING: Invalid unique id. \n");
+                        print_once_id_mismatch = true;
+                    }
+                    
+                    valid = false;
+
+                    output_silence(inNumSamples);
+
+                    julia_compiler_barrier->Unlock();
+                    return;
+                }
+            }
+            /***********************************/
+
+            // If THIS @object has changed. It can occur in two cases: 
+            // 1) object has been recompiled
+            // 2) JuliaProxy's input has changed
             if(args[0] != julia_object->perform_fun)
             {
                 //Acquire GC lock to allocate all objects later
@@ -675,7 +715,7 @@ private:
                     //JuliaDef.free()
                     if(valid)
                     {
-                        //Functions will use previous julia_object functions here
+                        //Functions will use previous julia_object functions here. They haven't been reassigned yet.
                         perform_destructor();
                         remove_ugen_ref_from_global_object_id_dict();
                         
@@ -755,7 +795,7 @@ private:
                 if(julia_object->num_outputs < numOutputs())
                     Print("WARNING: Julia @object \"%s\" outputs mismatch. Expected: %d. Have: %d. Using only first %d outputs.\n", julia_object->name, julia_object->num_outputs, numOutputs(), julia_object->num_outputs);
 
-                //Recompile...
+                //Recompile this __UGen__
                 perform_instance = julia_object->perform_instance;
                 if(!perform_instance)
                 {
@@ -767,6 +807,7 @@ private:
                     return;
                 }
 
+                //Switch args[0] with the new perform_fun
                 args[0] = julia_object->perform_fun;
 
                 jl_function_t* constructor_fun = julia_object->constructor_fun;
@@ -810,6 +851,7 @@ private:
                     return;
                 }
 
+                //Update args[1] with the newly created __UGen__
                 args[1] = ugen_object;
 
                 /* Get new destructor too */
@@ -841,6 +883,9 @@ private:
 
                 just_reallocated = true;
                 
+                valid = true;
+
+                print_once_id_mismatch = false;
                 print_once_inputs = false;
                 print_once_outputs = false;
                 print_once_exception = false;
@@ -848,7 +893,7 @@ private:
 
             /* ACTUAL DSP CALCULATIONS */
             /* It will be executed from one cycle later than recompilation */
-            if(!just_reallocated)
+            if(!just_reallocated && valid)
             {
                 julia_instance(inNumSamples);
                 julia_compiler_barrier->Unlock();
@@ -857,11 +902,11 @@ private:
 
             /* If the recompilation went through correctly, output silence and set false to the reallocation bool.
             At next cycle, we'll hear the newly compiled object */
-            if(julia_object->compiled)
+            if(julia_object->compiled && just_reallocated && valid)
             {
                 output_silence(inNumSamples);
                 just_reallocated = false;
-                valid = true;
+                //valid = true;
                 julia_compiler_barrier->Unlock();
                 return;
             }
