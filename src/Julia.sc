@@ -442,6 +442,14 @@ JuliaDef {
 		^return_array;
 	}
 
+	/* Used to pass a JuliaDef to a JuliaProxy */
+	//Used when passed to a UGen as input. (Retrieved from Buffer, which uses this.bufnum).
+	//This will be bypassed when using normal Julia.ar method, as the JuliaDef input there is a
+	//direct pointer to a variable in the SuperCollider environment.
+	isValidUGenInput { ^true }
+	asUGenInput { ^this.server_id }
+	asControlInput { ^this.server_id }
+
 	/* FUTURE */
 
 	/* Precompile a JuliaDef in the Julia sysimg. At next boot, it will be loaded. */
@@ -631,5 +639,37 @@ Julia : MultiOutUGen {
 		server = server ?? Server.default;
 
 		server.sendMsg(\cmd, "/julia_set_perform_debug_mode", new_mode);
+	}
+}
+
+/* Should JuliaProxy be wrapped on another JuliaProxy.cpp file instead ? */
+JuliaProxy : Julia {
+	*ar { |... args|
+		var julia_object_id, inputs, outputs, new_args;
+
+		if((args.size == 0), {
+			Error("Julia: no arguments provided.").throw;
+		});
+
+		//This will be retrieved as only the server_id of the JuliaDef, thanks to the asUGenInput func.
+		julia_object_id = args[0];
+
+		inputs = args[1];
+		if(inputs < 0 || inputs > 32, {
+			Error("JuliaProxy: Invalid number of inputs .").throw;
+		});
+
+		outputs = args[2];
+		if(outputs < 0 || outputs > 32, {
+			Error("JuliaProxy: Invalid number of outputs .").throw;
+		});
+
+		//Remove the retrieved stuff from args, leaving with just the UGen args.
+		args.removeAt(0);
+		args.removeAt(0); //elements will be shifted, always remove at 0
+		args.removeAt(0);
+
+		//Pass array args for initialization.. It will initialize a Julia UGen.
+		^this.multiNewList(new_args);
 	}
 }
