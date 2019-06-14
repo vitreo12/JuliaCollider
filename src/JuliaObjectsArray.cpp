@@ -199,7 +199,7 @@ JuliaObjectsArrayState JuliaObjectsArray::get_julia_object(int unique_id, JuliaO
         else
         {
             //JuliaDef compiled for another server.
-            printf("WARNING: Invalid @object. Perhaps this JuliaDef is not valid on this server \n");
+            //printf("WARNING: Invalid @object. Perhaps this JuliaDef is not valid on this server \n");
             //JuliaAtomicBarrier::Unlock();
             return JuliaObjectsArrayState::Invalid;
         }

@@ -73,7 +73,7 @@ public:
         JuliaObjectsArrayState array_state = retrieve_julia_object();
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
-            Print("WARNING: Invalid unique id \n");
+            Print("WARNING: Invalid @object. Perhaps the JuliaDef has not been defined for this server. \n");
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -221,7 +221,7 @@ public:
 
             perform_destructor();
 
-            remove_ugen_ref_from_global_object_id_dict();
+            //remove_ugen_ref_from_global_object_id_dict();
 
             julia_gc_barrier->Unlock();
             julia_compiler_barrier->Unlock();
@@ -244,8 +244,9 @@ private:
     bool print_once_exception = false;
 
     //If unique_id = -1 or if sending a JuliaDef that's not valid on server side.
-    /* SHOULD INVERT VALID TO ONLY SET IT TO TRUE WHEN NEEDED */
     bool valid = false;
+
+    bool needs_destruction = false;
 
     bool just_reallocated = false;
 
@@ -291,6 +292,16 @@ private:
     inline void free_outs()
     {
         RTFree(mWorld, outs);
+    }
+
+    inline jl_value_t* create_ugen_object(jl_method_instance_t* constructor_instance, jl_value_t** constructor_args, size_t constructor_nargs)
+    {
+        jl_value_t* ugen_object_temp = jl_invoke_already_compiled_SC(constructor_instance, constructor_args, constructor_nargs);
+        
+        if(ugen_object_temp)
+            needs_destruction = true;
+
+        return ugen_object_temp;
     }
 
     /* JUST ONCE per UGen, even if code is recompiled. */
@@ -392,7 +403,7 @@ private:
         constructor_args[2] = julia_global_state->get_scsynth();
         
         /* Create __UGen__ for this julia_object */
-        ugen_object = jl_invoke_already_compiled_SC(constructor_instance, constructor_args, constructor_nargs);
+        ugen_object = create_ugen_object(constructor_instance, constructor_args, constructor_nargs);
         if(!ugen_object)
         {
             free_args();
@@ -524,25 +535,28 @@ private:
 
     inline bool remove_ugen_ref_from_global_object_id_dict()
     {
-        if(!ugen_ref_object)
+        if(needs_destruction)
         {
-            Print("Invalid __UGenRef__ to be freed \n");
-            return false;
-        }
+            if(!ugen_ref_object)
+            {
+                Print("Invalid __UGenRef__ to be freed \n");
+                return false;
+            }
 
-        int32_t delete_index_nargs = 3;
-        jl_value_t* delete_index_args[delete_index_nargs];
+            int32_t delete_index_nargs = 3;
+            jl_value_t* delete_index_args[delete_index_nargs];
 
-        delete_index_args[0] = delete_index_ugen_ref_fun;
-        delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
-        delete_index_args[2] = ugen_ref_object;
+            delete_index_args[0] = delete_index_ugen_ref_fun;
+            delete_index_args[1] = julia_global_state->get_global_object_id_dict().get_id_dict();
+            delete_index_args[2] = ugen_ref_object;
 
-        //Now the GC can pick up this object (and relative allocated __Data__ objects, finalizing them)
-        jl_value_t* delete_index_successful = jl_invoke_already_compiled_SC(delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
-        if(!delete_index_successful)
-        {
-            Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
-            return false;
+            //Now the GC can pick up this object (and relative allocated __Data__ objects, finalizing them)
+            jl_value_t* delete_index_successful = jl_invoke_already_compiled_SC(delete_index_ugen_ref_instance, delete_index_args, delete_index_nargs);
+            if(!delete_index_successful)
+            {
+                Print("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
+                return false;
+            }
         }
 
         return true;
@@ -550,14 +564,27 @@ private:
 
     inline bool perform_destructor()
     {
-        int32_t destructor_nargs = 2;
-        jl_value_t* destructor_args[destructor_nargs];
-        destructor_args[0] = destructor_fun;
-        destructor_args[1] = ugen_object;
+        Print("Performing destructor...\n");
+        Print("DOES IT NEED DESTRUCTION? %d\n\n", needs_destruction);
 
-        jl_value_t* destructor_call = jl_invoke_already_compiled_SC(destructor_instance, destructor_args, destructor_nargs);
-        if(!destructor_call)
-            return false;
+        if(needs_destruction)
+        {
+            int32_t destructor_nargs = 2;
+            jl_value_t* destructor_args[destructor_nargs];
+            destructor_args[0] = destructor_fun;
+            destructor_args[1] = ugen_object;
+
+            jl_value_t* destructor_call = jl_invoke_already_compiled_SC(destructor_instance, destructor_args, destructor_nargs);
+            if(!destructor_call)
+                return false;
+
+            bool removed_ugen_ref_from_global_object_id_dict = remove_ugen_ref_from_global_object_id_dict();
+
+            if(!removed_ugen_ref_from_global_object_id_dict)
+                return false;
+
+            needs_destruction = false;
+        }
 
         return true;
     }
@@ -591,7 +618,7 @@ private:
         JuliaObjectsArrayState array_state = retrieve_julia_object();
         if(array_state == JuliaObjectsArrayState::Invalid)
         {
-            Print("WARNING: Invalid unique id \n");
+            Print("WARNING: Invalid @object. Perhaps the JuliaDef has not been defined for this server. \n");
             valid = false;
             set_calc_function<Julia, &Julia::output_silence>();
             julia_gc_barrier->Unlock();
@@ -682,7 +709,7 @@ private:
 
                     if(!print_once_id_mismatch)
                     {
-                        Print("WARNING: Invalid unique id. \n");
+                        Print("WARNING: Invalid @object. Perhaps the JuliaDef has not been defined for this server. \n");
                         print_once_id_mismatch = true;
                     }
                     
@@ -696,9 +723,10 @@ private:
             }
             /***********************************/
 
-            // If THIS @object has changed. It can occur in two cases: 
-            // 1) object has been recompiled
-            // 2) JuliaProxy's input has changed
+            // If THIS @object has changed. It can occur in three cases: 
+            // 1) JuliaDef has been freed. 
+            // 1) JuliaDef has been recompiled.
+            // 2) JuliaProxy's input has changed.
             if(args[0] != julia_object->perform_fun)
             {
                 //Acquire GC lock to allocate all objects later
@@ -710,24 +738,21 @@ private:
                     return;
                 }
 
+                //Switched to a non-valid JuliaDef: it either has been freed, or there is an error.
                 if(!julia_object->compiled)
                 {
                     //JuliaDef.free()
                     if(valid)
                     {
+                        Print("Freeing __UGen__...\n");
+                        
                         //Functions will use previous julia_object functions here. They haven't been reassigned yet.
                         perform_destructor();
-                        remove_ugen_ref_from_global_object_id_dict();
                         
-                        //valid = false so that ~Julia() won't call into Julia at all.
+                        //remove_ugen_ref_from_global_object_id_dict();
+                        
+                        //valid = false so that perform_destructor() / remove_ugen_ref_from_global_object_id_dict won't perform again.
                         valid = false;
-                        
-                        //Set silence forever.
-                        set_calc_function<Julia, &Julia::output_silence>();
-
-                        julia_gc_barrier->Unlock();
-                        julia_compiler_barrier->Unlock();
-                        return;
                     }
                     
                     output_silence(inNumSamples);
@@ -749,7 +774,7 @@ private:
                     return;
                 }
                 
-                bool succesful_removed_ugen_ref = remove_ugen_ref_from_global_object_id_dict();
+                /* bool succesful_removed_ugen_ref = remove_ugen_ref_from_global_object_id_dict();
                 if(!succesful_removed_ugen_ref)
                 {
                     //Print("ERROR: Invalid __constructor__ instance \n");
@@ -758,7 +783,7 @@ private:
                     julia_gc_barrier->Unlock();
                     julia_compiler_barrier->Unlock();
                     return;
-                }
+                } */
 
                 //Check I/O mismatch and print to user.
                 if(julia_object->num_inputs > real_num_inputs)
@@ -841,7 +866,7 @@ private:
                 constructor_args[2] = julia_global_state->get_scsynth();
                 
                 /* Create __UGen__ for this julia_object */
-                ugen_object = jl_invoke_already_compiled_SC(constructor_instance, constructor_args, constructor_nargs);
+                ugen_object = create_ugen_object(constructor_instance, constructor_args, constructor_nargs);
                 if(!ugen_object)
                 {
                     output_silence(inNumSamples);
