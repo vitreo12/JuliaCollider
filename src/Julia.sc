@@ -539,12 +539,12 @@ Julia : MultiOutUGen {
 
 			inputs = args[2];
 			if((inputs < 0) || (inputs > 32), {
-				Error("JuliaProxy: invalid number of inputs").throw;
+				Error("JuliaProxy: invalid number of inputs.").throw;
 			});
 
 			outputs = args[3];
 			if((outputs < 0) || (outputs > 32), {
-				Error("JuliaProxy: invalid number of inputs").throw;
+				Error("JuliaProxy: invalid number of inputs.").throw;
 			});
 
 			//Remove the "__JuliaProxy__" from args
@@ -565,9 +565,9 @@ Julia : MultiOutUGen {
 			arg item, i;
 			if(item.rate != 'audio', {
 				if(is_julia_proxy, {
-					Error("Julia '%': argument % is not audio rate".format(julia_def_name.asString, (i+1).asString)).throw;
+					Error("Julia '%': UGen argument % is not audio rate".format(julia_def_name.asString, (i+1).asString)).throw;
 				}, {
-					Error("JuliaProxy: argument % is not audio rate".format((i+1).asString)).throw;
+					Error("JuliaProxy: UGen argument % is not audio rate".format((i+1).asString)).throw;
 				});
 			});
 		});
@@ -575,9 +575,9 @@ Julia : MultiOutUGen {
 		//Check number of inputs
 		if((args.size != inputs), {
 			if(is_julia_proxy, {
-				Error("Julia '%': wrong number of inputs: %. Expected %".format(julia_def_name.asString, (args.size).asString, inputs.asString)).throw;
+				Error("Julia '%': wrong number of UGen inputs: %. Expected %".format(julia_def_name.asString, (args.size).asString, inputs.asString)).throw;
 			}, {
-				Error("JuliaProxy : wrong number of inputs: %. Expected %".format((args.size).asString, inputs.asString)).throw;
+				Error("JuliaProxy : wrong number of UGen inputs: %. Expected %".format((args.size).asString, inputs.asString)).throw;
 			});
 		});
 
