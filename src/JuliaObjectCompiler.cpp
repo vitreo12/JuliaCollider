@@ -169,7 +169,8 @@ void JuliaObjectCompiler::null_julia_object(JuliaObject* julia_object)
     //julia_object->RT_busy = false;
 
     /* PATH */
-    julia_object->path.clear();
+    if(!julia_object->path.empty()) //If not empty, clear content.
+        julia_object->path.clear();
 
     /* JULIADEF */
     julia_object->julia_def = nullptr;
