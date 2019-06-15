@@ -1,11 +1,24 @@
+//scsynth -u 57111 -S 48000 -a 1024 -i 2 -o 2 -m 65536 -b 1024 -R 0 -C 0 -l 1
+
+(
+//Set "s" to the port we booted scsynth on.
+Server.default = Server(\BootedServer, NetAddr("127.0.0.1", 57111));
+
+//Set options to the same as the already booted server. The most important is maxLogins.
+s.options.numAudioBusChannels = 1024;
+s.options.numBuffers = 1024;
+s.options.memSize = 65536;
+s.options.maxLogins = 1;
+
+//Connect to the server
+s.startAliveThread;
+)
+
 Julia.bootWithServer(s);
 
 Julia.boot(s);
 
-(
 a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
-b = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Phasor.jl");
-)
 
 (
 SynthDef(\JuliaProxyTestSingle, {
@@ -27,6 +40,11 @@ a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
 a.recompile;
 
 s.quit;
+
+(
+a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
+b = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Phasor.jl");
+)
 
 (
 SynthDef(\JuliaProxyTest, {
