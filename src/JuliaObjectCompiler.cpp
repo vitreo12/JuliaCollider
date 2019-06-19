@@ -72,8 +72,6 @@ bool JuliaObjectCompiler::compile_julia_object(JuliaObject* julia_object, jl_mod
 
 bool JuliaObjectCompiler::unload_julia_object(JuliaObject* julia_object)
 {
-    printf("Freeing @object...\n");
-
     if(!julia_object)
     {
         printf("ERROR: Invalid Julia @object \n");
@@ -86,8 +84,6 @@ bool JuliaObjectCompiler::unload_julia_object(JuliaObject* julia_object)
         return false;
     } */
 
-    printf("IS COMPILED? %d\n", julia_object->compiled);
-
     if(julia_object->compiled)
     {   
         /* JL_TRY/CATCH here? */
@@ -99,12 +95,8 @@ bool JuliaObjectCompiler::unload_julia_object(JuliaObject* julia_object)
         }
     }
 
-    printf("IS COMPILED? %d\n", julia_object->compiled);
-
     //Reset memory pointer for this object
     memset(julia_object, 0, sizeof(JuliaObject));
-
-    printf("IS COMPILED? %d\n\n", julia_object->compiled);
 
     return true;
 }
