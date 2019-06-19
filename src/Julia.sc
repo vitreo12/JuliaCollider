@@ -39,7 +39,7 @@ JuliaDef {
 		});
 
 		if((server.class == Server).not, {
-			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			("ERROR: JuliaDef: first argument must be a Server.").postln;
 			^this;
 		});
 
@@ -49,7 +49,7 @@ JuliaDef {
 		});
 
 		if((path.class == String).not, {
-			("ERROR: JuliaDef: second argument is not a String.").postln;
+			("ERROR: JuliaDef: second argument must be a String.").postln;
 			^this;
 		});
 
@@ -252,7 +252,7 @@ JuliaDef {
 	/* Update this JuliaDef if it has been recompiled by another client. Retrieve it from the server directly. */
 	update {
 		if(name != "@No_Name", {
-			this.getCompiledJuliaDef(srvr, name);
+			this.getCompiledJuliaDef(srvr, name.asSymbol);
 		}, {
 			"WARNING: Invalid JuliaDef to update".postln;
 		});
@@ -261,7 +261,7 @@ JuliaDef {
 	/* Retrieve a JuliaDef from server by name, and assign it to a new JuliaDef, returning it */
 	*retrieve {
 		arg server, obj_name;
-		^this.new(server, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name); //Create a dummy JuliaDef
+		^this.new(server, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name.asSymbol); //Create a dummy JuliaDef
 	}
 
 	getCompiledJuliaDef {
@@ -269,7 +269,7 @@ JuliaDef {
 		var path, ins, outs, srvr_id, condition, osc_unique_id, osc_func, julia_def_to_dict, julia_def_to_dict_index;
 
 		if((server.class == Server).not, {
-			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			("ERROR: JuliaDef: first argument must be a Server.").postln;
 			^this;
 		});
 
@@ -279,7 +279,7 @@ JuliaDef {
 		});
 
 		if((obj_name.class == Symbol).not, {
-			("ERROR: JuliaDef: second argument is not a Symbol.").postln;
+			("ERROR: JuliaDef: second argument must be a Symbol.").postln;
 			^this;
 		});
 
