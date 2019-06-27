@@ -788,8 +788,6 @@ void JuliaGlobalState::quit_julia()
         jl_gc_enable(1);
 
         jl_atexit_hook(0); 
-        
-        printf("-> Quitted Julia \n");
 
         #ifdef __linux__
             close_julia_shared_library();

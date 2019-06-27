@@ -1,7 +1,7 @@
 title:: JuliaCollider
 summary:: Overview of the JuliaCollider environment
 categories:: JuliaCollider
-related:: Classes/Julia, Classes/JuliaDef
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy
 
 note::
 Current version: strong::0.1.0::

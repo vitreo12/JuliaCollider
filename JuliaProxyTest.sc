@@ -43,7 +43,7 @@ s.quit;
 
 (
 a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
-b = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Phasor.jl");
+b = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");
 )
 
 (
@@ -64,10 +64,8 @@ SynthDef(\JuliaProxyTest, {
 x = Synth(\JuliaProxyTest, [\julia_def_sound, a, \julia_def_modulation, b]);
 
 x.set(\julia_def_sound, b);
-x.set(\julia_def_sound, a);
 
 x.set(\julia_def_modulation, a);
-x.set(\julia_def_modulation, b);
 
 a.free;
 b.free;

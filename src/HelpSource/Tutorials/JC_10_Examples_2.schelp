@@ -1,7 +1,7 @@
 title:: JuliaCollider 10: Examples folder (part 2)
 summary:: Insight on the Examples folder
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 section::Diode Ladder filter
 This example contains a diode ladder lowpass filter.

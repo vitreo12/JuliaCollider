@@ -1,12 +1,17 @@
 CLASS:: Julia
 SUMMARY:: Executes a JuliaDef on the server
 CATEGORIES:: JuliaCollider>Classes, UGens>JuliaCollider
-RELATED:: Classes/JuliaDef, Overviews/JuliaCollider
+RELATED:: Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 DESCRIPTION::
-The link::Classes/Julia:: UGen is where a compiled strong::@object::, represented in sclang by a  link::Classes/JuliaDef::, is used to generate actual audio output: the link::Classes/Julia:: UGen is a direct interface to the server's representation of emphasis::JuliaCollider:: .
+The link::Classes/Julia:: class serves two purposes:
 
-For more informations on the interaction between the link::Classes/Julia:: UGen and the link::Classes/JuliaDef:: class, look into link::Classes/JuliaDef::'s help file.
+NUMBEREDLIST::
+##It is used for client/server interactions, like booting emphasis::JuliaCollider:: on the server or control various server-wide options.
+##It is used as a UGen to turn a compiled strong::@object::, represented in sclang by a valid link::Classes/JuliaDef::, into actual audio output: when used as a UGen, a link::Classes/Julia:: object is a direct interface to the server's representation of a compiled link::Classes/JuliaDef::.
+
+For more informations on the interaction between the use of link::Classes/Julia:: as a UGen and a link::Classes/JuliaDef:: object, look into the link::Classes/JuliaDef::'s help file.
+::
 
 CLASSMETHODS::
 
@@ -27,7 +32,7 @@ The size of the memory for emphasis::JuliaCollider::'s real-time allocator. Mini
 METHOD:: ar
 
 warning::
-Dynamic switching of link::Classes/JuliaDef:: is not yet permitted: the link::Classes/JuliaDef:: must be known when defining the link::Classes/SynthDef:: where the specific link::Classes/Julia:: UGen is declared.
+In order to use the link::Classes/Julia:: UGen, the link::Classes/JuliaDef:: must be known and compiled when defining the link::Classes/SynthDef:: where the specific link::Classes/Julia:: UGen is declared. For dynamic switching of link::Classes/JuliaDef::s, check the link::Classes/JuliaProxy:: UGen class.
 ::
 
 ARGUMENT::  ... args
@@ -51,10 +56,10 @@ METHOD:: kr
 link::Classes/Julia:: currently only supports the .ar method.
 
 METHOD:: runtimeMode
-Change the mode of operation for all link::Classes/Julia:: UGens: either emphasis::"debug":: or emphasis::"perform"::. What this command does is to switch on/off a runtime check on the audio loop for any errors that the precompilation of the link::Classes/JuliaDef:: might have missed. For example, if having multiple "if" branches in your emphasis::JuliaCollider:: code, they might have not been all executed in the compilation, and the variables declared in those branches might contain wrong types, or, generally, mistakes (e.g., returning the wrong values).
+Change the mode of operation for all emphasis::JuliaCollider:: UGens (link::Classes/Julia:: and link::Classes/JuliaProxy:: alike): either emphasis::"debug":: or emphasis::"perform"::. What this command does is to switch on/off a runtime check on the audio loop for any errors that the precompilation of the link::Classes/JuliaDef:: might have missed. For example, if having multiple "if" branches in your emphasis::JuliaCollider:: code, they might have not been all executed in the compilation, and the variables declared in those branches might contain wrong types, or, generally, mistakes (e.g., returning the wrong values).
 
 note::
-link::Classes/Julia:: starts, by default, with the emphasis::"debug":: mode turned on.
+emphasis::JuliaCollider:: starts, by default, with the emphasis::"debug":: mode turned on.
 ::
 
 warning::
@@ -66,8 +71,8 @@ The link::Classes/Server:: to send the command to.
 ARGUMENT:: new_mode
 A link::Classes/String:: which can either be:
 NUMBEREDLIST::
-##strong::"debug":: : Switch on the check on all link::Classes/Julia:: code.
-##strong::"perform":: : Switch off the check on all link::Classes/Julia:: code.
+##strong::"debug":: : Switch on the check on all link::Classes/Julia:: / link::Classes/JuliaProxy:: code.
+##strong::"perform":: : Switch off the check on all link::Classes/Julia:: / link::Classes/JuliaProxy:: code.
 warning::
 If you use the strong::"perform":: mode and you haven't properly debugged your code (e.g., you might have some errors in conditions that depend on some UGen input value, or you haven't checked if all the branches of your emphasis::JuliaCollider:: code actually lead to sensible results), the server could crash.
 ::

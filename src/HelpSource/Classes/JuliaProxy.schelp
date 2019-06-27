@@ -1,0 +1,74 @@
+CLASS:: JuliaProxy
+SUMMARY:: Executes a JuliaDef on the server using a proxy input.
+CATEGORIES:: JuliaCollider>Classes, UGens>JuliaCollider
+RELATED:: Classes/JuliaDef, Classes/Julia, Overviews/JuliaCollider
+
+DESCRIPTION::
+link::Classes/JuliaProxy:: is a UGen that is used in a very similar manner as the UGen use of the link::Classes/Julia:: class, with the difference that it does not require to know the compiled link::Classes/JuliaDef:: at the instantiation of the link::Classes/SynthDef::, but it acts as a proxy, allowing the switching of different link::Classes/JuliaDef::s through an argument input at link::Classes/Synth:: runtime. It works very similarly, in a way, to how the link::Classes/Buffer:: class is used as an argument input for UGens.
+
+WARNING::
+The implementation of link::Classes/JuliaProxy:: is still under testing. It could be buggy.
+::
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT::  ... args
+Variable number of arguments. The first three are mandatory:
+NUMBEREDLIST::
+##strong::1st:: : input representing a variable proxy (which means that can be changed as a standard argument of the link::Classes/SynthDef::) to a compiled link::Classes/JuliaDef::.
+##strong::2nd:: : number of inputs for the proxy to correctly build the link::Classes/SynthDef::
+##strong::3rd:: : number of outputs for the proxy to correctly build the link::Classes/SynthDef::
+##strong::remaining arguments:: : variable, according to the specified number of inputs, and they represent the link::Classes/UGen:: arguments that will be passed to the currently running link::Classes/JuliaDef::.
+::
+
+note::
+As of now, the link::Classes/JuliaProxy:: UGen only accepts audio inputs (strong::.ar:: UGen method). Use the link::Classes/DC:: UGen for strong::kr::/strong::ir:: to strong::ar:: conversion.
+::
+
+note::
+When recompiling the link::Classes/JuliaDef:: to which the link::Classes/JuliaProxy:: UGen is pointing at, the changes will immediately be reflected in the audio output. This also means that the number of audio inputs/outputs stated in the strong::@object:: might change while the link::Classes/JuliaProxy:: UGen is playing.
+
+NUMBEREDLIST::
+##strong::IF:: the strong::@inputs::/strong::@outputs:: count remains the same as the original one, the link::Classes/JuliaProxy:: UGen will output the new compiled code.
+##strong::IF:: the strong::@inputs::/strong::@outputs:: count is less than the original one, the link::Classes/JuliaProxy:: UGen will output the new compiled code using the inputs/outputs up to the original amount.
+##strong::IF:: the strong::@inputs::/strong::@outputs:: count is more than the original one, the link::Classes/JuliaProxy:: UGen will output silence.
+::
+::
+
+EXAMPLES::
+
+code::
+Julia.bootWithServer(s);
+
+//Note that the SynthDef will still be sent and compiled to the server without any previous compilation of JuliaDefs, as it would be needed for the Julia UGen...
+(
+SynthDef(\JuliaProxyTest, {
+	arg julia_def_sound, julia_def_modulation;
+
+	var modulation, sound;
+
+	modulation = JuliaProxy.ar(julia_def_modulation, 1, 1, DC.ar(1));
+
+	sound = JuliaProxy.ar(julia_def_sound, 1, 1, DC.ar(440) + modulation.linlin(-1,1,-50, 50));
+
+	Out.ar([0,1], sound);
+
+}).send(s);
+)
+
+//Compile the JuliaDefs that we need...
+(
+a = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Sine.jl");
+b = JuliaDef(s, Platform.userExtensionDir ++ "/JuliaCollider/Examples/Saw.jl");
+)
+
+//JuliaProxy allows to define which compiled JuliaDefs to run at runtime...
+x = Synth(\JuliaProxyTest, [\julia_def_sound, a, \julia_def_modulation, b]);
+
+//And to change them as normal SynthDef arguments...
+x.set(\julia_def_sound, b);
+x.set(\julia_def_modulation, a);
+
+::
