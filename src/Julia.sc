@@ -480,14 +480,16 @@ Julia : MultiOutUGen {
 		});
 
 		//For JuliaProxy... args will be in the form [["__JuliaProxy__", 1, 2, ....]]. Need to unpack them.
-		if((args.size == 1 && args[0][0] == "__JuliaProxy__"), {
-			is_julia_proxy = true;
-			args = args[0]; //Actually unpack args
+		if((args.size == 1), {
+			if((args[0][0] == "__JuliaProxy__"), {
+				is_julia_proxy = true;
+				args = args[0]; //Actually unpack args
+			});
 		}, {
 			is_julia_proxy = false;
 		});
 
-		args.postln;
+		//args.postln;
 
 		if(is_julia_proxy.not, {
 
