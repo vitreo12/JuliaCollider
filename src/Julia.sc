@@ -473,20 +473,21 @@ JuliaGC {
 
 Julia : MultiOutUGen {
 	*ar { |... args|
-		var new_args, is_julia_proxy, julia_def_name, julia_def_server, julia_object_id, inputs, outputs, julia_def;
+		var new_args, is_julia_proxy = false, julia_def_name, julia_def_server, julia_object_id, inputs, outputs, julia_def;
 
 		if((args.size == 0), {
 			Error("Julia: no arguments provided.").throw;
 		});
 
-		//For JuliaProxy... args will be in the form [["__JuliaProxy__", 1, 2, ....]]. Need to unpack them.
-		if((args.size == 1), {
+		//For JuliaProxy args will be in the form of
+		// a nested array, like so: [["__JuliaProxy__", 1, 2, ....]]. Need to unpack them.
+		//I can just check if the class is array (and not some superclass) as it's created
+		//as array in the JuliaProxy.ar method. (args = Array.newClear... etc...)
+		if((args.size == 1 && args[0].class == Array), {
 			if((args[0][0] == "__JuliaProxy__"), {
 				is_julia_proxy = true;
-				args = args[0]; //Actually unpack args
+				args = args[0]; //Actually unpack args and assign them, retrieving the array inside the [[ ]] args
 			});
-		}, {
-			is_julia_proxy = false;
 		});
 
 		//args.postln;
