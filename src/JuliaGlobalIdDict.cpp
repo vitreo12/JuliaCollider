@@ -65,6 +65,7 @@ void JuliaGlobalIdDict::unload_id_dict()
 }
 
 /* Will throw exception if things go wrong */
+/* This actually compiles everytime for a new JuliaDef...*/
 void JuliaGlobalIdDict::add_to_id_dict(jl_value_t* var)
 {
     size_t nargs = 4;
@@ -82,6 +83,7 @@ void JuliaGlobalIdDict::add_to_id_dict(jl_value_t* var)
 }
 
 /* Will throw exception if things go wrong */
+/* This actually compiles everytime for a new JuliaDef...*/
 void JuliaGlobalIdDict::remove_from_id_dict(jl_value_t* var)
 {
     size_t nargs = 3;

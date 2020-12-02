@@ -41,7 +41,7 @@ class JuliaGlobalUtilities
         ~JuliaGlobalUtilities(){}
 
         //Actual constructor, called from child class after Julia initialization
-        bool initialize_global_utilities(World* in_world);
+        bool initialize_global_utilities(World* in_world, jl_value_t* global_object_id_dict);
 
         //This is perhaps useless. It's executed when Julia is booting off anyway.
         void unload_global_utilities();
@@ -53,6 +53,10 @@ class JuliaGlobalUtilities
 
         bool create_julia_def_module();
 
+        bool create_io_ref_module();
+
+        bool create_io_instances(jl_value_t* global_object_id_dict);
+
         bool create_ugen_object_macro_module();
         
         bool create_datatypes();
@@ -60,6 +64,20 @@ class JuliaGlobalUtilities
         jl_value_t* get_scsynth();
 
         jl_function_t* get_set_index_audio_vector_fun();
+
+        jl_method_instance_t* get_set_index_audio_vector_instance();
+
+        jl_function_t* get_io_ref_fun();
+
+        jl_function_t* get_set_index_io_ref_fun();
+
+        jl_function_t* get_delete_index_io_ref_fun();
+
+        jl_method_instance_t* get_io_ref_instance();
+
+        jl_method_instance_t* get_set_index_io_ref_instance();
+
+        jl_method_instance_t* get_delete_index_io_ref_instance();
 
         jl_module_t* get_scsynth_module();
 
@@ -82,6 +100,7 @@ class JuliaGlobalUtilities
         jl_module_t* julia_collider_module;
         jl_module_t* scsynth_module;
         jl_module_t* julia_def_module;
+        jl_module_t* io_ref_module;
         jl_module_t* ugen_object_macro_module;
 
         /* Global objects */
@@ -94,6 +113,15 @@ class JuliaGlobalUtilities
         jl_function_t* set_index_fun;
         jl_function_t* delete_index_fun;
         jl_function_t* julia_def_fun;
+        jl_function_t* io_ref_fun;
+        jl_function_t* set_index_io_ref_fun;
+        jl_function_t* delete_index_io_ref_fun;
+
+        /* Utilities instances (when needed) */
+        jl_method_instance_t* set_index_audio_vector_instance;
+        jl_method_instance_t* io_ref_instance;
+        jl_method_instance_t* set_index_io_ref_instance;
+        jl_method_instance_t* delete_index_io_ref_instance;
         
         /* Datatypes */
         jl_value_t* vector_float32;

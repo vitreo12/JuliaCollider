@@ -1,7 +1,7 @@
 title:: JuliaCollider 06: The Data type
 summary:: Analysis and usage of the Data type
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 emphasis::Data:: is a special emphasis::JuliaCollider:: type which allows to allocate memory in the strong::@constructor:: macro to be used in the strong::@perform:: macro.
 

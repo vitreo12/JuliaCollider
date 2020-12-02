@@ -70,7 +70,7 @@ bool JuliaObjectsArray::create_julia_object(JuliaReplyWithLoadPath* julia_reply_
     //Array is full
     if(get_active_entries() >= num_total_entries)
     {
-        printf("ERROR: Reached maximum limit (%d) of active JuliaDefs. Free before creating new ones. \n", num_total_entries);
+        printf("ERROR: Reached maximum limit (%d) of active JuliaDefs. Free some before creating new ones. \n", num_total_entries);
         return false;
     }
 
@@ -199,7 +199,7 @@ JuliaObjectsArrayState JuliaObjectsArray::get_julia_object(int unique_id, JuliaO
         else
         {
             //JuliaDef compiled for another server.
-            printf("WARNING: Invalid @object. Perhaps this JuliaDef is not valid on this server \n");
+            //printf("WARNING: Invalid @object. Perhaps this JuliaDef is not valid on this server \n");
             //JuliaAtomicBarrier::Unlock();
             return JuliaObjectsArrayState::Invalid;
         }

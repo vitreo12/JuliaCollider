@@ -1,7 +1,7 @@
 CLASS:: JuliaDef
 SUMMARY:: Links a Julia compiled @object from the server to sclang
 CATEGORIES:: JuliaCollider>Classes
-RELATED:: Classes/Julia, Overviews/JuliaCollider
+RELATED:: Classes/Julia, Classes/JuliaProxy, Overviews/JuliaCollider
 
 DESCRIPTION::
 A link::Classes/JuliaDef:: is the sclang representation of a compiled emphasis::JuliaCollider:: strong::@object:: on the server. Together with link::Classes/Julia::, it is the basic building block of the emphasis::JuliaCollider:: system on SuperCollider side.

@@ -1,7 +1,7 @@
 title:: JuliaCollider 01: Introduction to JuliaCollider
 summary:: Introduction to the JuliaCollider environment
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 JuliaCollider is a basic Domain Specific Language (DSL) written in strong::C++::, strong::Julia:: and strong::sclang::, which allows to quickly prototype audio code in the SuperCollider coding environment. It provides both a strong::Julia:: and strong::sclang:: APIs which will be thoroughly be looked at in this series of tutorials.
 

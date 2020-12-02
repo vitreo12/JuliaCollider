@@ -196,7 +196,6 @@ void JuliaObjectCompiler::null_julia_object(JuliaObject* julia_object)
     julia_object->destructor_instance = nullptr;
     julia_object->set_index_ugen_ref_instance = nullptr;
     julia_object->delete_index_ugen_ref_instance = nullptr;
-    julia_object->set_index_audio_vector_instance = nullptr;
 }
 
 void JuliaObjectCompiler::add_julia_object_to_global_def_id_dict(JuliaObject* julia_object)
@@ -261,7 +260,7 @@ bool JuliaObjectCompiler::precompile_stages(jl_module_t* evaluated_module, Julia
             {
                 //jl_get_ptls_states()->world_age = jl_get_world_counter();
                 //printf("DESTRUCTOR DONE\n");
-                if(precompile_ugen_ref(evaluated_module, &ugen_object, &ins, &outs, &destructor_fun, &destructor_instance, &ugen_ref_object, julia_object))
+                if(precompile_ugen_ref(evaluated_module, &ugen_object, &destructor_fun, &destructor_instance, &ugen_ref_object, julia_object))
                 {
                     //jl_get_ptls_states()->world_age = jl_get_world_counter();
                     //printf("UGEN REF DONE\n");
@@ -272,6 +271,7 @@ bool JuliaObjectCompiler::precompile_stages(jl_module_t* evaluated_module, Julia
                         if(create_julia_def(evaluated_module, julia_object))
                         {
                             //jl_get_ptls_states()->world_age = jl_get_world_counter();
+                            //printf("JULIA DEF DONE\n");
                             precompile_state = true;
                         }
                     }
@@ -282,9 +282,12 @@ bool JuliaObjectCompiler::precompile_stages(jl_module_t* evaluated_module, Julia
     
     //jl_get_ptls_states()->world_age = jl_get_world_counter();
 
+    //printf("Precompile stages done. Has been precompiled? %d\n", precompile_state);
+
     return precompile_state;
 }
 
+/* Precompilation of __constructor__ (which returns a __UGen__): input vector is needed here */
 bool JuliaObjectCompiler::precompile_constructor(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, float*** ins_float, JuliaObject* julia_object)
 {
     size_t constructor_nargs = 3;
@@ -300,7 +303,6 @@ bool JuliaObjectCompiler::precompile_constructor(jl_module_t* evaluated_module, 
     /* SET INDEX AUDIO VECTOR */
     size_t nargs_set_index_audio_vector = 4;
     jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
-    jl_method_instance_t* set_index_audio_vector_instance;
 
     int num_inputs =  jl_unbox_int32(jl_get_global_SC(evaluated_module, "__inputs__"));
     int buffer_size = 8; //Try compiling with a 8 samples period.
@@ -355,22 +357,9 @@ bool JuliaObjectCompiler::precompile_constructor(jl_module_t* evaluated_module, 
         args_set_index_audio_vector[1] = ins_temp;
         args_set_index_audio_vector[2] = ins_1d[i];
         args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
-
-        //compile the audio vector set_index function at first iteration
-        if(i == 0)
-        {
-            set_index_audio_vector_instance = jl_lookup_generic_and_compile_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
-            if(!set_index_audio_vector_instance)
-            {
-                for(int y = 0; y < i; y++)
-                    free(dummy_ins[y]);
-                free(dummy_ins);
-                return false;
-            }
-        }
         
         //Use it to set the actual stuff inside the array
-        jl_value_t* set_index_success = jl_lookup_generic_and_compile_return_value_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
+        jl_value_t* set_index_success = jl_invoke_already_compiled_SC(julia_global->get_set_index_audio_vector_instance(), args_set_index_audio_vector, nargs_set_index_audio_vector);
         if(!set_index_success)
         {
             printf("ERROR: Could not instantiate set_index_audio_vector function (inputs)\n");
@@ -413,11 +402,15 @@ bool JuliaObjectCompiler::precompile_constructor(jl_module_t* evaluated_module, 
 
     julia_object->constructor_fun = constructor_fun;
     julia_object->constructor_instance = constructor_instance;
-    julia_object->set_index_audio_vector_instance = set_index_audio_vector_instance;
+
+    /* 
+        NO FREE OF dummy_ins and its content HERE: THEY ARE FREED AT THE END OF THE precompile_perform FUNCTION
+    */
     
     return true;
 }
 
+/* Precompilation of __perform__ function: both input and output vectors are needed here */
 bool JuliaObjectCompiler::precompile_perform(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, float*** ins_float, jl_value_t** outs, JuliaObject* julia_object)
 {
     float** dummy_ins = ins_float[0];
@@ -456,7 +449,6 @@ bool JuliaObjectCompiler::precompile_perform(jl_module_t* evaluated_module, jl_v
     /* SET INDEX AUDIO VECTOR */
     size_t nargs_set_index_audio_vector = 4;
     jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
-    //jl_method_instance_t* set_index_audio_vector_instance;
 
     //outs::Vector{Vector{Float32}}
     jl_value_t* outs_temp = (jl_value_t*)jl_alloc_array_1d(julia_global->get_vector_of_vectors_float32(), num_outputs);
@@ -517,7 +509,7 @@ bool JuliaObjectCompiler::precompile_perform(jl_module_t* evaluated_module, jl_v
         args_set_index_audio_vector[3] = jl_box_int32(i + 1); //Julia index from 1 onwards
 
         //Use it
-        jl_value_t* set_index_success = jl_lookup_generic_and_compile_return_value_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
+        jl_value_t* set_index_success = jl_invoke_already_compiled_SC(julia_global->get_set_index_audio_vector_instance(), args_set_index_audio_vector, nargs_set_index_audio_vector);
         if(!set_index_success)
         {
             printf("ERROR: Could not instantiate set_index_audio_vector function (outputs)\n");
@@ -613,7 +605,7 @@ bool JuliaObjectCompiler::precompile_destructor(jl_module_t* evaluated_module, j
     return true;
 }
 
-bool JuliaObjectCompiler::precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** ins, jl_value_t** outs, jl_value_t** destructor_fun, jl_method_instance_t** destructor_instance, jl_value_t** ugen_ref_object, JuliaObject* julia_object)
+bool JuliaObjectCompiler::precompile_ugen_ref(jl_module_t* evaluated_module, jl_value_t** ugen_object, jl_value_t** destructor_fun, jl_method_instance_t** destructor_instance, jl_value_t** ugen_ref_object, JuliaObject* julia_object)
 {
     jl_function_t* ugen_ref_fun = jl_get_function(evaluated_module, "__UGenRef__");
     if(!ugen_ref_fun)
@@ -624,16 +616,14 @@ bool JuliaObjectCompiler::precompile_ugen_ref(jl_module_t* evaluated_module, jl_
 
     //Ins and outs are pointing to junk data, but I don't care. I just need to precompile the Ref to it.
 
-    int32_t ugen_ref_nargs = 6;
+    int32_t ugen_ref_nargs = 4;
     jl_value_t* ugen_ref_args[ugen_ref_nargs];
     
     //__UGenRef__ constructor
     ugen_ref_args[0] = ugen_ref_fun;
     ugen_ref_args[1] = ugen_object[0];
-    ugen_ref_args[2] = ins[0];
-    ugen_ref_args[3] = outs[0];
-    ugen_ref_args[4] = destructor_fun[0];
-    ugen_ref_args[5] = (jl_value_t*)destructor_instance[0];
+    ugen_ref_args[2] = destructor_fun[0];
+    ugen_ref_args[3] = (jl_value_t*)destructor_instance[0];
 
     /* COMPILATION */
     jl_method_instance_t* ugen_ref_instance = jl_lookup_generic_and_compile_SC(ugen_ref_args, ugen_ref_nargs);
@@ -734,8 +724,7 @@ bool JuliaObjectCompiler::create_julia_def(jl_module_t* evaluated_module, JuliaO
 
     //Stack allocation...
     int julia_def_function_nargs = 8;
-    int32_t nargs = julia_def_function_nargs + 1;
-    jl_value_t* julia_def_args[nargs];
+    jl_value_t* julia_def_args[julia_def_function_nargs];
 
     //__JuliaDef__ constructor
     /* Only setting the module and the method_instance_t*.
@@ -748,13 +737,12 @@ bool JuliaObjectCompiler::create_julia_def(jl_module_t* evaluated_module, JuliaO
     julia_def_args[5] = (jl_value_t*)julia_object->destructor_instance;
     julia_def_args[6] = (jl_value_t*)julia_object->set_index_ugen_ref_instance;
     julia_def_args[7] = (jl_value_t*)julia_object->delete_index_ugen_ref_instance;
-    julia_def_args[8] = (jl_value_t*)julia_object->set_index_audio_vector_instance;
 
     //jl_call1(jl_get_function(jl_base_module, "println"), julia_def_fun);
 
     //printf("JULIA_DEF BEFORE CALL\n");
     
-    jl_value_t* julia_def = jl_lookup_generic_and_compile_return_value_SC(julia_def_args, nargs);
+    jl_value_t* julia_def = jl_lookup_generic_and_compile_return_value_SC(julia_def_args, julia_def_function_nargs);
 
     //jl_call1(jl_get_function(jl_base_module, "println"), julia_def);
 

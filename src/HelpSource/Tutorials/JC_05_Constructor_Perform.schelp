@@ -1,7 +1,7 @@
 title:: JuliaCollider 05: The @constructor and @perform macros
 summary:: Analysis and usage of the @constructor and @perform macros
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 These two macros describe the creation and behaviour of the strong::@object::. They both only take a strong::begin::/strong::end:: block as argument.
 

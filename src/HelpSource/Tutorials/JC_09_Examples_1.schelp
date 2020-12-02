@@ -1,7 +1,7 @@
 title:: JuliaCollider 09: Examples folder (part 1)
 summary:: Insight on the Examples folder
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 We will now look into some of the Examples that come together with JuliaCollider. These examples give for granted that JuliaCollider is installed in the user extension directory.
 Let's first boot emphasis::JuliaCollider:: with the server.

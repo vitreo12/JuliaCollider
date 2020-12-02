@@ -56,5 +56,4 @@ typedef struct JuliaObject
     jl_method_instance_t* destructor_instance;
     jl_method_instance_t* set_index_ugen_ref_instance;
     jl_method_instance_t* delete_index_ugen_ref_instance; 
-    jl_method_instance_t* set_index_audio_vector_instance; //Used in ins/outs
 } JuliaObject;

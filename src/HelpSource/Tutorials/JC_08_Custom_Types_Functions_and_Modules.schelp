@@ -1,7 +1,7 @@
 title:: JuliaCollider 08: Using custom Types, Functions and Modules
 summary:: How to use custom Types, Functions and Modules
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 section::Custom Types
 In emphasis::JuliaCollider::, it is possible to use custom emphasis::Julia:: types ("emphasis::mutable struct::" or "emphasis::struct::") at any stage of the code. They should just be declared before their use. It is important to note that, however, it is strong::strongly:: suggested to always have a fully typed system (as also previously shown in link::Tutorials/JC_06_Data:: and link::Tutorials/JC_07_Buffer::), where the parser and compiler will not have to guess the type of a variable.
