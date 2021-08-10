@@ -10,30 +10,6 @@ What is JuliaCollider?
 [SuperCollider]:https://supercollider.github.io/
 [Julia]: https://github.com/JuliaLang/julia
 
-Download binaries
-=================
-
-Precompiled binaries for MacOS (10.10+) and Linux (x86 - 64-bit) are available under the releases of the repository.
-The name of the zipped binaries are
-
-    JuliaCollider_MacOS.zip
-
-and
-    
-    JuliaCollider_Linux_x86-64.zip
-
-respectively.
-
-Once you have downloaded the zipped release, extract it and simply put the **JuliaCollider** folder in your SuperCollider extensions folder. You can find yours by evaluating
-    
-    Platform.userExtensionDir
-
-in SuperCollider. For a system wide installation, put the folder in your
-
-    Platform.systemExtensionDir
-
-instead.
-
 Build from source
 =================
 
@@ -122,9 +98,9 @@ If the **build_install.sh** script gives error, you are probably missing some of
 Getting started
 ===============
 
-**NOTE FOR MACOS USERS:** **JuliaCollider** (either the downloaded binaries or the custom built version) only works with at least MacOS 10.10.
+**NOTE FOR MACOS USERS:** **JuliaCollider** only works with at least MacOS 10.10.
 
-**NOTE FOR LINUX USERS:** In order to use **JuliaCollider** (either the downloaded binaries or the custom built version), you must make sure that your distribution has [pmap] installed.
+**NOTE FOR LINUX USERS:** In order to use **JuliaCollider** you must make sure that your distribution has [pmap] installed.
 
 To get started with **JuliaCollider** simply navigate to the `Browse` section of `SCIde`'s `Help Browser`. If **JuliaCollider** has been correctly installed in either the `Platform.userExtensionDir` or the `Platform.systemExtensionDir`, you should be able to see a **JuliaCollider** section which contains an overview, a series of 10 tutorials and help files for both the `Julia` and `JuliaDef` new `Classes`:
 
