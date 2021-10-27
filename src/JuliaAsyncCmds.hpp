@@ -37,13 +37,17 @@ void perform_gc(int full, bool already_has_lock = false)
     {
         for(int i = 0; i < gc_array_num; i++)
         {
-            jl_value_t* this_ugen_ref = gc_array[i];
+            jl_value_t* this_ugen_ref = gc_array[i]; //0 to 999
 
-            //Remove UGenRef from global object id dict here
+            //Remove __UGenRef__ and __IORef__ from global object id dict here
             if(this_ugen_ref != nullptr)
             {
-                printf("WARNING: DELETING __UGenRef__ FROM GC AND GLOBAL_OBJECT_ID_DICT\n");
+                printf("WARNING: DELETING __UGenRef__ AND __IORef__ FROM GC AND GLOBAL_OBJECT_ID_DICT \n");
                 
+                /***************/
+                /* __UGenRef__ */
+                /***************/
+
                 int32_t delete_index_nargs = 3;
                 jl_value_t* delete_index_args[delete_index_nargs];
 
@@ -52,15 +56,31 @@ void perform_gc(int full, bool already_has_lock = false)
                 delete_index_args[2] = this_ugen_ref;
 
                 /* 
-                Should I simply run the destructor instead?
-                Well, it depends if Data is a mutable struct with finalizer or not.
-                If it has finalizer, this method is just fine.
+                    Should I simply run the destructor instead?
+                    Well, it depends if Data is a mutable struct with finalizer or not.
+                    If it has finalizer, this method is just fine.
                 */
                 jl_value_t* delete_index_successful = jl_lookup_generic_and_compile_return_value_SC(delete_index_args, delete_index_nargs);
                 if(!delete_index_successful)
                     printf("ERROR: Could not delete __UGenRef__ object from global object id dict\n");
 
                 gc_array[i] = nullptr;
+
+                /*************/
+                /* __IORef__ */
+                /*************/
+                
+                jl_value_t* this_io_ref = gc_array[(gc_array_num - 1) + i]; //1000 to 1999
+
+                //Re-use same array on stack
+                delete_index_args[0] = julia_global_state->get_delete_index_io_ref_fun();
+                delete_index_args[2] = this_io_ref;
+
+                delete_index_successful = jl_invoke_already_compiled_SC(julia_global_state->get_delete_index_io_ref_instance(), delete_index_args, delete_index_nargs);
+                if(!delete_index_successful)
+                    printf("ERROR: Could not delete __IORef__ object from global object id dict\n");
+
+                gc_array[(gc_array_num - 1) + i] = nullptr; //1000 to 1999
             }
         }
 
@@ -152,7 +172,7 @@ bool julia_boot(World* inWorld, void* cmd)
             julia_compiler_gc_barrier = new JuliaAtomicBarrier();
             julia_objects_array       = new JuliaObjectsArray(inWorld, julia_global_state);
 
-            gc_array = (jl_value_t**)malloc(sizeof(jl_value_t*) * gc_array_num);
+            gc_array = (jl_value_t**)malloc(sizeof(jl_value_t*) * (gc_array_num * 2)); //*2 in order to both store __UGenRef__(s) and __IORef__(s)
             if(!gc_array)
             {
                 printf("ERROR: Could not allocate gc_array\n");

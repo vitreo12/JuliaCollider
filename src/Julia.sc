@@ -10,7 +10,7 @@ JuliaDef {
 	var <input_names;
 	var <outputs = -1;
 	var <output_names;
-	var <server_id = -1;
+	var <unique_id = -1;
 	var <compiled = false;
 
 	*new {
@@ -39,7 +39,7 @@ JuliaDef {
 		});
 
 		if((server.class == Server).not, {
-			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			("ERROR: JuliaDef: first argument must be a Server.").postln;
 			^this;
 		});
 
@@ -49,7 +49,7 @@ JuliaDef {
 		});
 
 		if((path.class == String).not, {
-			("ERROR: JuliaDef: second argument is not a String.").postln;
+			("ERROR: JuliaDef: second argument must be a String.").postln;
 			^this;
 		});
 
@@ -113,7 +113,7 @@ JuliaDef {
 			condition.hang;
 
 			//Assign variables to JuliaDef after unhanging.
-			server_id = srvr_id;
+			unique_id = srvr_id;
 			name = obj_name;
 			inputs = ins;
 			outputs = outs;
@@ -196,7 +196,7 @@ JuliaDef {
 		("*** Julia @object: " ++ name ++ " ***").postln;
 		("*** Compiled : " ++ compiled ++ " ***").postln;
 		("*** Server: " ++ srvr ++ " ***").postln;
-		("*** ID: " ++ julia_def.server_id ++ " ***").postln;
+		("*** ID: " ++ julia_def.unique_id ++ " ***").postln;
 		("*** Inputs: " ++ julia_def.inputs ++ " ***").postln;
 		("*** Outputs: " ++ julia_def.outputs ++ " ***").postln;
 		("*** File Path: " ++ julia_def.file_path ++ " ***").postln;
@@ -210,7 +210,7 @@ JuliaDef {
 		var server, julia_object_id, julia_def_to_dict_index;
 
 		server = srvr;
-		julia_object_id = server_id;
+		julia_object_id = unique_id;
 
 		server.sendMsg(\cmd, "/julia_free", julia_object_id);
 
@@ -221,7 +221,7 @@ JuliaDef {
 		julia_defs_dictionary.removeAt(julia_def_to_dict_index);
 
 		//Reset state anyway, no need for response from the server.
-		server_id = -1;
+		unique_id = -1;
 		inputs = -1;
 		outputs = -1;
 		name = "@No_Name";
@@ -233,7 +233,7 @@ JuliaDef {
 
 	/* Free a JuliaDef */
 	free {
-		if(server_id != -1, {
+		if(unique_id != -1, {
 			this.freeJuliaDef;
 		}, {
 			"WARNING: Invalid JuliaDef to free".postln;
@@ -252,7 +252,7 @@ JuliaDef {
 	/* Update this JuliaDef if it has been recompiled by another client. Retrieve it from the server directly. */
 	update {
 		if(name != "@No_Name", {
-			this.getCompiledJuliaDef(srvr, name);
+			this.getCompiledJuliaDef(srvr, name.asSymbol);
 		}, {
 			"WARNING: Invalid JuliaDef to update".postln;
 		});
@@ -261,7 +261,7 @@ JuliaDef {
 	/* Retrieve a JuliaDef from server by name, and assign it to a new JuliaDef, returning it */
 	*retrieve {
 		arg server, obj_name;
-		^this.new(server, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name); //Create a dummy JuliaDef
+		^this.new(server, "__NEW_JULIADEF__").getCompiledJuliaDef(server, obj_name.asSymbol); //Create a dummy JuliaDef
 	}
 
 	getCompiledJuliaDef {
@@ -269,7 +269,7 @@ JuliaDef {
 		var path, ins, outs, srvr_id, condition, osc_unique_id, osc_func, julia_def_to_dict, julia_def_to_dict_index;
 
 		if((server.class == Server).not, {
-			("ERROR: JuliaDef: first argument is not a Server.").postln;
+			("ERROR: JuliaDef: first argument must be a Server.").postln;
 			^this;
 		});
 
@@ -279,7 +279,7 @@ JuliaDef {
 		});
 
 		if((obj_name.class == Symbol).not, {
-			("ERROR: JuliaDef: second argument is not a Symbol.").postln;
+			("ERROR: JuliaDef: second argument must be a Symbol.").postln;
 			^this;
 		});
 
@@ -329,7 +329,7 @@ JuliaDef {
 			condition.hang;
 
 			//Assign variables to JuliaDef after unhanging.
-			server_id = srvr_id;
+			unique_id = srvr_id;
 			file_path = path;
 			inputs = ins;
 			outputs = outs;
@@ -442,7 +442,13 @@ JuliaDef {
 		^return_array;
 	}
 
-	/* FUTURE */
+	/* Used to pass a JuliaDef to a JuliaProxy */
+	//Used when passed to a UGen as input. (Retrieved from Buffer, which uses this.bufnum).
+	//This will be bypassed when using normal Julia.ar method, as the JuliaDef input there is a
+	//direct pointer to a variable in the SuperCollider environment.
+	isValidUGenInput { ^true }
+	asUGenInput { ^this.unique_id }
+	asControlInput { ^this.unique_id }
 
 	/* Precompile a JuliaDef in the Julia sysimg. At next boot, it will be loaded. */
 	precompile {
@@ -451,19 +457,6 @@ JuliaDef {
 }
 
 /******************************************/
-/* FUTURE */
-JuliaDefProxy {
-	*new {
-		arg server, num_inputs, num_outputs;
-		^super.new.init(server, num_inputs, num_outputs);
-	}
-
-	init {
-		arg server, num_inputs, num_outputs;
-		"WARNING: To be implemented...".postln;
-	}
-}
-
 //Turn on/off GC timed collections or force GC runs
 JuliaGC {
 	*new {
@@ -480,60 +473,118 @@ JuliaGC {
 
 Julia : MultiOutUGen {
 	*ar { |... args|
-		var new_args, julia_def_name, julia_def_server, server_id, inputs, outputs, julia_def;
+		var new_args, is_julia_proxy = false, julia_def_name, julia_def_server, julia_object_id, inputs, outputs, julia_def;
 
 		if((args.size == 0), {
 			Error("Julia: no arguments provided.").throw;
 		});
 
-		//If first argument is not a JuliaDef, error
-		if((args[0].class == JuliaDef).not, {
-			Error("Julia: first argument is not a JuliaDef.").throw;
+		//For JuliaProxy args will be in the form of
+		// a nested array, like so: [["__JuliaProxy__", 1, 2, ....]]. Need to unpack them.
+		//I can just check if the class is array (and not some superclass) as it's created
+		//as array in the JuliaProxy.ar method. (args = Array.newClear... etc...)
+		if((args.size == 1 && args[0].class == Array), {
+			if((args[0][0] == "__JuliaProxy__"), {
+				is_julia_proxy = true;
+				args = args[0]; //Actually unpack args and assign them, retrieving the array inside the [[ ]] args
+			});
 		});
 
-		//Get the name of the JuliaDef
-		julia_def_name = args[0].name;
+		//args.postln;
 
-		if(julia_def_name == "@No_Name", {
-			Error("Julia: invalid JuliaDef.").throw;
+		if(is_julia_proxy.not, {
+
+			/********************/
+			/* NOT A JuliaProxy */
+			/********************/
+
+			//If first argument is not a JuliaDef, error
+			if((args[0].class == JuliaDef).not, {
+				Error("Julia: first argument is not a JuliaDef.").throw;
+			});
+
+			//Get the name of the JuliaDef
+			julia_def_name = args[0].name;
+
+			if(julia_def_name == "@No_Name", {
+				Error("Julia: invalid JuliaDef.").throw;
+			});
+
+			//Get the server of the JuliaDef
+			julia_def_server = args[0].srvr;
+
+			/* Unpack JuliaDef from the IdentityDictionary, to pick up eventual changes made
+			when recompiling the same JuliaDef from a different variable. */
+			julia_def = JuliaDef.getJuliaDef(julia_def_server, julia_def_name);
+
+			if(julia_def == nil, {
+				Error("Julia: invalid JuliaDef.").throw;
+			});
+
+			julia_object_id = julia_def.unique_id;
+			inputs = julia_def.inputs;
+			outputs = julia_def.outputs;
+
+			if((inputs < 0) || (inputs > 32) || (outputs < 0) || (outputs > 32) || (julia_object_id < 0), {
+				Error("Julia: invalid JuliaDef.").throw;
+			});
+
+			//Remove the JuliaDef from args
+			args.removeAt(0);
+
+		}, {
+
+			/****************/
+			/* A JuliaProxy */
+			/****************/
+
+			julia_object_id = args[1];
+
+			inputs = args[2];
+			if((inputs < 0) || (inputs > 32), {
+				Error("JuliaProxy: invalid number of inputs.").throw;
+			});
+
+			outputs = args[3];
+			if((outputs < 0) || (outputs > 32), {
+				Error("JuliaProxy: invalid number of inputs.").throw;
+			});
+
+			//Remove the "__JuliaProxy__" from args
+			args.removeAt(0);
+
+			//Remove the julia_def input number from args, now at pos 0
+			args.removeAt(0);
+
+			//Remove inputs, now at pos 0
+			args.removeAt(0);
+
+			//Remove outputs, now at pos 0
+			args.removeAt(0);
 		});
-
-		//Get the server of the JuliaDef
-		julia_def_server = args[0].srvr;
-
-		/* Unpack JuliaDef from the IdentityDictionary, to pick up eventual changes made
-		when recompiling the same JuliaDef from a different variable. */
-		julia_def = JuliaDef.getJuliaDef(julia_def_server, julia_def_name);
-
-		if(julia_def == nil, {
-			Error("Julia: invalid JuliaDef.").throw;
-		});
-
-		server_id = julia_def.server_id;
-		inputs = julia_def.inputs;
-		outputs = julia_def.outputs;
-
-		if((inputs < 0) || (outputs < 0) || (server_id < 0), {
-			Error("Julia: invalid JuliaDef.").throw;
-		});
-
-		//Remove the JuliaDef from args
-		args.removeAt(0);
 
 		//Check rates of inputs. Right now, only audio rate is supported
 		args.do({
 			arg item, i;
 			if(item.rate != 'audio', {
-				Error("Julia '%': argument % is not audio rate".format(name.asString, (i+1).asString)).throw;
+				if(is_julia_proxy, {
+					Error("Julia '%': UGen argument % is not audio rate".format(julia_def_name.asString, (i+1).asString)).throw;
+				}, {
+					Error("JuliaProxy: UGen argument % is not audio rate".format((i+1).asString)).throw;
+				});
 			});
 		});
 
 		//Check number of inputs
 		if((args.size != inputs), {
-			Error("Julia '%': wrong number of inputs: %. Expected %".format(name.asString, (args.size).asString, inputs.asString)).throw;
+			if(is_julia_proxy, {
+				Error("Julia '%': wrong number of UGen inputs: %. Expected %".format(julia_def_name.asString, (args.size).asString, inputs.asString)).throw;
+			}, {
+				Error("JuliaProxy : wrong number of UGen inputs: %. Expected %".format((args.size).asString, inputs.asString)).throw;
+			});
 		});
 
-		//New array. Make up space for 'audio', number of outputs and server_id (first three entries)
+		//New array. Make up space for 'audio', number of outputs and julia_object_id (first three entries)
 		new_args = Array.newClear(args.size + 3);
 
 		//Copy elements over to new_args
@@ -547,8 +598,8 @@ Julia : MultiOutUGen {
 		new_args[0] = 'audio';
 		//Add output number as second entry to new_args array.
 		new_args[1] = outputs;
-		//Add server_id as third entry to new_args array
-		new_args[2] = server_id;
+		//Add julia_object_id as third entry to new_args array
+		new_args[2] = julia_object_id;
 
 		//new_args.postln;
 
@@ -568,7 +619,7 @@ Julia : MultiOutUGen {
 		theInputs.removeAt(0);
 
 		/* Assign inputs array of class to be theInputs, when "outputs" is removed, theInputs
-		will have the server_id as first input, then the UGens arguments. */
+		will have the julia_object_id as first input, then the UGens arguments. */
 		inputs = theInputs;
 		^this.initOutputs(outputs, rate)
 	}
@@ -631,5 +682,30 @@ Julia : MultiOutUGen {
 		server = server ?? Server.default;
 
 		server.sendMsg(\cmd, "/julia_set_perform_debug_mode", new_mode);
+	}
+}
+
+JuliaProxy : MultiOutUGen {
+	*ar { |... args|
+
+		//args are to be in this format: [julia_def, inputs, outputs, UGens...]
+
+		var new_args = new_args = Array.newClear(args.size + 1);
+
+		//Copy elements over to new_args
+		args.do({
+			arg item, i;
+
+			//Shift args by 1. It will leave first entry free
+			new_args[i + 1] = item;
+		});
+
+		new_args[0] = "__JuliaProxy__";
+
+		//new_args will look like:
+		//["__JuliaProxy__", inputs, outputs, UGens...]
+
+		^Julia.ar(new_args);
+
 	}
 }

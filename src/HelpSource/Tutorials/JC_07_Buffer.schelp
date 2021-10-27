@@ -1,7 +1,7 @@
 title:: JuliaCollider 07: The Buffer type
 summary:: Analysis and usage of the Buffer type
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 emphasis::Buffer:: is a special emphasis::JuliaCollider:: type which allows to access the content of a link::Classes/Buffer:: from inside a emphasis::JuliaCollider:: script.
 

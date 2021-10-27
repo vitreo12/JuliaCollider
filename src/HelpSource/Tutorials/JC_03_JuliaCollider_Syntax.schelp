@@ -1,7 +1,7 @@
 title:: JuliaCollider 03: The JuliaCollider syntax
 summary:: Analysis of the JuliaCollider syntax
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 strong::JuliaCollider:: code strongly relies on Julia's metaprogramming capabilities. By using macros, marked with the strong::@:: symbol, is in fact possible to define a custom language, with custom parsing and compilation features.
 

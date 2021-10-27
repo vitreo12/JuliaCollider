@@ -33,9 +33,9 @@
 /* JuliaGlobalUtilities */
 /************************/
 
-bool JuliaGlobalUtilities::initialize_global_utilities(World* in_world)
+bool JuliaGlobalUtilities::initialize_global_utilities(World* in_world, jl_value_t* global_object_id_dict)
 {
-    if(!create_scsynth(in_world) || !create_utils_functions() || !create_datatypes() || !create_julia_def_module() || !create_ugen_object_macro_module())
+    if(!create_scsynth(in_world) || !create_utils_functions() || !create_datatypes() || !create_julia_def_module() || !create_io_ref_module() || !create_io_instances(global_object_id_dict) || !create_ugen_object_macro_module())
         return false;
 
     return true;
@@ -85,6 +85,7 @@ bool JuliaGlobalUtilities::create_scsynth(World* in_world)
     //UNNEEDED?
     jl_set_global(jl_main_module, jl_symbol("__JuliaColliderModule__"), (jl_value_t*)julia_collider_module);
     jl_set_global(jl_main_module, jl_symbol("__JuliaColliderSCSynthModule__"), (jl_value_t*)scsynth_module);
+    
     //Needed
     jl_set_global(jl_main_module, jl_symbol("__JuliaColliderGlobalSCSynth__"), (jl_value_t*)scsynth);
 
@@ -118,15 +119,182 @@ bool JuliaGlobalUtilities::create_julia_def_module()
 {
     julia_def_module = jl_get_module(julia_collider_module, "JuliaDef");
     if(!julia_def_module)
+    {   
+        printf("ERROR: Could not retrieve JuliaDef module\n");
         return false;
+    }
 
     julia_def_fun = jl_get_function(julia_def_module, "__JuliaDef__");
     if(!julia_def_fun)
+    {
+        printf("ERROR: Could not retrieve __JuliaDef__ constructor\n");
         return false;
-    
-    //Unneeded?
+    }
+
     jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefModule__"), (jl_value_t*)julia_def_module);
-    jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefFun__"), (jl_value_t*)julia_def_fun);
+    //jl_set_global(jl_main_module, jl_symbol("__JuliaColliderJuliaDefFun__"), (jl_value_t*)julia_def_fun);
+
+    return true;
+}
+
+bool JuliaGlobalUtilities::create_io_ref_module()
+{
+    io_ref_module = jl_get_module(julia_collider_module, "IORef");
+    if(!io_ref_module)
+    {
+        printf("ERROR: Could not retrieve IORef module\n");
+        return false;
+    }
+
+    io_ref_fun = jl_get_function(io_ref_module, "__IORef__");
+    if(!io_ref_fun)
+    {
+        printf("ERROR: Could not retrieve __IORef__ constructor\n");
+        return false;
+    }
+
+    jl_set_global(jl_main_module, jl_symbol("__JuliaColliderIORefModule__"), (jl_value_t*)io_ref_module);
+    //jl_set_global(jl_main_module, jl_symbol("__JuliaColliderIORefFun__"), (jl_value_t*)io_ref_fun);
+
+    return true;
+}
+
+//Compile set_index_audio_vector_instance and io_ref_instance, and set them global.
+bool JuliaGlobalUtilities::create_io_instances(jl_value_t* global_object_id_dict)
+{
+    /**************************/
+    /* SET INDEX AUDIO VECTOR */
+    /**************************/
+
+    size_t nargs_set_index_audio_vector = 4;
+    jl_value_t* args_set_index_audio_vector[nargs_set_index_audio_vector];
+
+    //ins::Vector{Vector{Float32}} with just one entry
+    jl_value_t* ins_temp =  (jl_value_t*)jl_alloc_array_1d(get_vector_of_vectors_float32(), 1);
+    if(!ins_temp)
+    {
+        printf("ERROR: Could not allocate memory for temporary inputs for set_index_audio_vector precompilation. \n");
+        return false;
+    }
+
+    float* dummy_in_1d;
+    int dummy_in_1d_size = 4;
+    
+    jl_value_t* in_1d;
+
+    dummy_in_1d = (float*)malloc(dummy_in_1d_size * sizeof(float)); //4 elements vector
+    if(!dummy_in_1d)
+    {
+        printf("ERROR: Could not allocate memory for temporary inputs for set_index_audio_vector precompilation. \n");
+        free(dummy_in_1d);
+        return false;
+    }
+
+    for(int i = 0; i < dummy_in_1d_size; i++)
+        dummy_in_1d[i] = 0.0f;
+
+    in_1d = (jl_value_t*)jl_ptr_to_array_1d(get_vector_float32(), dummy_in_1d, dummy_in_1d_size, 0);
+
+    args_set_index_audio_vector[0] = get_set_index_audio_vector_fun();
+    args_set_index_audio_vector[1] = ins_temp;
+    args_set_index_audio_vector[2] = in_1d;
+    args_set_index_audio_vector[3] = jl_box_int32(1); //Julia index from 1 onwards
+
+    set_index_audio_vector_instance = jl_lookup_generic_and_compile_SC(args_set_index_audio_vector, nargs_set_index_audio_vector);
+
+    if(!set_index_audio_vector_instance)
+    {
+        free(dummy_in_1d);
+        printf("ERROR: Could not precompile set_index_audio_vector. \n");
+        return false;
+    }
+
+    /*********/
+    /* IORef */
+    /*********/
+
+    size_t nargs_io_ref = 3;
+    jl_value_t* args_io_ref[nargs_io_ref];
+
+    args_io_ref[0] = get_io_ref_fun();
+    args_io_ref[1] = ins_temp; //Reuse the same vector here
+    args_io_ref[2] = ins_temp;
+    
+    io_ref_instance = jl_lookup_generic_and_compile_SC(args_io_ref, nargs_io_ref);
+    if(!io_ref_instance)
+    {
+        free(dummy_in_1d);
+        printf("ERROR: Could not precompile __IORef__. \n");
+        return false;
+    }
+
+    jl_value_t* io_ref_object_temp = jl_lookup_generic_and_compile_return_value_SC(args_io_ref, nargs_io_ref);
+    if(!io_ref_object_temp)
+    {
+        free(dummy_in_1d);
+        printf("ERROR: Could not create a temporary __IORef__ object.\n");
+        return false;
+    }
+
+    //Free previous malloced array
+    free(dummy_in_1d);
+
+    /*****************************************************/
+    /* PRECOMPILE set_index / delete_index for an IDDict */
+    /*****************************************************/
+
+    set_index_io_ref_fun = jl_get_function(io_ref_module, "set_index_io_ref");
+    if(!set_index_io_ref_fun)
+    {
+        printf("ERROR: Could not retrieve set_index_io_ref function\n");
+        return false;
+    }
+
+    delete_index_io_ref_fun = jl_get_function(io_ref_module, "delete_index_io_ref");
+    if(!delete_index_io_ref_fun)
+    {
+        printf("ERROR: Could not retrieve delete_index_io_ref function\n");
+        return false;
+    }
+
+    int32_t set_index_nargs = 3;
+    jl_value_t* set_index_args[set_index_nargs];
+    
+    int32_t delete_index_nargs = 3;
+    jl_value_t* delete_index_args[delete_index_nargs];
+
+    //set index
+    set_index_args[0] = set_index_io_ref_fun;
+    set_index_args[1] = global_object_id_dict;
+    set_index_args[2] = io_ref_object_temp;
+
+    //delete index
+    delete_index_args[0] = delete_index_io_ref_fun;
+    delete_index_args[1] = global_object_id_dict;
+    delete_index_args[2] = io_ref_object_temp;
+
+    /* COMPILATION */
+    //This will add to global_object_id_dict
+    set_index_io_ref_instance = jl_lookup_generic_and_compile_SC(set_index_args, set_index_nargs);
+    if(!set_index_io_ref_instance)
+    {
+        printf("ERROR: Could not compile set_index_io_ref_instance\n");
+        return false;
+    }
+
+    //This will delete right away what's been just added.
+    delete_index_io_ref_instance = jl_lookup_generic_and_compile_SC(delete_index_args, delete_index_nargs);
+    if(!delete_index_io_ref_instance)
+    {
+        printf("ERROR: Could not compile delete_index_io_ref_instance\n");
+        return false;
+    }
+
+    //Set needed things to global
+    jl_set_global(jl_main_module, jl_symbol("__JuliaColliderSetIndexAudioVectorInstance__"), (jl_value_t*)set_index_audio_vector_instance);
+    jl_set_global(jl_main_module, jl_symbol("__JuliaColliderIORefInstance__"), (jl_value_t*)io_ref_instance);
+    jl_set_global(jl_main_module, jl_symbol("__JuliaColliderSetIndexIORefInstance__"), (jl_value_t*)set_index_io_ref_instance);
+    jl_set_global(jl_main_module, jl_symbol("__JuliaColliderDeleteIndexIORefInstance__"), (jl_value_t*)delete_index_io_ref_instance);
 
     return true;
 }
@@ -170,6 +338,41 @@ jl_value_t* JuliaGlobalUtilities::get_scsynth()
 jl_function_t* JuliaGlobalUtilities::get_set_index_audio_vector_fun()
 {
     return set_index_audio_vector_fun;
+}
+
+jl_method_instance_t* JuliaGlobalUtilities::get_set_index_audio_vector_instance()
+{
+    return set_index_audio_vector_instance;
+}
+
+jl_function_t* JuliaGlobalUtilities::get_io_ref_fun()
+{
+    return io_ref_fun;
+}
+
+jl_method_instance_t* JuliaGlobalUtilities::get_io_ref_instance()
+{
+    return io_ref_instance;
+}
+
+jl_function_t* JuliaGlobalUtilities::get_set_index_io_ref_fun()
+{
+    return set_index_io_ref_fun;
+}
+
+jl_method_instance_t* JuliaGlobalUtilities::get_set_index_io_ref_instance()
+{
+    return set_index_io_ref_instance;
+}
+
+jl_function_t* JuliaGlobalUtilities::get_delete_index_io_ref_fun()
+{
+    return delete_index_io_ref_fun;
+}
+
+jl_method_instance_t* JuliaGlobalUtilities::get_delete_index_io_ref_instance()
+{
+    return delete_index_io_ref_instance;
 }
 
 jl_module_t* JuliaGlobalUtilities::get_scsynth_module()
@@ -444,6 +647,16 @@ bool JuliaGlobalState::boot_julia()
             jl_eval_string("println(Base.load_path_expand.(LOAD_PATH))");
             */
 
+            /* Had to move this jl_get_world_counter() up here (at first, it was only after the startup), 
+            because of the precompilation of __IORef__'s set_index/delete_index, which were complaining about
+            world age being 1... Is it correct for it being here too???? */
+            //Update world_age world_counter right away, otherwise last_age, in include sections, would be
+            //still age 1. This update here allows me to only advance age on the NRT thread, while 
+            //on the RT thread I only invoke methods that are been already compiled and would work 
+            //between their world age minimum and maximum.
+            //Basically, I do update here in order to avoid to have "1" as last_age at any stage of JuliaCollider.
+            jl_get_ptls_states()->world_age = jl_get_world_counter();
+
             //Manually load the startup file, since I can't set Base.SYSCONFDIR to "../../etc". Workaround:
             bool initialized_startup_file = run_startup_file();
             if(!initialized_startup_file)
@@ -459,13 +672,6 @@ bool JuliaGlobalState::boot_julia()
                 return false;
             }
 
-            bool initialized_global_utilities = JuliaGlobalUtilities::initialize_global_utilities(SCWorld);
-            if(!initialized_global_utilities)
-            {
-                printf("ERROR: Could not intialize JuliaGlobalUtilities\n");
-                return false;
-            }
-
             bool initialized_global_def_id_dict = global_def_id_dict.initialize_id_dict("__JuliaGlobalDefIdDict__");
             if(!initialized_global_def_id_dict)
             {
@@ -477,6 +683,14 @@ bool JuliaGlobalState::boot_julia()
             if(!initialized_global_object_id_dict)
             {
                 printf("ERROR: Could not intialize JuliaGlobalObjectIdDict \n");
+                return false;
+            }
+
+            //initialize utilities after ID dicts, as they are needed to precompile IORef related stuff...
+            bool initialized_global_utilities = JuliaGlobalUtilities::initialize_global_utilities(SCWorld, global_object_id_dict.get_id_dict());
+            if(!initialized_global_utilities)
+            {
+                printf("ERROR: Could not intialize JuliaGlobalUtilities\n");
                 return false;
             }
 
@@ -574,8 +788,6 @@ void JuliaGlobalState::quit_julia()
         jl_gc_enable(1);
 
         jl_atexit_hook(0); 
-        
-        printf("-> Quitted Julia \n");
 
         #ifdef __linux__
             close_julia_shared_library();

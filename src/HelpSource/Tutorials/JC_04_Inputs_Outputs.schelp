@@ -1,7 +1,7 @@
 title:: JuliaCollider 04: The @inputs and @outputs macros
 summary:: Analysis and usage of the @inputs and @outputs macros
 categories:: JuliaCollider>Tutorials
-related:: Classes/Julia, Classes/JuliaDef, Overviews/JuliaCollider
+related:: Classes/Julia, Classes/JuliaDef, Classes/JuliaProxy, Overviews/JuliaCollider
 
 The strong::@inputs:: and strong::@outputs:: macros define the number of inputs and outputs for the current strong::@object::.
 
